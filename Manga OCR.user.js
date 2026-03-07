@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga OCR
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  OCR für Manga/Manhwa-Kapitel — Auto-Scroll, alle Seiten, Text kopieren
 // @author       marmoris
 // @match        *://*/*
@@ -12,6 +12,7 @@
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
+// @grant        GM_registerMenuCommand
 // @connect      cdn.jsdelivr.net
 // @connect      tessdata.projectnaptha.com
 // @connect      *
@@ -22,6 +23,26 @@
 
 (function () {
     'use strict';
+
+    // ── Site allowlist (script runs on *://*/*, only activate where wanted) ───
+    const SITES_KEY = 'ocr-allowed-sites';
+    const host      = location.hostname;
+    const allowed   = GM_getValue(SITES_KEY, []);
+
+    GM_registerMenuCommand(
+        allowed.includes(host) ? 'Manga OCR deaktivieren auf dieser Seite' : 'Manga OCR aktivieren auf dieser Seite',
+        () => {
+            const updated = allowed.includes(host)
+                ? allowed.filter(s => s !== host)
+                : [...allowed, host];
+            GM_setValue(SITES_KEY, updated);
+            location.reload();
+        }
+    );
+
+    if (!allowed.includes(host)) return; // Stop here unless explicitly enabled
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     const SW = 340;
     const MIN_IMG_PX = 400;
@@ -200,6 +221,7 @@
             this.scanning = false;
             this.open     = false;
             this._buildUI();
+            this._watchUrlChanges();
         }
 
         // ── UI ────────────────────────────────────────────────────────────────
@@ -249,13 +271,30 @@
             document.getElementById('ocr-progress-bar').style.width = `${pct}%`;
         }
 
+        // ── SPA URL change detection ──────────────────────────────────────────
+
+        _watchUrlChanges() {
+            let lastUrl = location.href;
+            const onUrlChange = () => {
+                if (location.href === lastUrl) return;
+                lastUrl = location.href;
+                if (this.scanning) return;
+                this.results = [];
+                document.getElementById('ocr-results').innerHTML = '';
+                document.getElementById('ocr-footer').textContent = '';
+                this._status('Bereit.');
+                console.log('[OCR] URL changed:', location.href);
+            };
+            new MutationObserver(onUrlChange).observe(document.body, { childList: true, subtree: true });
+            window.addEventListener('popstate', onUrlChange);
+        }
+
         // ── Image detection ───────────────────────────────────────────────────
 
         _findImages() {
             return Array.from(document.querySelectorAll('img')).filter(img => {
-                const w = img.naturalWidth  || img.width;
-                const h = img.naturalHeight || img.height;
-                if (w < MIN_IMG_PX || h < MIN_IMG_PX) return false;
+                if (!img.complete || !img.naturalWidth || !img.naturalHeight) return false;
+                if (img.naturalWidth < MIN_IMG_PX || img.naturalHeight < MIN_IMG_PX) return false;
                 if (img.closest('nav, header, footer, aside, [class*="avatar"], [class*="logo"], [class*="banner"], [class*="ad-"]')) return false;
                 const src = img.src || img.currentSrc || '';
                 if (!src || src.startsWith('data:image/svg')) return false;
@@ -285,87 +324,90 @@
             await this._sleep(400);
         }
 
-        // ── Fetch image bytes via GM_xmlhttpRequest (CORS bypass) ────────────────
+        // ── Fetch image as dataURL (blob → FileReader) ────────────────────────
+        // DataURLs are plain strings — origin-independent, Tesseract worker can
+        // read them directly without any cross-origin restrictions.
 
-        _fetchArrayBuffer(url) {
+        _fetchAsDataURL(url) {
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url,
-                    responseType: 'arraybuffer',
-                    headers: { 'Referer': location.href, 'Accept': 'image/*,*/*;q=0.8' },
+                    responseType: 'blob',
+                    headers: { 'Referer': location.href, 'Origin': location.origin, 'Accept': 'image/*,*/*;q=0.8' },
                     onload: r => {
-                        console.log(`[OCR] fetch ${r.status} ${r.response?.byteLength}b`, url);
-                        if (r.status !== 200 || !r.response?.byteLength)
-                            reject(new Error(`HTTP ${r.status}, ${r.response?.byteLength ?? 0}b`));
-                        else
-                            resolve(r.response);
+                        console.log(`[OCR] fetch ${r.status} size=${r.response?.size}`, url);
+                        if (r.status !== 200 || !r.response?.size) {
+                            reject(new Error(`HTTP ${r.status}`)); return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload  = () => resolve(reader.result);
+                        reader.onerror = () => reject(new Error('FileReader failed'));
+                        reader.readAsDataURL(r.response);
                     },
                     onerror: e => {
                         console.error('[OCR] network error', url, e);
-                        reject(new Error(`Network error`));
+                        reject(new Error('Network error'));
                     },
                 });
             });
         }
 
-        // Primary: blob URL → canvas → ImageData (origin-independent via postMessage)
+        // Fallback: arraybuffer → blob URL → canvas → ImageData ──────────────
+        _fetchArrayBuffer(url) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET', url,
+                    responseType: 'arraybuffer',
+                    headers: { 'Referer': location.href, 'Accept': 'image/*,*/*;q=0.8' },
+                    onload:  r => r.response?.byteLength ? resolve(r.response) : reject(new Error(`HTTP ${r.status}`)),
+                    onerror: () => reject(new Error('Network error')),
+                });
+            });
+        }
+
         async _toImageData(arrayBuffer) {
             const blobUrl = URL.createObjectURL(new Blob([arrayBuffer]));
             try {
                 const img = await new Promise((res, rej) => {
                     const el = new Image();
-                    el.onload = () => res(el);
-                    el.onerror = (e) => rej(new Error(`Image load failed: ${e?.message || e}`));
+                    el.onload  = () => res(el);
+                    el.onerror = () => rej(new Error('Image element load failed'));
                     el.src = blobUrl;
                 });
-                console.log(`[OCR] canvas ${img.naturalWidth}x${img.naturalHeight}`);
                 const canvas = document.createElement('canvas');
-                canvas.width  = img.naturalWidth;
-                canvas.height = img.naturalHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                return ctx.getImageData(0, 0, canvas.width, canvas.height);
+                canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
             } finally {
                 URL.revokeObjectURL(blobUrl);
             }
         }
 
-        // ── OCR one image with fallback chain ─────────────────────────────────────
+        // ── OCR one image — dataURL primary, ImageData fallback ───────────────
+
         async _ocrImage(src) {
             console.log('[OCR] processing:', src);
 
-            // 1. Fetch bytes
-            const buf = await this._fetchArrayBuffer(src);
-
-            // Attempt A: canvas → ImageData (most reliable for cross-origin workers)
+            // A: dataURL string — self-contained, worker-safe (no origin issues)
             try {
-                const imageData = await this._toImageData(buf);
-                console.log('[OCR] attempt A: ImageData', imageData.width, 'x', imageData.height);
-                const { data: { text } } = await this.worker.recognize(imageData);
+                const dataUrl = await this._fetchAsDataURL(src);
+                console.log('[OCR] attempt A: dataURL', dataUrl.substring(0, 40));
+                const { data: { text } } = await this.worker.recognize(dataUrl);
                 return text.trim();
             } catch (eA) {
                 console.warn('[OCR] attempt A failed:', String(eA));
             }
 
-            // Attempt B: Uint8Array directly (some Tesseract builds handle raw bytes)
+            // B: arraybuffer → canvas → ImageData (structured-clone safe)
             try {
-                console.log('[OCR] attempt B: Uint8Array');
-                const { data: { text } } = await this.worker.recognize(new Uint8Array(buf));
+                const buf = await this._fetchArrayBuffer(src);
+                const imageData = await this._toImageData(buf);
+                console.log('[OCR] attempt B: ImageData', imageData.width, 'x', imageData.height);
+                const { data: { text } } = await this.worker.recognize(imageData);
                 return text.trim();
             } catch (eB) {
                 console.warn('[OCR] attempt B failed:', String(eB));
-            }
-
-            // Attempt C: blob URL in main-thread context (last resort)
-            try {
-                const blobUrl = URL.createObjectURL(new Blob([buf]));
-                console.log('[OCR] attempt C: blob URL', blobUrl);
-                const { data: { text } } = await this.worker.recognize(blobUrl);
-                URL.revokeObjectURL(blobUrl);
-                return text.trim();
-            } catch (eC) {
-                console.warn('[OCR] attempt C failed:', String(eC));
             }
 
             throw new Error('Alle Methoden fehlgeschlagen – siehe Console');
