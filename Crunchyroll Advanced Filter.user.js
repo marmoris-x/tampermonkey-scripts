@@ -1415,10 +1415,12 @@
 
     // ── PiP Unlock (nur auf /watch) ───────────────────────────────────────────
     if (/\/watch\//.test(location.pathname)) {
-        new MutationObserver(() => {
+        const removePiPLock = () =>
             document.querySelector('video[disablePictureInPicture]')
                 ?.removeAttribute('disablePictureInPicture');
-        }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['disablePictureInPicture'] });
+        removePiPLock();
+        new MutationObserver(removePiPLock)
+            .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['disablePictureInPicture'] });
     }
 
     // ── Filter-UI (nur auf /videos/popular) ──────────────────────────────────
