@@ -1413,16 +1413,15 @@
         }
     }
 
-    // ── PiP Unlock (läuft auf allen Crunchyroll-Seiten) ───────────────────────
-    (function pipUnlock() {
-        setInterval(() => {
-            const video = document.querySelector('video');
-            if (video && video.hasAttribute('disablePictureInPicture'))
-                video.removeAttribute('disablePictureInPicture');
-        }, 1000);
-    })();
+    // ── PiP Unlock (nur auf /watch) ───────────────────────────────────────────
+    if (/\/watch\//.test(location.pathname)) {
+        new MutationObserver(() => {
+            document.querySelector('video[disablePictureInPicture]')
+                ?.removeAttribute('disablePictureInPicture');
+        }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['disablePictureInPicture'] });
+    }
 
-    // ── Filter-UI (nur auf Browse/Popular-Seiten) ─────────────────────────────
-    if (/\/(browse|videos\/popular)/.test(location.pathname))
+    // ── Filter-UI (nur auf /videos/popular) ──────────────────────────────────
+    if (/\/videos\/popular/.test(location.pathname))
         new CrunchyrollAdvancedFilter();
 })();
