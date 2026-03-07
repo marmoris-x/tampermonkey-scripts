@@ -511,7 +511,7 @@
 
         _buildUI() {
             const sb = document.createElement('div');
-            sb.id = 'cr-sb';
+            sb.id = 'cr-filter-sidebar';
             sb.innerHTML = this._html();
             document.body.appendChild(sb);
 
@@ -529,7 +529,7 @@
             const chk = this.showBadges ? 'checked' : '';
             return `
             <!-- Tab -->
-            <button id="cr-tab" title="Filter-Sidebar öffnen / schließen">
+            <button id="cr-sidebar-toggle" title="Filter-Sidebar öffnen / schließen">
                 <span class="cr-tab-icon">⚙</span>
                 <span class="cr-tab-label">Filter</span>
                 <span class="cr-tab-count" id="cr-tab-count">0</span>
@@ -753,7 +753,7 @@
         // ── Events ──────────────────────────────────────────────────────────
 
         _attachEvents() {
-            document.getElementById('cr-tab').addEventListener('click',      () => this._toggle());
+            document.getElementById('cr-sidebar-toggle').addEventListener('click', () => this._toggle());
             document.getElementById('cr-close').addEventListener('click',    () => this._toggle(false));
             document.getElementById('cr-btn-scan').addEventListener('click', () => this._scan());
             document.getElementById('cr-btn-apply').addEventListener('click',() => this._apply());
@@ -811,7 +811,7 @@
 
         _toggle(forceTo) {
             this.isOpen = forceTo !== undefined ? forceTo : !this.isOpen;
-            document.getElementById('cr-sb').classList.toggle('open', this.isOpen);
+            document.getElementById('cr-filter-sidebar').classList.toggle('open', this.isOpen);
             document.documentElement.classList.toggle('cr-pushed', this.isOpen);
             GM_setValue('cr_sidebar_open', this.isOpen);
             this._syncToggleUI();
