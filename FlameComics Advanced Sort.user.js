@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         FlameComics Sort Enhancement
+// @name         FlameComics Advanced Sort
 // @namespace    http://tampermonkey.net/
 // @version      1.3
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
@@ -11,6 +11,8 @@
 // @grant        none
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=https://flamecomics.xyz
 // @run-at       document-end
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js
 // ==/UserScript==
 
 (function() {
