@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga OCR
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  OCR für Manga/Manhwa-Kapitel — Auto-Scroll, alle Seiten, Text kopieren
 // @author       marmoris
 // @match        *://*/*
@@ -285,32 +285,41 @@
             await this._sleep(400);
         }
 
-        // ── Fetch cross-origin image → ImageData (worker-safe via canvas) ───────
-        // Blob-URLs are same-origin and don't taint the canvas, so getImageData()
-        // works. ImageData is structured-cloneable and origin-independent.
+        // ── Fetch image bytes via GM_xmlhttpRequest (CORS bypass) ────────────────
 
-        async _fetchImageData(url) {
-            const buf = await new Promise((resolve, reject) => {
+        _fetchArrayBuffer(url) {
+            return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url,
                     responseType: 'arraybuffer',
                     headers: { 'Referer': location.href, 'Accept': 'image/*,*/*;q=0.8' },
-                    onload:  r => r.status === 200
-                        ? resolve(r.response)
-                        : reject(new Error(`HTTP ${r.status}`)),
-                    onerror: () => reject(new Error(`Network error`)),
+                    onload: r => {
+                        console.log(`[OCR] fetch ${r.status} ${r.response?.byteLength}b`, url);
+                        if (r.status !== 200 || !r.response?.byteLength)
+                            reject(new Error(`HTTP ${r.status}, ${r.response?.byteLength ?? 0}b`));
+                        else
+                            resolve(r.response);
+                    },
+                    onerror: e => {
+                        console.error('[OCR] network error', url, e);
+                        reject(new Error(`Network error`));
+                    },
                 });
             });
+        }
 
-            const blobUrl = URL.createObjectURL(new Blob([buf]));
+        // Primary: blob URL → canvas → ImageData (origin-independent via postMessage)
+        async _toImageData(arrayBuffer) {
+            const blobUrl = URL.createObjectURL(new Blob([arrayBuffer]));
             try {
                 const img = await new Promise((res, rej) => {
                     const el = new Image();
                     el.onload = () => res(el);
-                    el.onerror = rej;
+                    el.onerror = (e) => rej(new Error(`Image load failed: ${e?.message || e}`));
                     el.src = blobUrl;
                 });
+                console.log(`[OCR] canvas ${img.naturalWidth}x${img.naturalHeight}`);
                 const canvas = document.createElement('canvas');
                 canvas.width  = img.naturalWidth;
                 canvas.height = img.naturalHeight;
@@ -320,6 +329,46 @@
             } finally {
                 URL.revokeObjectURL(blobUrl);
             }
+        }
+
+        // ── OCR one image with fallback chain ─────────────────────────────────────
+        async _ocrImage(src) {
+            console.log('[OCR] processing:', src);
+
+            // 1. Fetch bytes
+            const buf = await this._fetchArrayBuffer(src);
+
+            // Attempt A: canvas → ImageData (most reliable for cross-origin workers)
+            try {
+                const imageData = await this._toImageData(buf);
+                console.log('[OCR] attempt A: ImageData', imageData.width, 'x', imageData.height);
+                const { data: { text } } = await this.worker.recognize(imageData);
+                return text.trim();
+            } catch (eA) {
+                console.warn('[OCR] attempt A failed:', String(eA));
+            }
+
+            // Attempt B: Uint8Array directly (some Tesseract builds handle raw bytes)
+            try {
+                console.log('[OCR] attempt B: Uint8Array');
+                const { data: { text } } = await this.worker.recognize(new Uint8Array(buf));
+                return text.trim();
+            } catch (eB) {
+                console.warn('[OCR] attempt B failed:', String(eB));
+            }
+
+            // Attempt C: blob URL in main-thread context (last resort)
+            try {
+                const blobUrl = URL.createObjectURL(new Blob([buf]));
+                console.log('[OCR] attempt C: blob URL', blobUrl);
+                const { data: { text } } = await this.worker.recognize(blobUrl);
+                URL.revokeObjectURL(blobUrl);
+                return text.trim();
+            } catch (eC) {
+                console.warn('[OCR] attempt C failed:', String(eC));
+            }
+
+            throw new Error('Alle Methoden fehlgeschlagen – siehe Console');
         }
 
         // ── Init Tesseract worker ─────────────────────────────────────────────
@@ -397,17 +446,16 @@
                     const textEl = document.getElementById(`ocr-t-${i}`);
                     try {
                         const src = imgs[i].src || imgs[i].currentSrc;
-                        const imgData = await this._fetchImageData(src);
-                        const { data: { text } } = await this.worker.recognize(imgData);
-                        const cleaned = text.trim();
-                        this.results[i] = { text: cleaned };
-
+                        const text = await this._ocrImage(src);
+                        this.results[i] = { text };
                         textEl.className = 'ocr-page-text';
-                        textEl.textContent = cleaned || '(kein Text erkannt)';
+                        textEl.textContent = text || '(kein Text erkannt)';
                     } catch (err) {
+                        const msg = err?.message || String(err) || 'Unbekannter Fehler';
+                        console.error(`[OCR] Seite ${i + 1} endgültig fehlgeschlagen:`, err);
                         this.results[i] = { text: '' };
                         textEl.className = 'ocr-page-text error';
-                        textEl.textContent = `Fehler: ${err.message}`;
+                        textEl.textContent = `Fehler: ${msg}`;
                     }
 
                     document.getElementById(`ocr-p-${i}`)
@@ -418,7 +466,9 @@
                 this._status(`Fertig. ${imgs.length} Seiten gescannt.`);
 
             } catch (err) {
-                this._status(`Fehler: ${err.message}`);
+                const msg = err?.message || String(err) || 'Unbekannter Fehler';
+                console.error('[OCR] Scan fehlgeschlagen:', err);
+                this._status(`Fehler: ${msg}`);
             } finally {
                 this.scanning = false;
                 document.getElementById('ocr-scan').disabled = false;
