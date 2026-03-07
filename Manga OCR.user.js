@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga OCR
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  OCR für Manga/Manhwa-Kapitel — Auto-Scroll, alle Seiten, Text kopieren
 // @author       marmoris
 // @match        *://*/*
@@ -197,7 +197,6 @@
         constructor() {
             this.worker   = null;
             this.results  = [];
-            this.blobUrls = [];
             this.scanning = false;
             this.open     = false;
             this._buildUI();
@@ -286,15 +285,15 @@
             await this._sleep(400);
         }
 
-        // ── Fetch cross-origin image as blob URL ──────────────────────────────
+        // ── Fetch cross-origin image as Uint8Array (worker-safe) ─────────────
 
-        _fetchBlob(url) {
+        _fetchImage(url) {
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url,
-                    responseType: 'blob',
-                    onload:  r => resolve(URL.createObjectURL(r.response)),
+                    responseType: 'arraybuffer',
+                    onload:  r => resolve(new Uint8Array(r.response)),
                     onerror: () => reject(new Error(`Fetch failed: ${url}`)),
                 });
             });
@@ -319,13 +318,11 @@
             if (this.scanning) return;
             this.scanning = true;
 
-            this._revokeBlobs();
             this.results = [];
             document.getElementById('ocr-results').innerHTML = '';
             document.getElementById('ocr-scan').disabled = true;
 
             try {
-                // 1. Scroll to trigger lazy loading
                 this._status('Scrolle zum Laden aller Bilder...');
                 await this._scrollLoad();
 
@@ -377,10 +374,8 @@
                     const textEl = document.getElementById(`ocr-t-${i}`);
                     try {
                         const src = imgs[i].src || imgs[i].currentSrc;
-                        const blobUrl = await this._fetchBlob(src);
-                        this.blobUrls.push(blobUrl);
-
-                        const { data: { text } } = await this.worker.recognize(blobUrl);
+                        const imgData = await this._fetchImage(src);
+                        const { data: { text } } = await this.worker.recognize(imgData);
                         const cleaned = text.trim();
                         this.results[i] = { text: cleaned };
 
@@ -418,13 +413,6 @@
             GM_setClipboard(text);
             this._status('Kopiert!');
             setTimeout(() => this._status(`Fertig. ${this.results.length} Seiten gescannt.`), 1500);
-        }
-
-        // ── Cleanup ───────────────────────────────────────────────────────────
-
-        _revokeBlobs() {
-            this.blobUrls.forEach(u => URL.revokeObjectURL(u));
-            this.blobUrls = [];
         }
 
         _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
