@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga OCR
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  OCR für Manga/Manhwa-Kapitel — Auto-Scroll, alle Seiten, Text kopieren
 // @author       marmoris
 // @match        *://*/*
@@ -285,18 +285,41 @@
             await this._sleep(400);
         }
 
-        // ── Fetch cross-origin image as Uint8Array (worker-safe) ─────────────
+        // ── Fetch cross-origin image → ImageData (worker-safe via canvas) ───────
+        // Blob-URLs are same-origin and don't taint the canvas, so getImageData()
+        // works. ImageData is structured-cloneable and origin-independent.
 
-        _fetchImage(url) {
-            return new Promise((resolve, reject) => {
+        async _fetchImageData(url) {
+            const buf = await new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url,
                     responseType: 'arraybuffer',
-                    onload:  r => resolve(new Uint8Array(r.response)),
-                    onerror: () => reject(new Error(`Fetch failed: ${url}`)),
+                    headers: { 'Referer': location.href, 'Accept': 'image/*,*/*;q=0.8' },
+                    onload:  r => r.status === 200
+                        ? resolve(r.response)
+                        : reject(new Error(`HTTP ${r.status}`)),
+                    onerror: () => reject(new Error(`Network error`)),
                 });
             });
+
+            const blobUrl = URL.createObjectURL(new Blob([buf]));
+            try {
+                const img = await new Promise((res, rej) => {
+                    const el = new Image();
+                    el.onload = () => res(el);
+                    el.onerror = rej;
+                    el.src = blobUrl;
+                });
+                const canvas = document.createElement('canvas');
+                canvas.width  = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                return ctx.getImageData(0, 0, canvas.width, canvas.height);
+            } finally {
+                URL.revokeObjectURL(blobUrl);
+            }
         }
 
         // ── Init Tesseract worker ─────────────────────────────────────────────
@@ -374,7 +397,7 @@
                     const textEl = document.getElementById(`ocr-t-${i}`);
                     try {
                         const src = imgs[i].src || imgs[i].currentSrc;
-                        const imgData = await this._fetchImage(src);
+                        const imgData = await this._fetchImageData(src);
                         const { data: { text } } = await this.worker.recognize(imgData);
                         const cleaned = text.trim();
                         this.results[i] = { text: cleaned };
