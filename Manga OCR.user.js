@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga OCR
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  OCR für Manga/Manhwa-Kapitel — Auto-Scroll, alle Seiten, Text kopieren
 // @author       marmoris
 // @match        *://*/*
@@ -295,6 +295,9 @@
             return Array.from(document.querySelectorAll('img')).filter(img => {
                 if (!img.complete || !img.naturalWidth || !img.naturalHeight) return false;
                 if (img.naturalWidth < MIN_IMG_PX || img.naturalHeight < MIN_IMG_PX) return false;
+                // Must be rendered (non-zero display size) — catches display:none, collapsed containers
+                const rect = img.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return false;
                 if (img.closest('nav, header, footer, aside, [class*="avatar"], [class*="logo"], [class*="banner"], [class*="ad-"]')) return false;
                 const src = img.src || img.currentSrc || '';
                 if (!src || src.startsWith('data:image/svg')) return false;
@@ -310,18 +313,56 @@
             return (avgH > avgW && imgs.length >= 2) ? 'webtoon' : 'paginated';
         }
 
-        // ── Scroll to trigger lazy loading ────────────────────────────────────
+        // ── Scroll + IntersectionObserver to trigger and confirm lazy loading ───
+        // Scrolls through the page while an IntersectionObserver collects every
+        // large image that actually enters the viewport (rootMargin: 300px ahead).
+        // After scrolling back to top we wait until no new images appear for 600ms.
 
         async _scrollLoad() {
-            const step = window.innerHeight;
-            let y = 0;
-            while (y < document.documentElement.scrollHeight) {
-                window.scrollTo(0, y);
-                await this._sleep(200);
-                y += step;
-            }
-            window.scrollTo(0, 0);
-            await this._sleep(400);
+            const seen = new Set();
+
+            await new Promise(resolve => {
+                const io = new IntersectionObserver(entries => {
+                    entries.forEach(e => {
+                        if (e.isIntersecting) seen.add(e.target);
+                    });
+                }, { rootMargin: '300px' });
+
+                // Observe all candidate images now + any added during scroll
+                const observe = () => {
+                    document.querySelectorAll('img').forEach(img => {
+                        if (!img.dataset.ocrObserved) {
+                            img.dataset.ocrObserved = '1';
+                            io.observe(img);
+                        }
+                    });
+                };
+
+                const mo = new MutationObserver(observe);
+                mo.observe(document.body, { childList: true, subtree: true });
+                observe();
+
+                const step = window.innerHeight;
+                let y = 0;
+                const scroll = async () => {
+                    const maxY = document.documentElement.scrollHeight;
+                    while (y < maxY) {
+                        window.scrollTo(0, y);
+                        y += step;
+                        await this._sleep(150);
+                    }
+                    window.scrollTo(0, 0);
+                    // Wait for final lazy images to render
+                    await this._sleep(600);
+                    io.disconnect();
+                    mo.disconnect();
+                    // Clean up marker attributes
+                    document.querySelectorAll('img[data-ocr-observed]')
+                        .forEach(img => delete img.dataset.ocrObserved);
+                    resolve();
+                };
+                scroll();
+            });
         }
 
         // ── Fetch image as dataURL (blob → FileReader) ────────────────────────
