@@ -1413,15 +1413,11 @@
         }
     }
 
-    // ── PiP Unlock (nur auf /watch) ───────────────────────────────────────────
-    if (/\/watch\//.test(location.pathname)) {
-        const removePiPLock = () =>
-            document.querySelector('video[disablePictureInPicture]')
-                ?.removeAttribute('disablePictureInPicture');
-        removePiPLock();
-        new MutationObserver(removePiPLock)
-            .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['disablePictureInPicture'] });
-    }
+    // ── PiP Unlock (SPA-sicher: läuft immer, tut nichts wenn kein Video) ────────
+    setInterval(() => {
+        document.querySelector('video[disablePictureInPicture]')
+            ?.removeAttribute('disablePictureInPicture');
+    }, 1000);
 
     // ── Filter-UI (nur auf /videos/popular) ──────────────────────────────────
     if (/\/videos\/popular/.test(location.pathname))
