@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Crunchyroll Advanced Filter
+// @name         Crunchyroll Enhanced
 // @namespace    http://tampermonkey.net/
 // @version      4.2
 // @description  Sidebar (page-push) mit Multi-Filter & Sort für Crunchyroll Browse — Auto-Scan, Retry, Export/Clipboard, Nur-mit-Daten-Filter
@@ -10,8 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @run-at       document-idle
-// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Crunchyroll%20Advanced%20Filter.user.js
-// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Crunchyroll%20Advanced%20Filter.user.js
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Crunchyroll%20Enhanced.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Crunchyroll%20Enhanced.user.js
 // ==/UserScript==
 
 (function () {
@@ -481,7 +481,7 @@
     `);
 
     // ─────────────────────────────────────────────────────────────────────────
-    class CrunchyrollAdvancedFilter {
+    class CrunchyrollEnhanced {
         constructor() {
             this.cards      = new Map();
             this.origOrder  = [];
@@ -1421,5 +1421,5 @@
 
     // ── Filter-UI (nur auf /videos/popular) ──────────────────────────────────
     if (/\/videos\/popular/.test(location.pathname))
-        new CrunchyrollAdvancedFilter();
+        new CrunchyrollEnhanced();
 })();
