@@ -4,10 +4,7 @@
 // @version      4.2
 // @description  Sidebar (page-push) mit Multi-Filter & Sort für Crunchyroll Browse — Auto-Scan, Retry, Export/Clipboard, Nur-mit-Daten-Filter
 // @author       marmoris
-// @match        https://www.crunchyroll.com/de/videos/popular*
-// @match        https://www.crunchyroll.com/videos/popular*
-// @match        https://www.crunchyroll.com/de/browse*
-// @match        https://www.crunchyroll.com/browse*
+// @match        https://*.crunchyroll.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=crunchyroll.com
 // @grant        GM_addStyle
 // @grant        GM_setValue
@@ -1416,5 +1413,16 @@
         }
     }
 
-    new CrunchyrollAdvancedFilter();
+    // ── PiP Unlock (läuft auf allen Crunchyroll-Seiten) ───────────────────────
+    (function pipUnlock() {
+        setInterval(() => {
+            const video = document.querySelector('video');
+            if (video && video.hasAttribute('disablePictureInPicture'))
+                video.removeAttribute('disablePictureInPicture');
+        }, 1000);
+    })();
+
+    // ── Filter-UI (nur auf Browse/Popular-Seiten) ─────────────────────────────
+    if (/\/(browse|videos\/popular)/.test(location.pathname))
+        new CrunchyrollAdvancedFilter();
 })();
