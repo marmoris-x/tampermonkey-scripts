@@ -530,11 +530,15 @@
             const chapter = location.pathname.replace(/\//g, '_').slice(1, 40) || 'chapter';
             const name    = `${host}_${chapter}_${date}.zip`;
 
-            const a  = document.createElement('a');
-            a.href   = URL.createObjectURL(blob);
+            const url = URL.createObjectURL(blob);
+            const a   = document.createElement('a');
+            a.href     = url;
             a.download = name;
+            a.style.display = 'none';
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(a.href);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
 
             this._status(`Heruntergeladen: ${name}`);
             document.getElementById('mpd-dl').disabled = false;
