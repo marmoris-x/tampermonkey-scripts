@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         AniSearch Endless Scroll — Alle Seiten laden
+// @name         AniSearch Endless Scroll
 // @namespace    https://anisearch.de/
 // @version      3.1.0
 // @description  Lädt ALLE Seiten automatisch nach und hängt Items lückenlos an — kein Limit, kein Scrapen-Fehler. Präziser Rating-Filter via title-Attribut.
@@ -13,6 +13,8 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=anisearch.de
 // @connect      www.anisearch.de
 // @run-at       document-idle
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/AniSearch%20Endless%20Scroll.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/AniSearch%20Endless%20Scroll.user.js
 // ==/UserScript==
 
 (function () {
@@ -24,7 +26,7 @@
 
   const STORAGE_KEY_RATING = 'anisearch_rating_min';
   const STATUS_BAR_ID      = 'as-es-statusbar';
-  const FETCH_DELAY_MS     = 500;   // Pause zwischen Seiten-Requests (höflich)
+  const FETCH_DELAY_MS     = 800;   // Basis-Pause zwischen Seiten-Requests (+ bis zu 400ms Jitter)
   const MAX_PAGES          = 200;   // Absoluter Sicherheits-Deckel
   const REQUEST_TIMEOUT_MS = 20000;
   const MAX_RETRIES        = 3;
@@ -48,7 +50,18 @@
   // STATUS BAR
   // ════════════════════════════════════════════════
 
-  let _bar = null;
+  const STATUS_PALETTE = {
+    info:    { text: '#93c5fd', accent: '#6366f1' },
+    success: { text: '#86efac', accent: '#22c55e' },
+    warning: { text: '#fcd34d', accent: '#f59e0b' },
+    error:   { text: '#fca5a5', accent: '#ef4444' },
+    loading: { text: '#c4b5fd', accent: '#a78bfa' },
+  };
+
+  let _bar           = null;
+  let _hideTimer     = null;
+  let _stopRequested = false;
+  let _currentRunId  = 0;
 
   function ensureBar() {
     if (_bar && document.getElementById(STATUS_BAR_ID)) return;
@@ -102,24 +115,42 @@
     });
     _bar.appendChild(text);
 
+    const stopBtn = document.createElement('button');
+    stopBtn.id = STATUS_BAR_ID + '-stop';
+    stopBtn.textContent = '✕ Stop';
+    Object.assign(stopBtn.style, {
+      display:      'none',
+      marginTop:    '6px',
+      marginLeft:   '8px',
+      padding:      '2px 8px',
+      fontSize:     '10.5px',
+      fontFamily:   '"Segoe UI",system-ui,sans-serif',
+      fontWeight:   '600',
+      color:        '#fca5a5',
+      background:   'rgba(239,68,68,0.15)',
+      border:       '1px solid rgba(239,68,68,0.4)',
+      borderRadius: '5px',
+      cursor:       'pointer',
+      pointerEvents:'auto',
+    });
+    stopBtn.addEventListener('click', () => {
+      _stopRequested = true;
+      stopBtn.textContent = '⏳ Stoppe…';
+      stopBtn.disabled = true;
+    });
+    _bar.appendChild(stopBtn);
+
     document.body.appendChild(_bar);
   }
 
   function setStatus(msg, type = 'info') {
+    clearTimeout(_hideTimer);
     ensureBar();
     const text = document.getElementById(STATUS_BAR_ID + '-text');
     const accent = _bar && _bar.querySelector('div');
     if (!text) return;
 
-    const palette = {
-      info:    { text: '#93c5fd', accent: '#6366f1' },
-      success: { text: '#86efac', accent: '#22c55e' },
-      warning: { text: '#fcd34d', accent: '#f59e0b' },
-      error:   { text: '#fca5a5', accent: '#ef4444' },
-      loading: { text: '#c4b5fd', accent: '#a78bfa' },
-    };
-
-    const c = palette[type] || palette.info;
+    const c = STATUS_PALETTE[type] || STATUS_PALETTE.info;
     text.style.color = c.text;
     if (accent) accent.style.background = c.accent;
     if (_bar) _bar.style.setProperty('--as-accent', c.accent);
@@ -128,11 +159,20 @@
     if (_bar) {
       _bar.style.opacity   = '1';
       _bar.style.transform = 'translateY(0)';
+
+      const stopBtn = document.getElementById(STATUS_BAR_ID + '-stop');
+      if (stopBtn) stopBtn.style.display = type === 'loading' ? 'block' : 'none';
     }
   }
 
+  function resetStopButton() {
+    const btn = document.getElementById(STATUS_BAR_ID + '-stop');
+    if (btn) { btn.textContent = '✕ Stop'; btn.disabled = false; }
+  }
+
   function hideBar(delay = 4000) {
-    setTimeout(() => {
+    clearTimeout(_hideTimer);
+    _hideTimer = setTimeout(() => {
       if (_bar) {
         _bar.style.opacity   = '0';
         _bar.style.transform = 'translateY(6px)';
@@ -197,53 +237,52 @@
     return null;
   }
 
-  /** Versteckt alle Paginierungs-Elemente, da wir selbst alles laden */
-  function hidePagination() {
-    const sels = [
-      '.pagenav', '.pagination', 'nav.pagination',
-      '[class*="pagenav"]', '[class*="pagination"]',
-    ];
-    sels.forEach(s => {
+  function hideElements(selectors) {
+    selectors.forEach(s => {
       document.querySelectorAll(s).forEach(el => {
         el.style.display = 'none';
       });
     });
   }
 
+  /** Versteckt alle Paginierungs-Elemente, da wir selbst alles laden */
+  function hidePagination() {
+    hideElements([
+      '.pagenav', '.pagination', 'nav.pagination',
+      '[class*="pagenav"]', '[class*="pagination"]',
+    ]);
+  }
+
   // ════════════════════════════════════════════════
   // RATING-FILTER
   // ════════════════════════════════════════════════
+
+  const STAR_SELS = [
+    '[class*="star"]',
+    '[class*="rating"]',
+    '[class*="score"]',
+    '.rating', '.score',
+  ];
 
   /**
    * Extrahiert den präzisen Float-Rating aus einem Item-Element.
    * AniSearch: <div class="star0" title="3.66 / 5.00 (1234 Stimmen)">
    */
   function extractRating(itemEl) {
-    const STAR_SELS = [
-      '[class*="star"]',
-      '[class*="rating"]',
-      '[class*="score"]',
-      '.rating', '.score',
-    ];
 
     for (const sel of STAR_SELS) {
       const el = itemEl.querySelector(sel);
       if (!el) continue;
 
-      // 1) title-Attribut (präziseste Quelle)
+      // 1) title-Attribut (präziseste Quelle), 2) textContent-Fallback
       const title = el.getAttribute('title') || '';
-      const tm = title.match(/(\d+(?:[.,]\d+)?)/);
-      if (tm) {
-        const v = parseFloat(tm[1].replace(',', '.'));
-        if (!isNaN(v) && v > 0) return v;
-      }
-
-      // 2) textContent-Fallback
-      const txt = (el.textContent || '').trim();
-      const txm = txt.match(/(\d+(?:[.,]\d+)?)/);
-      if (txm) {
-        const v = parseFloat(txm[1].replace(',', '.'));
-        if (!isNaN(v) && v > 0) return v;
+      const txt   = (el.textContent || '').trim();
+      for (const src of [title, txt]) {
+        const m = src.match(/(\d+(?:[.,]\d+)?)/);
+        if (m) {
+          const v = parseFloat(m[1].replace(',', '.'));
+          if (!isNaN(v) && v > 0) return v;
+        }
       }
     }
 
@@ -274,17 +313,14 @@
 
   function parseRatingMin() {
     // 1. URL-Parameter (präziseste Quelle, z.B. rating_min=3.25)
-    try {
-      const u = new URL(window.location.href);
-      const raw = u.searchParams.get('rating_min');
-      if (raw !== null) {
-        const v = parseFloat(raw);
-        if (!isNaN(v)) {
-          GM_setValue(STORAGE_KEY_RATING, v);
-          return v;
-        }
+    const raw = new URLSearchParams(location.search).get('rating_min');
+    if (raw !== null) {
+      const v = parseFloat(raw);
+      if (!isNaN(v)) {
+        GM_setValue(STORAGE_KEY_RATING, v);
+        return v;
       }
-    } catch { /* ignore */ }
+    }
 
     // 2. Gespeicherter Wert
     const stored = GM_getValue(STORAGE_KEY_RATING, null);
@@ -332,25 +368,21 @@
   // ITEM APPEND — sicher für alle Container-Typen
   // ════════════════════════════════════════════════
 
-  function appendItem(container, itemEl, containerSelector) {
-    try {
-      container.appendChild(document.adoptNode(itemEl));
-    } catch {
-      // adoptNode kann bei manchen Browsern mit table-Elementen fehlschlagen
-      const tag   = containerSelector.includes('table') ? 'tr' : 'li';
-      const clone = document.createElement(tag);
-      clone.innerHTML = itemEl.innerHTML;
-      // Attribute übernehmen
-      for (const attr of itemEl.attributes) {
-        try { clone.setAttribute(attr.name, attr.value); } catch { /* ignore */ }
-      }
-      container.appendChild(clone);
-    }
+  function appendItem(container, itemEl) {
+    container.appendChild(document.importNode(itemEl, true));
   }
 
   // ════════════════════════════════════════════════
   // UI UNLOCK (Premium-Sperre entfernen)
   // ════════════════════════════════════════════════
+
+  const PREMIUM_TEXTS = new Set([
+    'premium only', 'premium-only',
+    'nur für premium', 'nur premium',
+    'upgrade to premium',
+  ]);
+
+  let _limitObserver = null;
 
   function unlockUI() {
     // #limit Feld entsperren (falls vorhanden)
@@ -361,34 +393,28 @@
       limitInput.style.opacity = '1';
       limitInput.style.cursor  = 'text';
 
-      new MutationObserver(() => {
+      if (_limitObserver) _limitObserver.disconnect();
+      _limitObserver = new MutationObserver(() => {
         limitInput.removeAttribute('disabled');
         limitInput.removeAttribute('readonly');
-      }).observe(limitInput, { attributes: true });
+      });
+      _limitObserver.observe(limitInput, { attributes: true });
     }
 
     // "Premium only" / "Nur für Premium" Hinweise verstecken
-    const premSels = [
+    hideElements([
       '.premium-only', '.premium-badge', '.locked',
       '.lock-icon', '[class*="premium-lock"]',
-    ];
-    premSels.forEach(s => {
-      document.querySelectorAll(s).forEach(el => {
-        el.style.display = 'none';
-      });
-    });
+    ]);
 
-    // Text-basiertes Suchen nach Premium-Hinweisen
-    document.querySelectorAll('*').forEach(el => {
-      if (el.children.length > 0) return; // nur Blatt-Elemente
-      const t = el.textContent.trim().toLowerCase();
-      if (
-        t === 'premium only' || t === 'premium-only' ||
-        t === 'nur für premium' || t === 'nur premium' ||
-        t === 'upgrade to premium'
-      ) {
-        const parent = el.closest('.form-group, .filter-group, label, .input-group') || el.parentElement;
-        if (parent) parent.style.display = 'none';
+    // Text-basiertes Suchen nach Premium-Hinweisen — nur in Formular-Gruppen
+    document.querySelectorAll('.form-group, .filter-group, label, .input-group').forEach(group => {
+      for (const el of group.querySelectorAll('*')) {
+        if (el.children.length > 0) continue;
+        if (PREMIUM_TEXTS.has(el.textContent.trim().toLowerCase())) {
+          group.style.display = 'none';
+          break;
+        }
       }
     });
   }
@@ -415,7 +441,6 @@
     });
     loader.innerHTML =
       '<span style="display:inline-block;animation:as-spin 1s linear infinite;font-size:18px;margin-right:8px">⟳</span>' +
-      '<style>@keyframes as-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>' +
       'Lädt weitere Einträge…';
 
     // Bei table-Container → tr > td wrapper
@@ -432,11 +457,10 @@
     }
   }
 
-  function removeLoader(container) {
-    const el = document.getElementById(LOADER_ID);
-    if (el) el.remove();
-    const row = document.getElementById(LOADER_ID + '-row');
-    if (row) row.remove();
+  function removeLoader() {
+    [LOADER_ID, LOADER_ID + '-row'].forEach(id => {
+      document.getElementById(id)?.remove();
+    });
   }
 
   // ════════════════════════════════════════════════
@@ -444,14 +468,7 @@
   // Lädt ALLE verfügbaren Seiten und hängt Items an
   // ════════════════════════════════════════════════
 
-  async function runEndlessLoop(ratingMin) {
-    const found = findContainer(document);
-    if (!found) {
-      setStatus('⚠ Kein Einträge-Container gefunden.', 'warning');
-      hideBar(5000);
-      return;
-    }
-
+  async function runEndlessLoop(ratingMin, found, runId) {
     const { container, selector } = found;
     const itemSel = getItemSel(selector);
 
@@ -493,13 +510,22 @@
     showLoader(container);
 
     // ── Schritt 2: Alle weiteren Seiten abrufen ────
+    _stopRequested = false;
+    resetStopButton();
     let currentPage  = 2;
     let totalVisible = visibleOnPage1;
-    let totalFetched = existingItems.length;
     let totalHidden  = filteredCount;
-    let visitedUrls  = new Set([window.location.href]);
+    const visitedUrls = new Set([window.location.href]);
 
     while (nextUrl && currentPage <= MAX_PAGES) {
+      // Nutzer hat Stop gedrückt?
+      if (_stopRequested) {
+        setStatus(`⏹ Gestoppt.\n  ${totalVisible} Einträge geladen`, 'warning');
+        removeLoader();
+        hideBar(6000);
+        break;
+      }
+
       // Loop-Schutz: URL schon besucht?
       if (visitedUrls.has(nextUrl)) {
         console.warn('[AniSearch ES] Loop erkannt, stoppe:', nextUrl);
@@ -524,12 +550,23 @@
         }
       }
 
+      // Veraltet? (Nutzer hat navigiert, neuer Run hat gestartet)
+      if (runId !== _currentRunId) { removeLoader(); return; }
+
+      // Nutzer hat Stop während des Fetches gedrückt?
+      if (_stopRequested) {
+        setStatus(`⏹ Gestoppt.\n  ${totalVisible} Einträge geladen`, 'warning');
+        removeLoader();
+        hideBar(6000);
+        break;
+      }
+
       if (!fetchedDoc) {
         setStatus(
           `✦ Gestoppt nach ${MAX_RETRIES} Fehlern.\n  ${totalVisible} Items geladen`,
           'error'
         );
-        removeLoader(container);
+        removeLoader();
         hideBar(7000);
         break;
       }
@@ -551,14 +588,12 @@
         break;
       }
 
-      totalFetched += newItems.length;
-
       // Rating-Filter anwenden und Items anhängen
-      removeLoader(container); // kurz entfernen, damit Items unten erscheinen
+      removeLoader(); // kurz entfernen, damit Items unten erscheinen
 
       newItems.forEach(item => {
         if (passesRating(item, ratingMin)) {
-          appendItem(container, item, selector);
+          appendItem(container, item);
           totalVisible++;
         } else {
           totalHidden++;
@@ -577,68 +612,71 @@
 
       if (nextUrl) {
         showLoader(container);
-        await sleep(FETCH_DELAY_MS);
+        await sleep(FETCH_DELAY_MS + Math.random() * 400);
+        if (runId !== _currentRunId) { removeLoader(); return; }
       }
 
       currentPage++;
     }
 
     // ── Schritt 3: Abschluss ───────────────────────
-    removeLoader(container);
+    removeLoader();
 
-    const cappedByLimit = currentPage > MAX_PAGES;
-    setStatus(
-      `${cappedByLimit ? '⚠' : '✔'} Fertig!` +
-      `\n  ${totalVisible} Einträge sichtbar` +
-      (totalHidden > 0 ? `\n  ${totalHidden} via Rating-Filter entfernt` : '') +
-      (ratingMin !== null ? `\n  Rating ≥ ${ratingMin}` : '') +
-      `\n  ${currentPage - 1} Seiten durchsucht` +
-      (cappedByLimit ? '\n  ⚠ Seiten-Limit erreicht!' : ''),
-      cappedByLimit ? 'warning' : 'success'
-    );
-    hideBar(8000);
+    if (!_stopRequested) {
+      const cappedByLimit = currentPage > MAX_PAGES;
+      setStatus(
+        `${cappedByLimit ? '⚠' : '✔'} Fertig!` +
+        `\n  ${totalVisible} Einträge sichtbar` +
+        (totalHidden > 0 ? `\n  ${totalHidden} via Rating-Filter entfernt` : '') +
+        (ratingMin !== null ? `\n  Rating ≥ ${ratingMin}` : '') +
+        `\n  ${currentPage - 1} Seiten durchsucht` +
+        (cappedByLimit ? '\n  ⚠ Seiten-Limit erreicht!' : ''),
+        cappedByLimit ? 'warning' : 'success'
+      );
+      hideBar(8000);
+    }
   }
 
   // ════════════════════════════════════════════════
   // EINSTIEGSPUNKT
   // ════════════════════════════════════════════════
 
-  let _running = false;
-
   async function main() {
-    // Doppelt-Aufruf verhindern (z.B. bei SPA-Navigation)
-    if (_running) return;
-    _running = true;
+    // Laufenden Loop entwerten — er prüft selbst ob seine ID noch aktuell ist
+    const runId = ++_currentRunId;
 
-    try {
-      ensureBar();
-      setStatus('⟳ AniSearch Endless Scroll startet…', 'loading');
+    ensureBar();
+    setStatus('⟳ AniSearch Endless Scroll startet…', 'loading');
 
-      // UI-Locks sofort entfernen
-      unlockUI();
-      // Nochmal nach 1.5s, falls Site-JS sie wiederherstellt
-      setTimeout(unlockUI, 1500);
+    // UI-Locks sofort entfernen
+    unlockUI();
+    // Nochmal nach 1.5s, falls Site-JS sie wiederherstellt
+    setTimeout(unlockUI, 1500);
 
-      // Rating-Minimum bestimmen
-      const ratingMin = parseRatingMin();
-      console.log('[AniSearch ES] Rating-Min:', ratingMin ?? 'kein Filter');
+    // Rating-Minimum bestimmen
+    const ratingMin = parseRatingMin();
+    console.log('[AniSearch ES] Rating-Min:', ratingMin ?? 'kein Filter');
 
-      // Nur auf Listenseiten aktiv werden
-      const isListPage = !!findContainer(document);
-      if (!isListPage) {
-        setStatus('✔ UI entsperrt. (Keine Liste erkannt)', 'success');
-        hideBar(4000);
-        return;
-      }
-
-      // Kurz warten, damit Site-JS fertig rendern kann
-      await sleep(250);
-
-      // Hauptloop
-      await runEndlessLoop(ratingMin);
-    } finally {
-      _running = false;
+    // Schnell prüfen ob überhaupt eine Liste vorhanden ist (vor dem Sleep)
+    if (!findContainer(document)) {
+      setStatus('✔ UI entsperrt. (Keine Liste erkannt)', 'success');
+      hideBar(4000);
+      return;
     }
+
+    // Kurz warten, damit Site-JS fertig rendern kann, dann Container frisch ermitteln
+    await sleep(250);
+    if (runId !== _currentRunId) { removeLoader(); return; } // veraltet — neuere Navigation hat übernommen
+
+    const found = findContainer(document);
+    if (!found) {
+      setStatus('✔ UI entsperrt. (Keine Liste erkannt)', 'success');
+      hideBar(4000);
+      return;
+    }
+
+    // Hauptloop
+    await runEndlessLoop(ratingMin, found, runId);
   }
 
   // ════════════════════════════════════════════════
@@ -646,6 +684,10 @@
   // ════════════════════════════════════════════════
 
   function boot() {
+    const style = document.createElement('style');
+    style.textContent = '@keyframes as-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+    document.head.appendChild(style);
+
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', main);
     } else {
@@ -657,16 +699,23 @@
   (function patchHistory() {
     const _push    = history.pushState.bind(history);
     const _replace = history.replaceState.bind(history);
+    let navTimer;
+
+    function scheduleMain() {
+      clearTimeout(navTimer);
+      navTimer = setTimeout(main, 600);
+    }
 
     history.pushState = function (...a) {
       _push(...a);
-      setTimeout(main, 600);
+      scheduleMain();
     };
     history.replaceState = function (...a) {
+      const before = location.href;
       _replace(...a);
-      setTimeout(main, 600);
+      if (location.href !== before) scheduleMain();
     };
-    window.addEventListener('popstate', () => setTimeout(main, 600));
+    window.addEventListener('popstate', scheduleMain);
   })();
 
   boot();
