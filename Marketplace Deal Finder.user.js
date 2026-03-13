@@ -98,6 +98,12 @@
             .replace(/'/g, '&#39;');
     }
 
+    // Unit 3: Score validation helper
+    function isValidScore(score) {
+        const num = Number(score);
+        return Number.isFinite(num);
+    }
+
     // ==================== STORAGE ====================
 
     const DEFAULT_SETTINGS = {
@@ -369,7 +375,7 @@
             md += `## ${medal} RANG ${rank} (Seite ${deal.page})\n\n`;
             md += `**Titel:** ${deal.title || 'Unbekannt'}  \n`;
             md += `**Preis:** ${deal.price || 'Unbekannt'}  \n`;
-            if (deal.score !== undefined && Number.isFinite(Number(deal.score))) md += `**Score:** ${deal.score}/100  \n`;
+            if (deal.score !== undefined && isValidScore(deal.score)) md += `**Score:** ${deal.score}/100  \n`;
             md += `**Begründung:** ${deal.reasoning || 'Keine Begründung'}  \n\n`;
             if (deal.description) {
                 md += `**Beschreibung:**\n> ${deal.description.substring(0, DESCRIPTION_PREVIEW_LENGTH)}${deal.description.length > DESCRIPTION_PREVIEW_LENGTH ? '...' : ''}\n\n`;
