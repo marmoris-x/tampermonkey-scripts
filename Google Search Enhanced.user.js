@@ -13,6 +13,7 @@
 // @match        *://www.google.ca/search*
 // @match        *://www.google.com.au/search*
 // @match        *://encrypted.google.com/search*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @grant        none
 // @run-at       document-end
 // @noframes
