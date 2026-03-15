@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
 // @author       marmoris
 // @match        https://flamecomics.xyz/*

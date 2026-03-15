@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marketplace Deal Finder
 // @namespace    http://tampermonkey.net/
-// @version      29.0
+// @version      29.1
 // @description  Automatic AI-powered deal finder for Willhaben & Kleinanzeigen with live ranking and pause function. Multi-page crawling with Gemini AI analysis.
 // @author       marmoris
 // @match        https://www.willhaben.at/iad/kaufen-und-verkaufen/*

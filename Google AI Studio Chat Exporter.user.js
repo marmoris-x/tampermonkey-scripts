@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    http://tampermonkey.net/
-// @version      5.0
+// @version      5.1
 // @description  Chat exporter in settings sidebar + native mic dialog repositioned & non-blocking
 // @author       marmoris
 // @match        https://aistudio.google.com/*

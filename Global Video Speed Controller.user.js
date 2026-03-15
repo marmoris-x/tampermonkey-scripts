@@ -2,7 +2,7 @@
 // @name         Global Video Speed Controller
 // @name:de      Globaler Video-Geschwindigkeitsregler
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Sets a global playback speed for all HTML5 videos and audios.
 // @description:de Setzt eine globale Wiedergabegeschwindigkeit für alle HTML5-Videos und -Audios.
 // @author       Precise Information Specialist

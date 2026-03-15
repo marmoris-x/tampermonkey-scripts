@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga Panel Downloader
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  Lädt Manga/Manhwa-Panels als ZIP — Pipeline-Download, Retry, Abort, schnelles Scrollen
 // @author       marmoris
 // @match        *://*/*

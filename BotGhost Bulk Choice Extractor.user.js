@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BotGhost Bulk Choice Extractor
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Fügt einen "Copy Bulk" Button nur neben dem "Clear All Choices" Button hinzu, um Label/Value-Paare zu kopieren.
 // @author       marmoris
 // @match        https://dashboard.botghost.com/*

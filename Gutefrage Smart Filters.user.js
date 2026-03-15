@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
 // @namespace    http://tampermonkey.net/
-// @version      3.4
+// @version      3.5
 // @description  Kombinierte Lösung: Erweiterte Filteroptionen und automatisches Tag-Management für gutefrage.net
 // @author       marmoris
 // @match        https://www.gutefrage.net/*
