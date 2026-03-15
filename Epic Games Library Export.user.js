@@ -2,22 +2,27 @@
 // @name         Epic Games Library Export
 // @namespace    http://tampermonkey.net/
 // @version      6.1
-// @description  High-Performance Exporter. Starts only via right-click menu.
+// @description  High-Performance Exporter. Start via Tampermonkey menu.
 // @author       marmoris
 // @match        https://www.epicgames.com/account/transactions*
 // @icon         https://static-assets-prod.epicgames.com/epic-store/static/favicon.ico
 // @grant        GM_addStyle
 // @grant        GM_setClipboard
-// @run-at       context-menu
+// @grant        GM_registerMenuCommand
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
+    GM_registerMenuCommand('Epic Library Export starten', run);
+
+    function run() {
+
     // Falls das Panel bereits offen ist, Fokus darauf setzen statt neu zu erstellen
     if (document.getElementById('ep-panel')) {
-        const panel = document.getElementById('ep-panel');
-        panel.classList.remove('ep-hidden');
+        document.getElementById('ep-panel').classList.remove('ep-hidden');
         document.getElementById('ep-minimized').classList.remove('ep-visible');
         return;
     }
@@ -26,7 +31,6 @@
     const CONFIG = {
         selector: '.am-hoct6b',
         ignoreList: ['Standard Edition', 'Add-On', 'Season Pass', 'Saisonpass', 'Demo', 'Free', 'Kostenlos'],
-        delay: 700
     };
 
     // --- CSS STYLING ---
@@ -92,9 +96,7 @@
         #ep-minimized.ep-visible { transform: translateX(0); }
     `;
 
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = STYLES;
-    document.head.appendChild(styleSheet);
+    GM_addStyle(STYLES);
 
     // --- HTML UI ---
     const uiContainer = document.createElement('div');
@@ -168,6 +170,29 @@
         ui.minimized.classList.remove('ep-visible');
     };
 
+    // --- DRAG ---
+    const header = document.getElementById('ep-header');
+    header.style.cursor = 'grab';
+    header.addEventListener('mousedown', e => {
+        if (e.target === ui.closeBtn || ui.closeBtn.contains(e.target)) return;
+        const rect = ui.panel.getBoundingClientRect();
+        const offX = e.clientX - rect.left;
+        const offY = e.clientY - rect.top;
+        header.style.cursor = 'grabbing';
+        const onMove = e => {
+            ui.panel.style.left = `${e.clientX - offX}px`;
+            ui.panel.style.top  = `${e.clientY - offY}px`;
+            ui.panel.style.right = 'auto';
+        };
+        const onUp = () => {
+            header.style.cursor = 'grab';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
+
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     const scrapePage = () => {
@@ -220,9 +245,15 @@
             const isDisabled = nextBtn?.disabled || nextBtn?.classList.contains('Mui-disabled');
 
             if (nextBtn && !isDisabled) {
+                const prevFirstText = document.querySelector(CONFIG.selector)?.innerText;
                 nextBtn.click();
                 pageNum++;
-                await sleep(CONFIG.delay);
+                // Wait for new page content to appear instead of fixed delay
+                for (let waited = 0; waited < 5000; waited += 100) {
+                    await sleep(100);
+                    const newFirstText = document.querySelector(CONFIG.selector)?.innerText;
+                    if (newFirstText && newFirstText !== prevFirstText) break;
+                }
             } else {
                 break;
             }
@@ -236,10 +267,14 @@
     // Export-Funktionen (TXT, CSV, Copy)
     const downloadFile = (content, filename, type) => {
         const blob = new Blob([content], { type: type });
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
+        a.href = url;
         a.download = filename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
         ui.msg.innerText = `Gespeichert!`;
     };
 
@@ -251,11 +286,14 @@
         }).join('\n');
         downloadFile(csv, `EpicGames_Export.csv`, 'text/csv');
     };
+    let copyTimer;
     ui.btnCopy.onclick = () => {
-        const text = finalSortedList.join('\n');
-        navigator.clipboard.writeText(text);
+        GM_setClipboard(finalSortedList.join('\n'));
         ui.btnCopy.innerText = "✓ Kopiert";
-        setTimeout(() => ui.btnCopy.innerText = "Kopieren", 1000);
+        clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => ui.btnCopy.innerText = "Kopieren", 1000);
     };
+
+    } // end run()
 
 })();

@@ -17,6 +17,8 @@
 // @grant        unsafeWindow
 // @run-at       document-start
 // @icon         https://lh3.googleusercontent.com/tPBNat6dgVmnj-qBCsqizbjByLu2x-XTgTFR7MGKWiPwDk422k5eF7_9B__pTlfm97JTt4X7YeIgq0za-3qaR6O6vQ=s60
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Global%20Video%20Speed%20Controller.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Global%20Video%20Speed%20Controller.user.js
 // ==/UserScript==
 
 /*

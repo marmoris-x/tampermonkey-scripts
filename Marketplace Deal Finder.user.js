@@ -46,6 +46,33 @@
     const MAX_RATE_LIMIT_DELAY = 300000; // 5 minutes
     const RE_RANK_MAX_DEALS = 30; // Maximum number of deals to send for global re-ranking
 
+<<<<<<< Updated upstream
+=======
+    // Regex constants for performance (avoid repeated instantiation)
+    const SHIPPING_REGEX = /versand|shipping|porto|lieferung/i;
+    const WHITESPACE_REGEX_G = /\s/g;
+    const THOUSAND_DOT_REGEX_G = /\./g;
+    const COMMA_REGEX_G = /,/g;
+    const DECIMAL_NUMBER_REGEX = /(\d+(?:\.\d+)?)/;
+    // UI and timing constants
+    const PAUSE_POLL_INTERVAL = 500; // ms between pause loop checks
+    const JITTER_FACTOR = 0.2; // +0‑20% jitter multiplier
+    const MIN_TITLE_LENGTH = 5; // minimum characters for valid title
+    // Page increment constants for resume logic
+    const SAME_PAGE_INCREMENT = 0;
+    const NEW_PAGE_INCREMENT = 1;
+    // Deal property keys for type-safe access
+    const DEAL_KEYS = {
+        URL: 'url',
+        TITLE: 'title',
+        PRICE: 'price',
+        DESCRIPTION: 'description',
+        SCORE: 'score',
+        REASON: 'reason',
+        PAGE: 'page'
+    };
+
+>>>>>>> Stashed changes
     // Unit 1: Fixed model IDs — add/remove/rename entries here; UI auto-updates
     const GEMINI_MODELS = {
         flash: {
@@ -100,8 +127,72 @@
 
     // Unit 3: Score validation helper
     function isValidScore(score) {
+<<<<<<< Updated upstream
         const num = Number(score);
         return Number.isFinite(num);
+=======
+        return getValidScore(score) !== null;
+    }
+
+    // Parse price string to numeric value (supports European/international formats)
+    function parsePriceText(priceStr) {
+        if (!priceStr || typeof priceStr !== 'string') return null;
+        // Remove spaces (thousand separators)
+        let normalized = priceStr.replace(WHITESPACE_REGEX_G, '');
+        // Determine decimal separator
+        const hasComma = normalized.includes(',');
+        const hasDot = normalized.includes('.');
+        if (hasComma) {
+            // European format: dots are thousand separators, comma is decimal
+            normalized = normalized.replace(THOUSAND_DOT_REGEX_G, '');
+            normalized = normalized.replace(COMMA_REGEX_G, '.');
+        } else if (hasDot) {
+            // International format: dots could be thousand separators or decimal
+            // If multiple dots, assume thousand separators except last dot
+            const parts = normalized.split('.');
+            if (parts.length > 1) {
+                normalized = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
+            }
+        }
+        const match = normalized.match(DECIMAL_NUMBER_REGEX);
+        const parsed = match ? parseFloat(match[1]) : null;
+        debugLog(`Price parsing: "${priceStr}" -> normalized "${normalized}" -> ${parsed}`);
+        return parsed;
+    }
+
+    // Unit 1: Helper to sort deals by validated score
+    function sortDealsByScore(deals) {
+        // Sort copy with single validation per deal
+        return deals.slice().sort((a, b) => (getValidScore(b.score) ?? 0) - (getValidScore(a.score) ?? 0));
+    }
+
+    // Helper to check if text consists only of a price (e.g., "12,50 €" or "350 € VB")
+    function isPriceOnlyText(text) {
+        return /^\s*[\d.,]+\s*€?\s*(VB)?\s*$/i.test(text);
+    }
+
+    // Wait while paused, respecting stop signal
+    async function waitIfPaused() {
+        while (isPaused && !shouldStop) {
+            await new Promise(r => setTimeout(r, PAUSE_POLL_INTERVAL));
+        }
+    }
+
+    // Create a Set from array by extracting a key
+    function extractSet(arr, key) {
+        return new Set(arr.map(item => item[key]));
+    }
+
+    // Add positive jitter to a base value (percent as decimal, e.g., 0.2 for +0‑20%)
+    function addJitter(base, percent) {
+        return base * (1 + Math.random() * percent);
+    }
+
+    // Normalize URL by removing hash fragment for comparison purposes
+    function normalizeUrl(url) {
+        if (!url) return url;
+        return url.split('#')[0];
+>>>>>>> Stashed changes
     }
 
     // ==================== STORAGE ====================
@@ -761,8 +852,8 @@
             const el = ad.querySelector(selector);
             if (el) {
                 const text = el.textContent.trim();
-                // Unit 7: only exclude if text STARTS with a price number + €
-                if (text.length > 5 && !/^\s*[\d.,]+\s*€/.test(text)) { title = text; break; }
+                // Unit 7: only exclude if text STARTS with a price number + € and nothing else
+                if (text.length > MIN_TITLE_LENGTH && !isPriceOnlyText(text)) { title = text; break; }
             }
         }
         let price = 'Preis nicht verfügbar';
@@ -789,6 +880,7 @@
     function saveCrawlStateAndNavigate(href, settings) {
         saveCrawlState({
             currentPage,
+            currentUrl: window.location.href,
             allTopDeals,
             maxPages: settings.maxPages
         });
@@ -875,7 +967,11 @@
             const el = ad.querySelector(selector);
             if (el) {
                 const text = el.textContent.trim();
+<<<<<<< Updated upstream
                 if (text.length > 5 && !text.includes('€')) { title = text; break; }
+=======
+                if (text.length > MIN_TITLE_LENGTH && !isPriceOnlyText(text)) { title = text; break; }
+>>>>>>> Stashed changes
             }
         }
         let price = 'Preis nicht verfügbar';
@@ -946,15 +1042,22 @@
         return new Promise((resolve, reject) => {
             const element = document.querySelector(selector);
             if (element) { resolve(element); return; }
+            let pendingCheck = false;
+            let timer;
             const observer = new MutationObserver((mutations, obs) => {
-                const el = document.querySelector(selector);
-                if (el) { obs.disconnect(); resolve(el); }
+                if (pendingCheck) return;
+                pendingCheck = true;
+                requestAnimationFrame(() => {
+                    pendingCheck = false;
+                    const el = document.querySelector(selector);
+                    if (el) { clearTimeout(timer); obs.disconnect(); resolve(el); }
+                });
             });
             // Unit 8: observe documentElement instead of body
             const root = document.documentElement || document.body;
             if (!root) { reject(new Error('document root not available')); return; }
             observer.observe(root, { childList: true, subtree: true });
-            setTimeout(() => { observer.disconnect(); reject(new Error(`Element ${selector} not found`)); }, timeout);
+            timer = setTimeout(() => { observer.disconnect(); reject(new Error(`Element ${selector} not found`)); }, timeout);
         });
     }
 
@@ -1320,7 +1423,32 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                     topK: 40,
                     topP: 0.95,
                     maxOutputTokens: maxOutputTokens,
+<<<<<<< Updated upstream
                     responseMimeType: 'application/json'
+=======
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: "object",
+                        properties: {
+                            topDeals: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        title: { type: "string" },
+                                        price: { type: "string" },
+                                        description: { type: "string" },
+                                        url: { type: "string" },
+                                        score: { type: "number" },
+                                        reasoning: { type: "string" }
+                                    },
+                                    required: ["title", "price", "description", "url", "score", "reasoning"]
+                                }
+                            }
+                        },
+                        required: ["topDeals"]
+                    }
+>>>>>>> Stashed changes
                 }
             };
 
@@ -1369,19 +1497,19 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                                 }
                             } catch (e) {}
 
-                            // Methode 2: Markdown Codeblock
+                            // Methode 2: Markdown Codeblock (object or array)
                             let jsonText = null;
-                            const markdownMatch = fullText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+                            const markdownMatch = fullText.match(/```(?:json)?\s*([\{\[][\s\S]*[\}\]])\s*```/);
                             if (markdownMatch) {
                                 jsonText = markdownMatch[1];
                                 console.log(`${SCRIPT_PREFIX} JSON via Markdown extrahiert (${jsonText.length} chars)`);
                             }
 
-                            // Methode 3: Rohes JSON
+                            // Methode 3: Rohes JSON (object or array)
                             if (!jsonText) {
-                                const rawMatch = fullText.match(/\{[\s\S]*\}/);
+                                const rawMatch = fullText.match(/([\{\[][\s\S]*[\}\]])/);
                                 if (rawMatch) {
-                                    jsonText = rawMatch[0];
+                                    jsonText = rawMatch[1];
                                     console.log(`${SCRIPT_PREFIX} JSON raw extrahiert (${jsonText.length} chars)`);
                                 }
                             }
@@ -1396,7 +1524,11 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                                         return;
                                     }
                                     if (retryCount < MAX_RETRIES) {
+<<<<<<< Updated upstream
                                         setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
+=======
+                                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
+>>>>>>> Stashed changes
                                     } else {
                                         reject(new Error('JSON Parse Fehler'));
                                     }
@@ -1408,7 +1540,11 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                                     return;
                                 }
                                 if (retryCount < MAX_RETRIES) {
+<<<<<<< Updated upstream
                                     setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
+=======
+                                    setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
+>>>>>>> Stashed changes
                                 } else {
                                     reject(new Error('Kein JSON in AI-Antwort'));
                                 }
@@ -1421,6 +1557,7 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                             // Unit 1: exponential backoff with Retry-After header support
                             if (retryCount < RATE_LIMIT_MAX_RETRIES) {
                                 let delay = RATE_LIMIT_BASE_DELAY * Math.pow(2, retryCount); // base 5s
+                                let serverDictated = false;
                                 // Try to parse Retry-After header
                                 const headers = response.responseHeaders;
                                 if (headers) {
@@ -1429,14 +1566,15 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                                         const seconds = parseInt(match[1], 10);
                                         if (!isNaN(seconds)) {
                                             delay = seconds * 1000; // convert to ms
+                                            serverDictated = true;
                                             console.log(`${SCRIPT_PREFIX} Retry-After header: ${seconds}s`);
                                         }
                                     }
                                 }
-                                // Add jitter (±20%)
-                                delay = delay * (0.8 + Math.random() * 0.4);
-                                // Cap at 5 minutes to avoid excessive waits
-                                delay = Math.min(delay, MAX_RATE_LIMIT_DELAY);
+                                // Add jitter (+0‑20%) – never less than Retry‑After header
+                                delay = addJitter(delay, JITTER_FACTOR);
+                                // Only cap self-generated backoff delays; server-dictated Retry-After must be honoured
+                                if (!serverDictated) delay = Math.min(delay, MAX_RATE_LIMIT_DELAY);
                                 console.log(`${SCRIPT_PREFIX} Rate limit ${response.status} - Retry ${retryCount + 1} in ${Math.round(delay)}ms`);
                                 // Notify UI about retry
                                 if (onRetry) {
@@ -1460,7 +1598,11 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                                 reject(new Error('Aborted'));
                                 return;
                             }
+<<<<<<< Updated upstream
                             setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
+=======
+                            setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
+>>>>>>> Stashed changes
                         } else {
                             console.error(`${SCRIPT_PREFIX} FINALE FEHLER - Status: ${response.status}`);
                             reject(new Error(`Gemini API Fehler: ${response.status} - ${response.responseText}`));
@@ -1471,7 +1613,11 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                             return;
                         }
                         if (retryCount < MAX_RETRIES) {
+<<<<<<< Updated upstream
                             setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
+=======
+                            setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
+>>>>>>> Stashed changes
                         } else {
                             reject(error);
                         }
@@ -1488,7 +1634,11 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                         if (onRetry) {
                             onRetry('network_error', retryCount + 1, 2);
                         }
+<<<<<<< Updated upstream
                         setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
+=======
+                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
+>>>>>>> Stashed changes
                     } else {
                         reject(new Error('Netzwerkfehler bei Gemini API'));
                     }
@@ -1504,7 +1654,11 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                         if (onRetry) {
                             onRetry('timeout', retryCount + 1, 2);
                         }
+<<<<<<< Updated upstream
                         setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
+=======
+                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
+>>>>>>> Stashed changes
                     } else {
                         reject(new Error('Timeout bei Gemini API'));
                     }
@@ -1602,6 +1756,7 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
 
     function stopDealFinder() {
         shouldStop = true;
+        isPaused = false; // Force exit from pause loop
         captchaPaused = false;
         clearCrawlState();
         // Unit 3: abort in-flight requests
@@ -1611,7 +1766,7 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
     }
 
     async function processCurrentPage(apiKey, searchContext, topX, model, maxPages = 10) {
-        while (isPaused) { await new Promise(resolve => setTimeout(resolve, 500)); }
+        await waitIfPaused();
         if (shouldStop) { await finishDealFinder(); return; }
 
         // Unit 5: maxPages guard
@@ -1630,6 +1785,17 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
             const pageText = (document.title + ' ' + document.body.innerText).toLowerCase();
             if (pageText.includes('captcha') || pageText.includes('challenge')) {
                 captchaPaused = true;
+<<<<<<< Updated upstream
+=======
+                // Save state before CAPTCHA pause to survive page reload
+                const settings = loadSettings();
+                saveCrawlState({
+                    currentPage,
+                    currentUrl: window.location.href,
+                    allTopDeals,
+                    maxPages: settings.maxPages
+                });
+>>>>>>> Stashed changes
                 pauseDealFinder();
                 updateProgress('⚠️ CAPTCHA erkannt! Bitte lösen und Fortsetzen klicken', 50);
                 return;
@@ -1655,7 +1821,7 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
 
         for (let i = 0; i < adsData.length; i += INITIAL_BATCH_SIZE) {
             // Unit 4: pause check inside each batch iteration
-            while (isPaused) { await new Promise(r => setTimeout(r, 500)); }
+            await waitIfPaused();
             if (shouldStop) break;
 
             const batch = adsData.slice(i, Math.min(i + INITIAL_BATCH_SIZE, adsData.length));
@@ -1729,6 +1895,22 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
             return;
         }
 
+        // Guard: skip API re-ranking if user stopped the crawl
+        if (shouldStop) {
+            updateProgress('⏹ Crawl gestoppt. Speichere bisherige Deals...', 100);
+            saveResults({ deals: allTopDeals, pages: currentPage, timestamp: new Date().toISOString() });
+            switchToResultsView();
+            resetUI();
+            return;
+        }
+
+        // Deduplicate across pages (same listing can shift pages on live marketplaces)
+        const uniqueDealsMap = new Map();
+        for (const d of allTopDeals) {
+            if (!uniqueDealsMap.has(d.url)) uniqueDealsMap.set(d.url, d);
+        }
+        allTopDeals = Array.from(uniqueDealsMap.values());
+
         // Unit 6: Global re-ranking across all collected deals
         if (allTopDeals.length > 1) {
             try {
@@ -1741,11 +1923,17 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                 };
 
                 // Limit re-ranking to top N deals to avoid token overflow
+<<<<<<< Updated upstream
                 const dealsToReRank = allTopDeals.slice(0, RE_RANK_MAX_DEALS);
                 const otherDeals = allTopDeals.slice(RE_RANK_MAX_DEALS);
+=======
+                const sortedTopDeals = sortDealsByScore(allTopDeals);
+                debugLog(`Global re-ranking: sorted ${sortedTopDeals.length} deals, top scores: ${sortedTopDeals.slice(0, 3).map(d => d.score).join(', ')}`);
+                const dealsToReRank = sortedTopDeals.slice(0, RE_RANK_MAX_DEALS);
+>>>>>>> Stashed changes
 
                 const reRankResult = await callGeminiAPI(
-                    dealsToReRank.map(d => ({ title: d.title, price: d.price, description: d.description || '', url: d.url })),
+                    dealsToReRank.map(d => ({ title: d.title, price: d.price, description: (d.description || '').substring(0, 400), url: d.url })),
                     settings.searchContext || '',
                     dealsToReRank.length,
                     settings.apiKey,
@@ -1755,6 +1943,7 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                 );
                 if (reRankResult && reRankResult.topDeals && reRankResult.topDeals.length > 0) {
                     const reRankedDeals = reRankResult.topDeals.map(rd => {
+<<<<<<< Updated upstream
                         const orig = dealsToReRank.find(d => d.url === rd.url)
                                    || dealsToReRank.find(d => d.title === rd.title);
                         return { ...rd, page: orig?.page ?? 'unbekannt' };
@@ -1762,6 +1951,24 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                     // Combine re-ranked deals (now in new order) with remaining deals
                     allTopDeals = [...reRankedDeals, ...otherDeals].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
                     console.log(`${SCRIPT_PREFIX} Global Re-Ranking abgeschlossen (${reRankedDeals.length} Deals neu sortiert)`);
+=======
+                        const orig = urlToDeal.get(rd.url) || titleToDeal.get(rd.title);
+                        // Restore original canonical data to prevent LLM URL hallucinations causing duplicates
+                        return {
+                            ...rd,
+                            url: orig?.url || rd.url,
+                            title: orig?.title || rd.title,
+                            description: orig?.description || rd.description,
+                            page: orig?.page ?? 'unbekannt'
+                        };
+                    });
+                    // Identify deals from sortedTopDeals that were NOT re-ranked (match by canonical original URL)
+                    const reRankedUrls = extractSet(reRankedDeals, DEAL_KEYS.URL);
+                    const remainingDeals = sortedTopDeals.filter(d => !reRankedUrls.has(d.url));
+                    // Concatenate and sort — avoids broken merge when LLM returns unsorted output
+                    allTopDeals = sortDealsByScore([...reRankedDeals, ...remainingDeals]);
+                    console.log(`${SCRIPT_PREFIX} Global Re-Ranking abgeschlossen (${reRankedDeals.length} Deals neu sortiert, ${remainingDeals.length} Deals behalten)`);
+>>>>>>> Stashed changes
                 }
             } catch (e) {
                 console.warn(`${SCRIPT_PREFIX} Global Re-Ranking fehlgeschlagen:`, e);
@@ -1859,8 +2066,14 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
         }
 
         // Unit 4 BUG-03: currentPage was saved as the completed page; resume from next
-        console.log(`${SCRIPT_PREFIX} 🔄 Crawl-State gefunden - setze fort ab Seite ${crawlState.currentPage + 1}`);
-        currentPage = crawlState.currentPage + 1;
+        // Check if we're still on the same page (refresh) or navigated to new page
+        // Normalize URLs by removing hash fragments before comparison
+        const normalizedCurrentUrl = normalizeUrl(crawlState.currentUrl);
+        const normalizedWindowUrl = normalizeUrl(window.location.href);
+        const samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
+        const pageIncrement = samePage ? SAME_PAGE_INCREMENT : NEW_PAGE_INCREMENT;
+        console.log(`${SCRIPT_PREFIX} 🔄 Crawl-State gefunden - setze fort ab Seite ${crawlState.currentPage + pageIncrement} (${samePage ? 'Seite neu geladen' : 'Navigation erkannt'})`);
+        currentPage = crawlState.currentPage + pageIncrement;
         allTopDeals = crawlState.allTopDeals || [];
         isRunning = true;
 

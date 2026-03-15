@@ -1,68 +1,80 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
 // @namespace    http://tampermonkey.net/
-// @version      5.0
-// @description  Adds an entry in the right-click menu to force the tab into PiP.
+// @version      5.3
+// @description  Adds an entry in the Tampermonkey menu to force the tab into PiP.
 // @author       DeinName
 // @match        *://*/*
-// @run-at       context-menu
-// @grant        none
+// @grant        GM_registerMenuCommand
 // @icon         https://img.icons8.com/fluency/64/picture-in-picture.png
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
 // ==/UserScript==
 
-(async function() {
+(function() {
     'use strict';
 
-    // Da @run-at auf context-menu steht, wird dieser Code
-    // genau dann ausgeführt, wenn du im Menü auf "Diese Seite in PiP öffnen" klickst.
+    let isActivating = false;
 
-    // 1. Wenn PiP bereits läuft, wird es beendet.
-    if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-        return;
-    }
-
-    // 2. PiP-Prozess starten
-    try {
-        // Der Browser fragt nach der Freigabe des Tabs
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: { displaySurface: "browser" },
-            audio: false,
-            selfBrowserSurface: "include",
-            preferCurrentTab: true
-        });
-
-        // Ein unsichtbares Video-Element wird erstellt
-        const video = document.createElement("video");
-        video.srcObject = stream;
-        video.style.display = "none";
-        video.autoplay = true;
-
-        // Sobald der Stream bereit ist, wird PiP angefordert
-        video.onloadedmetadata = async () => {
+    async function togglePiP() {
+        if (document.pictureInPictureElement) {
             try {
-                await video.requestPictureInPicture();
+                await document.exitPictureInPicture();
             } catch (e) {
-                console.error("PiP Fehler:", e);
-                // Aufräumen bei Fehler
+                console.error("PiP beenden fehlgeschlagen:", e);
+            }
+            return;
+        }
+
+        if (!document.pictureInPictureEnabled) {
+            console.warn("PiP: auf dieser Seite deaktiviert.");
+            return;
+        }
+
+        if (isActivating) return;
+        isActivating = true;
+
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: { displaySurface: "browser" },
+                audio: false,
+                selfBrowserSurface: "include",
+                preferCurrentTab: true
+            });
+
+            const video = document.createElement("video");
+            video.srcObject = stream;
+            video.muted = true;
+            video.autoplay = true;
+            // opacity:0 statt display:none — bleibt im Render-Tree, verhindert Black-Screen in Chromium
+            video.style.cssText = "position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;";
+            document.body.appendChild(video);
+
+            const cleanup = () => {
                 stream.getTracks().forEach(track => track.stop());
                 video.remove();
-            }
-        };
+            };
 
-        // Aufräumen, wenn das PiP-Fenster geschlossen wird
-        video.addEventListener("leavepictureinpicture", () => {
-            stream.getTracks().forEach(track => track.stop());
-            video.remove();
-        });
+            video.addEventListener("loadedmetadata", async () => {
+                try {
+                    await video.play();
+                    await video.requestPictureInPicture();
+                } catch (e) {
+                    console.error("PiP Fehler:", e);
+                    cleanup();
+                } finally {
+                    isActivating = false;
+                }
+            }, { once: true });
 
-        // Aufräumen, wenn der User "Teilen beenden" klickt
-        stream.getVideoTracks()[0].onended = () => {
-            video.remove();
-        };
+            video.addEventListener("leavepictureinpicture", cleanup, { once: true });
+            stream.getVideoTracks()[0].addEventListener("ended", cleanup, { once: true });
 
-    } catch (err) {
-        // Dieser Fehler passiert, wenn der User im Freigabe-Dialog auf "Abbrechen" klickt.
-        console.log("PiP vom Benutzer abgebrochen.");
+        } catch (err) {
+            console.log("PiP vom Benutzer abgebrochen.");
+            isActivating = false;
+        }
     }
+
+    GM_registerMenuCommand("Picture-in-Picture", togglePiP);
 })();
