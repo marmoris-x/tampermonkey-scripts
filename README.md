@@ -106,6 +106,7 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 | `NotebookLM Source Export.user.js` | **NotebookLM Source Export** | Automated extraction of source files from NotebookLM with a status interface. | `https://notebooklm.google.com/*` | `GM_addStyle`, `GM_registerMenuCommand`, `GM_unregisterMenuCommand` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/NotebookLM%20Source%20Export.user.js) |
 | `Google AI Studio Chat Exporter.user.js` | **Google AI Studio Chat Exporter** | Chat exporter in settings sidebar + native mic dialog repositioned & non‑blocking. | `https://aistudio.google.com/*` | `none` | *(no update URL – install manually)* |
 | `BotGhost Bulk Choice Extractor.user.js` | **BotGhost Bulk Choice Extractor** | Adds a “Copy Bulk” button next to the “Clear All Choices” button to copy label/value pairs. | `https://dashboard.botghost.com/*` | `GM_setClipboard` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/BotGhost%20Bulk%20Choice%20Extractor.user.js) |
+| `Copy as Markdown for AI.user.js` | **Copy as Markdown for AI** | Converts web pages, selections, images, and links to Markdown for AI usage – sidebar preview and history included. | `*://*/*` | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_addStyle`, `GM_xmlhttpRequest`, `GM_setClipboard` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Copy%20as%20Markdown%20for%20AI.user.js) |
 
 ### Forum & Community Tools
 
@@ -121,23 +122,24 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 
 ## 📊 Features Comparison
 
-| Feature | Global Video Speed Controller | YouTube Enhanced | YouTube CPU Tamer | PiP any site | Crunchyroll Enhanced | Marketplace Deal Finder | Google Search Enhanced | AniSearch Endless Scroll | FlameComics Advanced Sort | Gutefrage Smart Filters | Epic Games Library Export | NotebookLM Source Export | Google AI Studio Chat Exporter | BotGhost Bulk Choice Extractor | Reddit Content Unlocker | Manga Panel Downloader |
-|---------|-------------------------------|------------------|-------------------|--------------|----------------------|-------------------------|------------------------|--------------------------|--------------------------|-------------------------|---------------------------|--------------------------|---------------------------------|--------------------------------|-------------------------|------------------------|
-| Video speed control | ✓ | ✓ (per‑channel) | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Auto‑quality | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Energy saving | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Picture‑in‑Picture | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – |
-| Advanced filtering | – | – | – | – | ✓ | – | – | ✓ | – | ✓ | – | – | – | – | – | – |
-| AI integration | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – |
-| Search enhancements | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – |
-| Endless scrolling | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – |
-| Custom sorting | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – |
-| Tag management | – | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – |
-| Data export | – | – | – | – | ✓ | – | – | – | – | – | ✓ | ✓ | ✓ | ✓ | – | ✓ |
-| NSFW unblur | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – |
-| Bulk copy | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – |
-| Multi‑page crawling | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – |
-| Cross‑site support | ✓ | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | ✓ |
+| Feature | Global Video Speed Controller | YouTube Enhanced | YouTube CPU Tamer | PiP any site | Crunchyroll Enhanced | Marketplace Deal Finder | Google Search Enhanced | AniSearch Endless Scroll | FlameComics Advanced Sort | Gutefrage Smart Filters | Epic Games Library Export | NotebookLM Source Export | Google AI Studio Chat Exporter | BotGhost Bulk Choice Extractor | Reddit Content Unlocker | Manga Panel Downloader | Copy as Markdown for AI |
+|---------|-------------------------------|------------------|-------------------|--------------|----------------------|-------------------------|------------------------|--------------------------|--------------------------|-------------------------|---------------------------|--------------------------|---------------------------------|--------------------------------|-------------------------|------------------------|-------------------------|
+| Video speed control | ✓ | ✓ (per‑channel) | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Auto‑quality | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Energy saving | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Picture‑in‑Picture | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Advanced filtering | – | – | – | – | ✓ | – | – | ✓ | – | ✓ | – | – | – | – | – | – | – |
+| AI integration | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – |
+| Search enhancements | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – |
+| Endless scrolling | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – |
+| Custom sorting | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – |
+| Tag management | – | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – |
+| Data export | – | – | – | – | ✓ | – | – | – | – | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | – |
+| NSFW unblur | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – |
+| Bulk copy | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – | – |
+| Multi‑page crawling | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – |
+| Markdown export | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ |
+| Cross‑site support | ✓ | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | ✓ | ✓ |
 
 ## ⚙️ Usage & Configuration
 
