@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Epic Games Library Export
 // @namespace    http://tampermonkey.net/
-// @version      6.2
+// @version      6.3
 // @description  High-Performance Exporter. Start via Tampermonkey menu.
 // @author       marmoris
 // @match        https://www.epicgames.com/account/transactions*

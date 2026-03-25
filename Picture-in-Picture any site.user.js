@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
 // @namespace    http://tampermonkey.net/
-// @version      5.4
+// @version      5.5
 // @description  Adds an entry in the Tampermonkey menu to force the tab into PiP.
 // @author       DeinName
 // @match        *://*/*

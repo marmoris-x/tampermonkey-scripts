@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    http://tampermonkey.net/
-// @version      1.5.1
+// @version      1.5.2
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @author       marmoris
 // @match        *://*.youtube.com/*

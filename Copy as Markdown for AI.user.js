@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/yourusername/copy-as-markdown
-// @version      2.0.2
+// @version      2.0.3
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @author       Your Name
 // @match        *://*/*

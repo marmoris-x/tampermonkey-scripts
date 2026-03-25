@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Crunchyroll Enhanced
 // @namespace    http://tampermonkey.net/
-// @version      4.3
+// @version      4.4
 // @description  Sidebar (page-push) mit Multi-Filter & Sort für Crunchyroll Browse — Auto-Scan, Retry, Export/Clipboard, Nur-mit-Daten-Filter
 // @author       marmoris
 // @match        https://*.crunchyroll.com/*

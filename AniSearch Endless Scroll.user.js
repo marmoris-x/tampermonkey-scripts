@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AniSearch Endless Scroll
 // @namespace    https://anisearch.de/
-// @version      3.1.1
+// @version      3.1.2
 // @description  Lädt ALLE Seiten automatisch nach und hängt Items lückenlos an — kein Limit, kein Scrapen-Fehler. Präziser Rating-Filter via title-Attribut.
 // @author       UserScript
 // @match        https://www.anisearch.de/*

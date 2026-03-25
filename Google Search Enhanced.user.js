@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Search Enhanced
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
+// @version      1.0.3
 // @description  Add Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner.
 // @author       marmoris
 // @match        *://www.google.com/search*

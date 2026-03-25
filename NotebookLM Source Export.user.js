@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NotebookLM Source Export
 // @namespace    http://tampermonkey.net/
-// @version      5.2
+// @version      5.3
 // @description  Automated extraction of source files from NotebookLM with a status interface.
 // @author       marmoris
 // @match        https://notebooklm.google.com/*
