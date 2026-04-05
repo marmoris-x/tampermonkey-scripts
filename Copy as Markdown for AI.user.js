@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.0.4
+// @version      2.0.5
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @author       marmoris-x
 // @match        *://*/*
@@ -1892,6 +1892,27 @@ var TurndownService = (function () {
       });
     }
 
+    // ── Bare <pre> without <code> child → fenced code block ──────
+    // This is the global counterpart to TurndownService's built-in fencedCodeBlock
+    // rule which only fires when <pre><code> is present. Many platforms (Reddit,
+    // Discourse, legacy WordPress, Ghost…) use bare <pre> instead.
+    // data-mds-lang is optionally set by cleanDOM's language-hint detection above.
+    td.addRule('barePre', {
+      filter: (node) => {
+        return (
+          node.nodeName === 'PRE' &&
+          !(node.firstChild && node.firstChild.nodeName === 'CODE')
+        );
+      },
+      replacement: (content, node) => {
+        const lang = node.getAttribute('data-mds-lang') || '';
+        // Use textContent here because innerHTML would contain escaped entities
+        // that don't belong in a code fence (e.g. &amp; instead of &).
+        const code = node.textContent.replace(/\n$/, '');
+        return `\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`;
+      }
+    });
+
     // ── Rich inline elements ────────────────────────────────
     // GFM strikethrough
     td.addRule('strikethrough', {
@@ -2105,6 +2126,20 @@ var TurndownService = (function () {
   }
 
   // ── DOM cleanup ──────────────────────────────────────────
+  // Global set of recognized language hint strings.
+  // Many platforms (Reddit, Discourse, Hashnode…) can't render fenced code with
+  // language identifiers, so they emit a bare <p>bash</p> before the <pre> block.
+  const LANG_HINTS = new Set([
+    'bash','sh','shell','zsh','fish','cmd','bat','powershell','ps1',
+    'javascript','js','jsx','typescript','ts','tsx',
+    'python','py','ruby','rb','go','rust','java','c','cpp','c++','c#','cs',
+    'css','scss','sass','less','html','xml','svg','json','jsonc',
+    'yaml','yml','toml','ini','env','dotenv',
+    'sql','graphql','gql','r','swift','kotlin','dart','scala',
+    'haskell','lua','perl','php','elixir','clojure','clj',
+    'dockerfile','makefile','nginx','text','txt','plain','output','log'
+  ]);
+
   function cleanDOM(root) {
     // Decorative heading anchors — hash-link stubs injected by frameworks like
     // GitBook, Docusaurus, Nextra etc. They live inside <h1>–<h6> as block divs
@@ -2165,6 +2200,21 @@ var TurndownService = (function () {
     root.querySelector('#mds-toast')?.remove();
 
     mergeOrphanedTables(root);
+
+    // Detect and collapse language-hint paragraphs that immediately precede <pre> blocks.
+    // e.g. Reddit HTML: <p>bash</p><pre>npx install...</pre>
+    // We tag the <pre> with data-mds-lang and remove the paragraph so the
+    // barePre Turndown rule can emit a properly language-tagged fenced block.
+    root.querySelectorAll('pre').forEach(pre => {
+      const prev = pre.previousElementSibling;
+      if (prev && prev.tagName === 'P') {
+        const hint = prev.textContent.trim().toLowerCase();
+        if (LANG_HINTS.has(hint)) {
+          pre.setAttribute('data-mds-lang', hint);
+          prev.remove();
+        }
+      }
+    });
   }
 
   // Some sites (e.g. sticky-header patterns) split a logical table into two
