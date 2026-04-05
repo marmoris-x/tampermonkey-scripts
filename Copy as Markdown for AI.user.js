@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
-// @namespace    https://github.com/yourusername/copy-as-markdown
+// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
 // @version      2.0.3
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
-// @author       Your Name
+// @author       marmoris-x
 // @match        *://*/*
 // @grant        GM_setValue
 // @grant        GM_getValue
