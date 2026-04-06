@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.0.6
+// @version      2.1.0
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @author       marmoris-x
 // @match        *://*/*
@@ -1098,6 +1098,42 @@ var TurndownService = (function () {
   const MAX_HISTORY = 10;
   const SIDEBAR_WIDTH = 380;
 
+  // ── FIX 1: Language-hint recognition ────────────────────────────────────────
+  // Many platforms (Reddit, Discourse, Hashnode, Ghost, legacy WordPress) cannot
+  // render fenced code with language identifiers, so they emit a bare <p>bash</p>
+  // immediately before a <pre> block instead of a proper ```bash fence.
+  // cleanDOM() detects these hint paragraphs and tags the following <pre> with
+  // data-mds-lang so the barePre Turndown rule can emit a proper fenced block.
+  const LANG_HINTS = new Set([
+    'bash','sh','shell','zsh','fish','cmd','bat','powershell','ps1',
+    'javascript','js','jsx','typescript','ts','tsx',
+    'python','py','ruby','rb','go','rust','java','c','cpp','c++','c#','cs',
+    'css','scss','sass','less','html','xml','svg','json','jsonc',
+    'yaml','yml','toml','ini','env','dotenv',
+    'sql','graphql','gql','r','swift','kotlin','dart','scala',
+    'haskell','lua','perl','php','elixir','clojure','clj',
+    'dockerfile','makefile','nginx','text','txt','plain','output','log'
+  ]);
+
+  // ── FIX 2: HTML entity decoding ─────────────────────────────────────────────
+  // Many platforms (Reddit, Discourse, Ghost…) double-encode special characters
+  // inside <code> elements: the author wrote <Foo>, the platform stored &lt;Foo&gt;,
+  // the browser renders the HTML once → text node contains "&lt;Foo&gt;" literally,
+  // and Turndown emits `&lt;Foo&gt;` into the Markdown instead of `<Foo>`.
+  // We apply a second decode pass specifically in code contexts.
+  // String-replace over DOMParser round-trip: no forced reflow, no extra allocations,
+  // and platforms in the wild are essentially limited to these seven named entities.
+  function decodeHTMLEntities(str) {
+    return str
+      .replace(/&amp;/g,  '&')
+      .replace(/&lt;/g,   '<')
+      .replace(/&gt;/g,   '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&nbsp;/g, '\u00a0'); // preserve non-breaking space as Unicode, not literal space
+  }
+
   // ── CSS — "Terminal Amber" dark theme ────────────────────
   const SIDEBAR_CSS = `
 #mds-root {
@@ -1892,11 +1928,13 @@ var TurndownService = (function () {
       });
     }
 
-    // ── Bare <pre> without <code> child → fenced code block ──────
-    // This is the global counterpart to TurndownService's built-in fencedCodeBlock
-    // rule which only fires when <pre><code> is present. Many platforms (Reddit,
-    // Discourse, legacy WordPress, Ghost…) use bare <pre> instead.
-    // data-mds-lang is optionally set by cleanDOM's language-hint detection above.
+    // ── FIX 1: Bare <pre> without a <code> child → fenced code block ───────────
+    // TurndownService's built-in fencedCodeBlock rule only fires when the pattern
+    // is <pre><code>…</code></pre>. Many platforms (Reddit, Discourse, Ghost,
+    // legacy WordPress, some wikis) emit bare <pre>…</pre> instead.
+    // This rule is mutually exclusive with the built-in one: it only fires when
+    // there is NO <code> child, so the two rules can never conflict.
+    // data-mds-lang is optionally set by cleanDOM's language-hint detection below.
     td.addRule('barePre', {
       filter: (node) => {
         return (
@@ -1906,10 +1944,40 @@ var TurndownService = (function () {
       },
       replacement: (content, node) => {
         const lang = node.getAttribute('data-mds-lang') || '';
-        // node.textContent has had one browser decode pass (&amp;lt; → &lt;),
-        // so we decode again to get the actual intended characters.
+        // Use textContent (not content arg) because the content arg has already
+        // been through Turndown's escape() which corrupts code characters.
+        // Apply decodeHTMLEntities because some platforms double-encode inside <pre>.
         const code = decodeHTMLEntities(node.textContent).replace(/\n$/, '');
-        return `\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`;
+        // Dynamically size the fence to avoid conflicts with any backtick runs in the code.
+        const fenceSize = Math.max(3, (code.match(/`{3,}/gm) || [])
+          .reduce((m, s) => Math.max(m, s.length + 1), 3));
+        const fence = '`'.repeat(fenceSize);
+        return `\n\n${fence}${lang}\n${code}\n${fence}\n\n`;
+      }
+    });
+
+    // ── FIX 2: Inline <code> with entity decoding ───────────────────────────────
+    // Overrides Turndown's built-in inline code rule (addRule uses unshift so ours
+    // wins). The filter is identical to the built-in rule so there is no ambiguity.
+    // The only addition is a decodeHTMLEntities() call on the content before
+    // backtick-wrapping, which fixes the double-encoding problem described above.
+    td.addRule('inlineCodeDecoded', {
+      filter: (node) => {
+        const hasSiblings = node.previousSibling || node.nextSibling;
+        const isCodeBlock = node.parentNode.nodeName === 'PRE' && !hasSiblings;
+        return node.nodeName === 'CODE' && !isCodeBlock;
+      },
+      replacement: (content) => {
+        if (!content) return '';
+        // content here is the result of processing child nodes, which for a
+        // leaf <code> element is just the escaped text. We decode the residual
+        // entity layer left by platforms that double-encode angle brackets etc.
+        let text = decodeHTMLEntities(content).replace(/\r?\n|\r/g, ' ');
+        const extraSpace = /^`|^ .*?[^ ].* $|`$/.test(text) ? ' ' : '';
+        let delimiter = '`';
+        const matches = text.match(/`+/gm) || [];
+        while (matches.indexOf(delimiter) !== -1) delimiter = delimiter + '`';
+        return delimiter + extraSpace + text + extraSpace + delimiter;
       }
     });
 
@@ -1961,29 +2029,6 @@ var TurndownService = (function () {
     td.addRule('kbd', {
       filter: 'kbd',
       replacement: (c) => c ? `\`${c}\`` : ''
-    });
-
-    // Override Turndown's built-in inline code rule to additionally decode
-    // HTML entities. Platforms frequently double-encode angle brackets inside
-    // <code> elements (e.g. &amp;lt;div&amp;gt; → &lt;div&gt; in text node).
-    // The filter mirrors the built-in rule exactly so ours always wins.
-    td.addRule('inlineCodeDecoded', {
-      filter: (node) => {
-        const hasSiblings = node.previousSibling || node.nextSibling;
-        const isCodeBlock = node.parentNode.nodeName === 'PRE' && !hasSiblings;
-        return node.nodeName === 'CODE' && !isCodeBlock;
-      },
-      replacement: (content) => {
-        if (!content) return '';
-        // content at this point already has one browser-decode pass applied;
-        // decodeHTMLEntities handles the residual &lt; / &gt; / &amp; layer.
-        let text = decodeHTMLEntities(content).replace(/\r?\n|\r/g, ' ');
-        const extraSpace = /^`|^ .*?[^ ].* $|`$/.test(text) ? ' ' : '';
-        let delimiter = '`';
-        const matches = text.match(/`+/gm) || [];
-        while (matches.indexOf(delimiter) !== -1) delimiter = delimiter + '`';
-        return delimiter + extraSpace + text + extraSpace + delimiter;
-      }
     });
 
     // Abbreviations → keep title as footnote-like
@@ -2149,36 +2194,6 @@ var TurndownService = (function () {
   }
 
   // ── DOM cleanup ──────────────────────────────────────────
-  // Global set of recognized language hint strings.
-  // Many platforms (Reddit, Discourse, Hashnode…) can't render fenced code with
-  // language identifiers, so they emit a bare <p>bash</p> before the <pre> block.
-  const LANG_HINTS = new Set([
-    'bash','sh','shell','zsh','fish','cmd','bat','powershell','ps1',
-    'javascript','js','jsx','typescript','ts','tsx',
-    'python','py','ruby','rb','go','rust','java','c','cpp','c++','c#','cs',
-    'css','scss','sass','less','html','xml','svg','json','jsonc',
-    'yaml','yml','toml','ini','env','dotenv',
-    'sql','graphql','gql','r','swift','kotlin','dart','scala',
-    'haskell','lua','perl','php','elixir','clojure','clj',
-    'dockerfile','makefile','nginx','text','txt','plain','output','log'
-  ]);
-
-  // Decode residual HTML entities that survive one browser parse pass.
-  // Applies only to code contexts where platforms like Reddit, Discourse, Ghost,
-  // and legacy WordPress double-encode: &amp;lt; → &lt; (in text node) → garbage in output.
-  // Named entities only — numeric entities (&amp;#123;) are extremely rare in code
-  // and would require a full DOMParser round-trip to handle exhaustively.
-  function decodeHTMLEntities(str) {
-    return str
-      .replace(/&amp;/g,  '&')
-      .replace(/&lt;/g,   '<')
-      .replace(/&gt;/g,   '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#039;/g, "'")
-      .replace(/&apos;/g, "'")
-      .replace(/&nbsp;/g, ' ');
-  }
-
   function cleanDOM(root) {
     // Decorative heading anchors — hash-link stubs injected by frameworks like
     // GitBook, Docusaurus, Nextra etc. They live inside <h1>–<h6> as block divs
@@ -2240,10 +2255,13 @@ var TurndownService = (function () {
 
     mergeOrphanedTables(root);
 
-    // Detect and collapse language-hint paragraphs that immediately precede <pre> blocks.
-    // e.g. Reddit HTML: <p>bash</p><pre>npx install...</pre>
-    // We tag the <pre> with data-mds-lang and remove the paragraph so the
-    // barePre Turndown rule can emit a properly language-tagged fenced block.
+    // ── FIX 1 (part 2): Language-hint paragraph detection ─────────────────────
+    // Detect <p>bash</p> (or any LANG_HINTS token) that immediately precedes a
+    // bare <pre>. Tag the <pre> with data-mds-lang and remove the hint paragraph
+    // so the barePre Turndown rule can emit a properly language-tagged fence.
+    // This is a global fix: it fires on any platform that uses this pattern,
+    // not just Reddit. Guarded by LANG_HINTS to avoid false positives on short
+    // content paragraphs that happen to precede a code block.
     root.querySelectorAll('pre').forEach(pre => {
       const prev = pre.previousElementSibling;
       if (prev && prev.tagName === 'P') {
