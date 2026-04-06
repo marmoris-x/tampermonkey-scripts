@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.1.1
+// @version      2.1.2
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @author       marmoris-x
 // @match        *://*/*
@@ -1132,6 +1132,23 @@ var TurndownService = (function () {
       .replace(/&#039;/g, "'")
       .replace(/&apos;/g, "'")
       .replace(/&nbsp;/g, '\u00a0'); // preserve non-breaking space as Unicode, not literal space
+  }
+
+  // ── FIX 4: Restore over-escaped asterisk pairs ──────────────────────────────
+  // Restore over-escaped asterisk pairs produced by Turndown's escape() function.
+  // Turndown escapes ALL * characters in text nodes (rule: /\*/g → "\\*"),
+  // but * only needs escaping in specific Markdown contexts. Platforms like Reddit,
+  // Discourse, and Ghost embed literal ** in their HTML text nodes (unprocessed
+  // Markdown syntax), which Turndown turns into \*\* — producing \*\*X\*\* in
+  // the output instead of **X** (bold). This pass restores such sequences.
+  // The 1–80 char limit and non-newline constraint prevent false positives on
+  // legitimate escaped asterisks that are not part of bold/italic constructs.
+  function postProcessMarkdown(md) {
+    return md
+      // \*\*...\*\* → **...** (restore bold)
+      .replace(/\\\*\\\*([^\n]{1,80}?)\\\*\\\*/g, '**$1**')
+      // \*...\* → *...* (restore italic) — same root cause, less common
+      .replace(/\\\*([^\n*]{1,40}?)\\\*/g, '*$1*');
   }
 
   // ── CSS — "Terminal Amber" dark theme ────────────────────
@@ -2425,7 +2442,7 @@ var TurndownService = (function () {
 
     if (opts.clean) cleanDOM(root);
     resolveUrls(root);
-    const md = td.turndown(root.innerHTML);
+    const md = postProcessMarkdown(td.turndown(root.innerHTML));
     return opts.title ? buildFrontmatter(location.href, document.title) + md : md;
   }
 
@@ -2484,7 +2501,7 @@ var TurndownService = (function () {
     // Clean hidden/noise elements from selection just like a full page copy
     if (opts.clean) cleanDOM(div);
     resolveUrls(div);
-    return getTurndown(opts).turndown(div.innerHTML);
+    return postProcessMarkdown(getTurndown(opts).turndown(div.innerHTML));
   }
 
   // ── Remote URL fetch ─────────────────────────────────────
@@ -2522,7 +2539,7 @@ var TurndownService = (function () {
             const root = getMainContent(doc).cloneNode(true);
             if (opts.clean) cleanDOM(root);
             const td = getTurndown(opts);
-            const md = td.turndown(root.innerHTML);
+            const md = postProcessMarkdown(td.turndown(root.innerHTML));
             const result = opts.title ? buildFrontmatter(url, pageTitle, pageLang) + md : md;
             resolve({ markdown: result, title: pageTitle });
           } catch (e) { reject(e); }
