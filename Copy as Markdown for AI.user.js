@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.0.5
+// @version      2.0.6
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @author       marmoris-x
 // @match        *://*/*
@@ -1906,9 +1906,9 @@ var TurndownService = (function () {
       },
       replacement: (content, node) => {
         const lang = node.getAttribute('data-mds-lang') || '';
-        // Use textContent here because innerHTML would contain escaped entities
-        // that don't belong in a code fence (e.g. &amp; instead of &).
-        const code = node.textContent.replace(/\n$/, '');
+        // node.textContent has had one browser decode pass (&amp;lt; → &lt;),
+        // so we decode again to get the actual intended characters.
+        const code = decodeHTMLEntities(node.textContent).replace(/\n$/, '');
         return `\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`;
       }
     });
@@ -1961,6 +1961,29 @@ var TurndownService = (function () {
     td.addRule('kbd', {
       filter: 'kbd',
       replacement: (c) => c ? `\`${c}\`` : ''
+    });
+
+    // Override Turndown's built-in inline code rule to additionally decode
+    // HTML entities. Platforms frequently double-encode angle brackets inside
+    // <code> elements (e.g. &amp;lt;div&amp;gt; → &lt;div&gt; in text node).
+    // The filter mirrors the built-in rule exactly so ours always wins.
+    td.addRule('inlineCodeDecoded', {
+      filter: (node) => {
+        const hasSiblings = node.previousSibling || node.nextSibling;
+        const isCodeBlock = node.parentNode.nodeName === 'PRE' && !hasSiblings;
+        return node.nodeName === 'CODE' && !isCodeBlock;
+      },
+      replacement: (content) => {
+        if (!content) return '';
+        // content at this point already has one browser-decode pass applied;
+        // decodeHTMLEntities handles the residual &lt; / &gt; / &amp; layer.
+        let text = decodeHTMLEntities(content).replace(/\r?\n|\r/g, ' ');
+        const extraSpace = /^`|^ .*?[^ ].* $|`$/.test(text) ? ' ' : '';
+        let delimiter = '`';
+        const matches = text.match(/`+/gm) || [];
+        while (matches.indexOf(delimiter) !== -1) delimiter = delimiter + '`';
+        return delimiter + extraSpace + text + extraSpace + delimiter;
+      }
     });
 
     // Abbreviations → keep title as footnote-like
@@ -2139,6 +2162,22 @@ var TurndownService = (function () {
     'haskell','lua','perl','php','elixir','clojure','clj',
     'dockerfile','makefile','nginx','text','txt','plain','output','log'
   ]);
+
+  // Decode residual HTML entities that survive one browser parse pass.
+  // Applies only to code contexts where platforms like Reddit, Discourse, Ghost,
+  // and legacy WordPress double-encode: &amp;lt; → &lt; (in text node) → garbage in output.
+  // Named entities only — numeric entities (&amp;#123;) are extremely rare in code
+  // and would require a full DOMParser round-trip to handle exhaustively.
+  function decodeHTMLEntities(str) {
+    return str
+      .replace(/&amp;/g,  '&')
+      .replace(/&lt;/g,   '<')
+      .replace(/&gt;/g,   '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&nbsp;/g, ' ');
+  }
 
   function cleanDOM(root) {
     // Decorative heading anchors — hash-link stubs injected by frameworks like
