@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.7
+// @version      2.8
 // @description  Recaptcha Solver in Browser | Start button in challenge footer
 // @author       marmoris-x
 // @match        https://www.google.com/recaptcha/*
 // @match        https://google.com/recaptcha/*
 // @match        https://www.recaptcha.net/recaptcha/*
 // @match        https://recaptcha.net/recaptcha/*
-// @icon         https://lh3.googleusercontent.com/kOVdqiI3s3rT4RlNWeY-dZ61BIuZ63bT2Ou_4rGsk47FDpVxaudzPrdO-AfC6hTj3lqn7IefPYHIXDivJpuT1b8fPA=s60
+// @icon         https://cms-assets.tutsplus.com/uploads/users/362/posts/29169/preview_image/picCAPTCHA.jpg
 // @connect      engageub.pythonanywhere.com
 // @connect      engageub1.pythonanywhere.com
 // @grant        GM_xmlhttpRequest
