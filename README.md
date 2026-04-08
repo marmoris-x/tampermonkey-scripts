@@ -120,26 +120,33 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 |------|------|-------------|-------|-------|------------|
 | `Manga Panel Downloader.user.js` | **Manga Panel Downloader** | Downloads manga/manhwa panels as ZIP – pipeline download, retry, abort, fast scrolling. | `*://*/*` | `GM_addStyle`, `GM_xmlhttpRequest`, `GM_registerMenuCommand`, `GM_deleteValue` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Manga%20Panel%20Downloader.user.js) |
 
+### Security & CAPTCHA Tools
+
+| File | Name | Description | Match | Grant | Update URL |
+|------|------|-------------|-------|-------|------------|
+| `Recaptcha Solver.user.js` | **Recaptcha Solver** | Automatically solves Recaptcha in browser with start button in challenge footer. | `https://www.google.com/recaptcha/*`<br>`https://google.com/recaptcha/*`<br>`https://www.recaptcha.net/recaptcha/*`<br>`https://recaptcha.net/recaptcha/*` | `GM_xmlhttpRequest` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Recaptcha%20Solver.user.js) |
+
 ## 📊 Features Comparison
 
-| Feature | Global Video Speed Controller | YouTube Enhanced | YouTube CPU Tamer | PiP any site | Crunchyroll Enhanced | Marketplace Deal Finder | Google Search Enhanced | AniSearch Endless Scroll | FlameComics Advanced Sort | Gutefrage Smart Filters | Epic Games Library Export | NotebookLM Source Export | Google AI Studio Chat Exporter | BotGhost Bulk Choice Extractor | Reddit Content Unlocker | Manga Panel Downloader | Copy as Markdown for AI |
-|---------|-------------------------------|------------------|-------------------|--------------|----------------------|-------------------------|------------------------|--------------------------|--------------------------|-------------------------|---------------------------|--------------------------|---------------------------------|--------------------------------|-------------------------|------------------------|-------------------------|
-| Video speed control | ✓ | ✓ (per‑channel) | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Auto‑quality | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Energy saving | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Picture‑in‑Picture | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| Advanced filtering | – | – | – | – | ✓ | – | – | ✓ | – | ✓ | – | – | – | – | – | – | – |
-| AI integration | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – |
-| Search enhancements | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – |
-| Endless scrolling | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – |
-| Custom sorting | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – |
-| Tag management | – | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – |
-| Data export | – | – | – | – | ✓ | – | – | – | – | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | – |
-| NSFW unblur | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – |
-| Bulk copy | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – | – |
-| Multi‑page crawling | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – |
-| Markdown export | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ |
-| Cross‑site support | ✓ | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | ✓ | ✓ |
+| Feature | Global Video Speed Controller | YouTube Enhanced | YouTube CPU Tamer | PiP any site | Crunchyroll Enhanced | Marketplace Deal Finder | Google Search Enhanced | AniSearch Endless Scroll | FlameComics Advanced Sort | Gutefrage Smart Filters | Epic Games Library Export | NotebookLM Source Export | Google AI Studio Chat Exporter | BotGhost Bulk Choice Extractor | Reddit Content Unlocker | Manga Panel Downloader | Copy as Markdown for AI | Recaptcha Solver |
+|---------|-------------------------------|------------------|-------------------|--------------|----------------------|-------------------------|------------------------|--------------------------|--------------------------|-------------------------|---------------------------|--------------------------|---------------------------------|--------------------------------|-------------------------|------------------------|-------------------------|-------------------|
+| Video speed control | ✓ | ✓ (per‑channel) | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Auto‑quality | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Energy saving | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Picture‑in‑Picture | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| Advanced filtering | – | – | – | – | ✓ | – | – | ✓ | – | ✓ | – | – | – | – | – | – | – | – |
+| AI integration | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – |
+| Search enhancements | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – |
+| Endless scrolling | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – |
+| Custom sorting | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – |
+| Tag management | – | – | – | – | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – |
+| Data export | – | – | – | – | ✓ | – | – | – | – | – | ✓ | ✓ | ✓ | ✓ | – | ✓ | – | – |
+| NSFW unblur | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – | – |
+| Bulk copy | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – | – | – | – |
+| Multi‑page crawling | – | – | – | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | – |
+| Markdown export | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ | – |
+| Cross‑site support | ✓ | – | – | ✓ | – | – | – | – | – | – | – | – | – | – | – | ✓ | ✓ | – |
+| CAPTCHA solving | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | ✓ |
 
 ## ⚙️ Usage & Configuration
 
@@ -249,5 +256,5 @@ Most scripts are tested on **Chrome** with **Tampermonkey**. They should work on
 
 ---
 
-*Last updated: March 2026*
+*Last updated: April 2026*
 *If you find these scripts useful, consider starring the repository on GitHub!*
