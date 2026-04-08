@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.8
+// @version      2.9
 // @description  Recaptcha Solver in Browser | Start button in challenge footer
 // @author       marmoris-x
 // @match        https://www.google.com/recaptcha/*
