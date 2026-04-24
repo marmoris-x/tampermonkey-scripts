@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-No build, test, or lint tooling exists. Each `.user.js` file is a standalone Tampermonkey script installed directly via a userscript manager. After editing scripts, update `README.md` if the script catalog table or feature comparison matrix needs reflecting.
+No build, test, or lint tooling exists. Each `.user.js` file is a standalone Tampermonkey script installed directly via a userscript manager. After editing scripts, update `README.md` if the script catalog table or feature comparison matrix needs reflecting. Never add `Co-Authored-By` trailers to commits — the global Claude Code settings have `includeCoAuthoredBy: false`.
 
 ## Versioning — Mandatory
 
