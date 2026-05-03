@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         Crunchyroll Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      4.6
+// @version      4.7
 // @description  Sidebar (page-push) with multi-filter & sort for Crunchyroll browse — auto-scan, retry, export/clipboard, data-only filter
 // @author       marmoris-x
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=crunchyroll.com
 // @match        https://*.crunchyroll.com/*
 // @grant        GM_addStyle
-// @grant        GM_setValue
-// @grant        GM_getValue
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @run-at       document-idle
@@ -69,8 +67,8 @@
             this.cards      = new Map();
             this.origOrder  = [];
             this.isScanning = false;
-            this.isOpen     = GM_getValue('cr_sidebar_open', false);
-            this.showBadges = GM_getValue('cr_show_badges', true);
+            this.isOpen     = false;
+            this.showBadges = true;
             this.log        = log;
 
             var self = this;
@@ -93,6 +91,8 @@
         }
 
         async _buildUI() {
+            this.isOpen = await GM.getValue('cr_sidebar_open', false);
+            this.showBadges = await GM.getValue('cr_show_badges', true);
             _CRE.buildSidebar(this, SW);
             // Wait for sidebar to be ready, then load saved filters
             await _CRE.loadSavedFilters(this);

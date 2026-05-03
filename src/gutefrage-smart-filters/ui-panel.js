@@ -79,7 +79,9 @@
         onClose: function () { /* no-op */ }
       });
 
-      this.renderContent();
+      this.renderContent()['catch'](function (err) {
+        console.warn('[GSF] Panel render error:', err);
+      });
     }
 
     /**
@@ -110,11 +112,11 @@
     /**
      * Renders all filter controls into the sidebar body.
      */
-    renderContent() {
+    async renderContent() {
       var f = this.fi.filters;
       var hideTypes = f.contentFilters.hidePostTypes || [];
-      var customTags = GM_getValue('customTagsToRemove', GSF.DEFAULT_TAGS).join(', ');
-      var blockedAuthors = GM_getValue('blockedAuthors', []).join(', ');
+      var customTags = (await GM.getValue('customTagsToRemove', GSF.DEFAULT_TAGS)).join(', ');
+      var blockedAuthors = (await GM.getValue('blockedAuthors', [])).join(', ');
       var dateVal = f.afterDate || '';
       var isUnansweredPage = window.location.pathname.indexOf('/unbeantwortet') !== -1;
 
@@ -138,7 +140,7 @@
       html += '<div class=”gf-section”>';
       html += '<div class=”gf-section-title”>Feed-Navigation</div>';
       html += '<span class=”gf-label”>Zu diesem Datum springen:</span>';
-      html += '<input type=”datetime-local” class=”gf-input” id=”gf-nav-date” value=”' + (GM_getValue('navDate', '')) + '” title=”Springt im Gutefrage-Feed zu diesem Datum (VOR-Navigation)”>';
+      html += '<input type=”datetime-local” class=”gf-input” id=”gf-nav-date” value=”' + (await GM.getValue('navDate', '')) + '” title=”Springt im Gutefrage-Feed zu diesem Datum (VOR-Navigation)”>';
       html += '<div class=”gf-hint”>Springt im Feed zu Beiträgen <strong>vor</strong> diesem Datum</div>';
       html += '<div class=”gf-nav-row”>';
       html += '<button class=”gf-nav-btn' + (!isUnansweredPage ? ' active' : '') + '” id=”gf-nav-alle” title=”In „Alle Beiträge für Dich“ zu diesem Datum springen”>Alle Beiträge →</button>';
@@ -307,7 +309,7 @@
       // Feed navigation
       var navDate = body.querySelector('#gf-nav-date');
       if (navDate) {
-        navDate.addEventListener('change', function () { GM_setValue('navDate', this.value); });
+        navDate.addEventListener('change', async function () { await GM.setValue('navDate', this.value); });
       }
 
       var navAlle = body.querySelector('#gf-nav-alle');
@@ -341,16 +343,16 @@
       // Custom tags
       var customTagsInput = body.querySelector('#gf-custom-tags');
       if (customTagsInput) {
-        customTagsInput.addEventListener('change', function () {
-          GM_setValue('customTagsToRemove', GSF.parseCSV(this.value, false));
+        customTagsInput.addEventListener('change', async function () {
+          await GM.setValue('customTagsToRemove', GSF.parseCSV(this.value, false));
         });
       }
 
       // Blocked authors
       var blockedAuthorsInput = body.querySelector('#gf-blocked-authors');
       if (blockedAuthorsInput) {
-        blockedAuthorsInput.addEventListener('change', function () {
-          GM_setValue('blockedAuthors', GSF.parseCSV(this.value, false));
+        blockedAuthorsInput.addEventListener('change', async function () {
+          await GM.setValue('blockedAuthors', GSF.parseCSV(this.value, false));
           fi.enableFilters();
           fi.debouncedApplyFilters();
         });
@@ -359,7 +361,7 @@
       // Reset button
       var resetBtn = body.querySelector('.gf-reset-btn');
       if (resetBtn) {
-        resetBtn.addEventListener('click', function () {
+        resetBtn.addEventListener('click', async function () {
           fi.filters = {
             afterDate: GSF.DEFAULT_FILTERS.afterDate,
             contentFilters: Object.assign({}, GSF.DEFAULT_FILTERS.contentFilters),
@@ -367,10 +369,10 @@
             textFilters: Object.assign({}, GSF.DEFAULT_FILTERS.textFilters),
             topicFilters: Object.assign({}, GSF.DEFAULT_FILTERS.topicFilters)
           };
-          fi.saveFilters();
-          this.renderContent();
+          await fi.saveFilters();
+          await this.renderContent();
           fi.updateFilterIndicator();
-          fi.applyFilters();
+          await fi.applyFilters();
         }.bind(this));
       }
     }

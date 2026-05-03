@@ -310,8 +310,8 @@
    * @param {{ currentPage: number, currentUrl: string, allTopDeals: Array, maxPages: number }} state
    * @param {string} storagePrefix
    */
-  function saveCrawlStateSync(state, storagePrefix) {
-    GM_setValue(storagePrefix + '_dealfinder_crawl_state', JSON.stringify(state));
+  async function saveCrawlStateSync(state, storagePrefix) {
+    await GM.setValue(storagePrefix + '_dealfinder_crawl_state', JSON.stringify(state));
   }
 
   /* ─── Deal Processing ─── */

@@ -101,11 +101,11 @@
     var JITTER_FACTOR = 0.2;
     var SHOULD_STOP = false;
 
-    return new Promise(function (resolve, reject) {
+    return (async function () {
       // Read model mapping from storage or use defaults
       var rawMapping = null;
       try {
-        var raw = GM_getValue('wh_dealfinder_settings', null) || GM_getValue('ka_dealfinder_settings', null);
+        var raw = await GM.getValue('wh_dealfinder_settings', null) || await GM.getValue('ka_dealfinder_settings', null);
         if (raw) {
           var parsed = JSON.parse(raw);
           rawMapping = parsed.modelMapping || null;
@@ -183,145 +183,147 @@
         }
       };
 
-      function attempt(n) {
-        GM_xmlhttpRequest({
-          method: 'POST',
-          url: modelUrl,
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-          data: JSON.stringify(requestBody),
-          timeout: GEMINI_API_TIMEOUT,
-          onload: function (response) {
-            try {
-              if (response.status === 200) {
-                var data = JSON.parse(response.responseText);
-                var finishReason = data.candidates && data.candidates[0]
-                  ? data.candidates[0].finishReason : null;
-                console.log('[MDF-API] Gemini finishReason:', finishReason);
+      return new Promise(function (resolve, reject) {
+        function attempt(n) {
+          GM_xmlhttpRequest({
+            method: 'POST',
+            url: modelUrl,
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+            data: JSON.stringify(requestBody),
+            timeout: GEMINI_API_TIMEOUT,
+            onload: function (response) {
+              try {
+                if (response.status === 200) {
+                  var data = JSON.parse(response.responseText);
+                  var finishReason = data.candidates && data.candidates[0]
+                    ? data.candidates[0].finishReason : null;
+                  console.log('[MDF-API] Gemini finishReason:', finishReason);
 
-                if (!data.candidates || !data.candidates[0] || !data.candidates[0].content ||
-                    !data.candidates[0].content.parts) {
-                  var reason = finishReason || 'UNKNOWN';
-                  if (reason === 'SAFETY' || reason === 'RECITATION') {
-                    reject(new Error('Gemini: Content blocked (' + reason + ')'));
-                  } else {
-                    reject(new Error('Gemini: No content (finishReason: ' + reason + ')'));
-                  }
-                  return;
-                }
-
-                var parts = data.candidates[0].content.parts;
-                var fullText = '';
-                for (var pi = 0; pi < parts.length; pi++) {
-                  fullText += parts[pi].text || '';
-                }
-                console.log('[MDF-API] AI response (' + parts.length + ' parts, ' + fullText.length + ' chars)');
-
-                if (finishReason === 'MAX_TOKENS') {
-                  console.warn('[MDF-API] Response truncated at MAX_TOKENS');
-                }
-
-                // Direct JSON parse attempt
-                try {
-                  var parsed = JSON.parse(fullText);
-                  if (parsed.topDeals) {
-                    resolve(parsed);
+                  if (!data.candidates || !data.candidates[0] || !data.candidates[0].content ||
+                      !data.candidates[0].content.parts) {
+                    var reason = finishReason || 'UNKNOWN';
+                    if (reason === 'SAFETY' || reason === 'RECITATION') {
+                      reject(new Error('Gemini: Content blocked (' + reason + ')'));
+                    } else {
+                      reject(new Error('Gemini: No content (finishReason: ' + reason + ')'));
+                    }
                     return;
                   }
-                } catch (e) { /* fall through to extraction methods */ }
 
-                // Try JSON code block extraction
-                var jsonMatch = fullText.match(/```(?:json)?\s*([\s\S]*?)```/);
-                var jsonText = jsonMatch ? jsonMatch[1] : null;
+                  var parts = data.candidates[0].content.parts;
+                  var fullText = '';
+                  for (var pi = 0; pi < parts.length; pi++) {
+                    fullText += parts[pi].text || '';
+                  }
+                  console.log('[MDF-API] AI response (' + parts.length + ' parts, ' + fullText.length + ' chars)');
 
-                // Try raw JSON extraction
-                if (!jsonText) {
-                  var rawMatch = fullText.match(/(\{[\s\S]*\})/);
-                  if (rawMatch) jsonText = rawMatch[1];
-                }
+                  if (finishReason === 'MAX_TOKENS') {
+                    console.warn('[MDF-API] Response truncated at MAX_TOKENS');
+                  }
 
-                if (jsonText) {
+                  // Direct JSON parse attempt
                   try {
-                    resolve(JSON.parse(jsonText));
-                    return;
-                  } catch (parseError) {
-                    console.error('[MDF-API] JSON parse error:', parseError);
+                    var parsed = JSON.parse(fullText);
+                    if (parsed.topDeals) {
+                      resolve(parsed);
+                      return;
+                    }
+                  } catch (e) { /* fall through to extraction methods */ }
+
+                  // Try JSON code block extraction
+                  var jsonMatch = fullText.match(/```(?:json)?\s*([\s\S]*?)```/);
+                  var jsonText = jsonMatch ? jsonMatch[1] : null;
+
+                  // Try raw JSON extraction
+                  if (!jsonText) {
+                    var rawMatch = fullText.match(/(\{[\s\S]*\})/);
+                    if (rawMatch) jsonText = rawMatch[1];
                   }
-                }
 
-                console.error('[MDF-API] No JSON found in response');
-                if (n < MAX_RETRIES && !SHOULD_STOP) {
-                  var jitterDelay = RETRY_BASE_DELAY * (1 + Math.random() * 0.5);
-                  setTimeout(function () { attempt(n + 1); }, jitterDelay);
-                } else {
-                  reject(new Error('No JSON in AI response'));
-                }
-
-              } else if (response.status === 400 || response.status === 401 || response.status === 403) {
-                console.error('[MDF-API] Final error (no retry) - Status:', response.status);
-                reject(new Error('Gemini API error: ' + response.status));
-              } else if (response.status === 429 || response.status === 503) {
-                if (n < RATE_LIMIT_MAX_RETRIES) {
-                  var delay = RATE_LIMIT_BASE_DELAY * Math.pow(2, n);
-                  var serverDictated = false;
-                  if (response.responseHeaders) {
-                    var raMatch = response.responseHeaders.match(/retry-after:\s*(\d+)/i);
-                    if (raMatch) {
-                      var seconds = parseInt(raMatch[1], 10);
-                      if (!isNaN(seconds)) {
-                        delay = seconds * 1000;
-                        serverDictated = true;
-                      }
+                  if (jsonText) {
+                    try {
+                      resolve(JSON.parse(jsonText));
+                      return;
+                    } catch (parseError) {
+                      console.error('[MDF-API] JSON parse error:', parseError);
                     }
                   }
-                  delay = delay * (1 + Math.random() * JITTER_FACTOR);
-                  if (!serverDictated) delay = Math.min(delay, MAX_RATE_LIMIT_DELAY);
-                  console.log('[MDF-API] Rate limit', response.status, '- Retry', (n + 1), 'in', Math.round(delay), 'ms');
-                  if (onRetry) onRetry(response.status, n + 1, Math.round(delay / 1000));
+
+                  console.error('[MDF-API] No JSON found in response');
+                  if (n < MAX_RETRIES && !SHOULD_STOP) {
+                    var jitterDelay = RETRY_BASE_DELAY * (1 + Math.random() * 0.5);
+                    setTimeout(function () { attempt(n + 1); }, jitterDelay);
+                  } else {
+                    reject(new Error('No JSON in AI response'));
+                  }
+
+                } else if (response.status === 400 || response.status === 401 || response.status === 403) {
+                  console.error('[MDF-API] Final error (no retry) - Status:', response.status);
+                  reject(new Error('Gemini API error: ' + response.status));
+                } else if (response.status === 429 || response.status === 503) {
+                  if (n < RATE_LIMIT_MAX_RETRIES) {
+                    var delay = RATE_LIMIT_BASE_DELAY * Math.pow(2, n);
+                    var serverDictated = false;
+                    if (response.responseHeaders) {
+                      var raMatch = response.responseHeaders.match(/retry-after:\s*(\d+)/i);
+                      if (raMatch) {
+                        var seconds = parseInt(raMatch[1], 10);
+                        if (!isNaN(seconds)) {
+                          delay = seconds * 1000;
+                          serverDictated = true;
+                        }
+                      }
+                    }
+                    delay = delay * (1 + Math.random() * JITTER_FACTOR);
+                    if (!serverDictated) delay = Math.min(delay, MAX_RATE_LIMIT_DELAY);
+                    console.log('[MDF-API] Rate limit', response.status, '- Retry', (n + 1), 'in', Math.round(delay), 'ms');
+                    if (onRetry) onRetry(response.status, n + 1, Math.round(delay / 1000));
+                    if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
+                    setTimeout(function () { attempt(n + 1); }, delay);
+                  } else {
+                    reject(new Error('Gemini API error: ' + response.status));
+                  }
+                } else if (n < MAX_RETRIES) {
+                  console.log('[MDF-API] API error', response.status, '- Retry', (n + 1));
+                  if (onRetry) onRetry(response.status, n + 1, 2);
                   if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
-                  setTimeout(function () { attempt(n + 1); }, delay);
+                  setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
                 } else {
+                  console.error('[MDF-API] Final error - Status:', response.status);
                   reject(new Error('Gemini API error: ' + response.status));
                 }
-              } else if (n < MAX_RETRIES) {
-                console.log('[MDF-API] API error', response.status, '- Retry', (n + 1));
-                if (onRetry) onRetry(response.status, n + 1, 2);
+              } catch (error) {
                 if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
-                setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
-              } else {
-                console.error('[MDF-API] Final error - Status:', response.status);
-                reject(new Error('Gemini API error: ' + response.status));
+                if (n < MAX_RETRIES) {
+                  setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
+                } else {
+                  reject(error);
+                }
               }
-            } catch (error) {
+            },
+            onerror: function () {
               if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
               if (n < MAX_RETRIES) {
+                if (onRetry) onRetry('network_error', n + 1, 2);
                 setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
               } else {
-                reject(error);
+                reject(new Error('Network error in Gemini API'));
+              }
+            },
+            ontimeout: function () {
+              if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
+              if (n < MAX_RETRIES) {
+                if (onRetry) onRetry('timeout', n + 1, 2);
+                setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
+              } else {
+                reject(new Error('Timeout in Gemini API'));
               }
             }
-          },
-          onerror: function () {
-            if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
-            if (n < MAX_RETRIES) {
-              if (onRetry) onRetry('network_error', n + 1, 2);
-              setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
-            } else {
-              reject(new Error('Network error in Gemini API'));
-            }
-          },
-          ontimeout: function () {
-            if (SHOULD_STOP) { reject(new Error('Aborted')); return; }
-            if (n < MAX_RETRIES) {
-              if (onRetry) onRetry('timeout', n + 1, 2);
-              setTimeout(function () { attempt(n + 1); }, RETRY_BASE_DELAY * (1 + Math.random() * 0.5));
-            } else {
-              reject(new Error('Timeout in Gemini API'));
-            }
-          }
-        });
-      }
-      attempt(0);
-    });
+          });
+        }
+        attempt(0);
+      });
+    })();
   }
 
   /* ─── Model Selection UI ─── */
@@ -428,7 +430,7 @@
     html += '</div></div>';
     area.innerHTML = html;
 
-    function saveModelMapping(showFeedback) {
+    async function saveModelMapping(showFeedback) {
       showFeedback = showFeedback || false;
       var s = JSON.parse(JSON.stringify(cachedSettings || DEFAULT_SETTINGS));
       s.modelMapping = s.modelMapping || {};
@@ -436,8 +438,7 @@
         var sel = document.getElementById(prefix + '-map-' + k);
         if (sel) s.modelMapping[k] = sel.value;
       });
-      GM_setValue(prefix + '_dealfinder_settings', JSON.stringify(s));
-      // Update cachedSettings in-place
+      await GM.setValue(prefix + '_dealfinder_settings', JSON.stringify(s));
       if (cachedSettings) {
         cachedSettings.modelMapping = s.modelMapping;
       }
@@ -461,8 +462,8 @@
     modelKeys.forEach(function (k) {
       var sel = document.getElementById(prefix + '-map-' + k);
       if (sel) {
-        sel.addEventListener('change', function () {
-          saveModelMapping(false);
+        sel.addEventListener('change', async function () {
+          await saveModelMapping(false);
           var indicatorId = prefix + '-map-indicator-' + k;
           var indicator = document.getElementById(indicatorId);
           if (!indicator) {
@@ -482,7 +483,7 @@
     });
 
     var mapSaveBtn = document.getElementById(prefix + '-map-save');
-    if (mapSaveBtn) mapSaveBtn.addEventListener('click', function () { saveModelMapping(true); });
+    if (mapSaveBtn) mapSaveBtn.addEventListener('click', async function () { await saveModelMapping(true); });
     var mapCancelBtn = document.getElementById(prefix + '-map-cancel');
     if (mapCancelBtn) mapCancelBtn.addEventListener('click', function () { restoreModelSelect(prefix, cachedSettings); });
   }
@@ -535,10 +536,10 @@
 
     var sel = document.getElementById(prefix + '-model-select');
     if (sel) {
-      sel.addEventListener('change', function () {
+      sel.addEventListener('change', async function () {
         var s = JSON.parse(JSON.stringify(cachedSettings || DEFAULT_SETTINGS));
         s.model = sel.value;
-        GM_setValue(prefix + '_dealfinder_settings', JSON.stringify(s));
+        await GM.setValue(prefix + '_dealfinder_settings', JSON.stringify(s));
         if (cachedSettings) {
           cachedSettings.model = sel.value;
         }

@@ -207,13 +207,13 @@
       width: sidebarWidth,
       title: 'Filter',
       accentColor: '#F47521',
-      onOpen: function () {
+      onOpen: async function () {
         ctx.isOpen = true;
-        GM_setValue('cr_sidebar_open', true);
+        await GM.setValue('cr_sidebar_open', true);
       },
-      onClose: function () {
+      onClose: async function () {
         ctx.isOpen = false;
-        GM_setValue('cr_sidebar_open', false);
+        await GM.setValue('cr_sidebar_open', false);
       }
     });
 
@@ -266,10 +266,10 @@
       });
     });
 
-    ctx._$('cr-opt-badges').addEventListener('change', function (e) {
+    ctx._$('cr-opt-badges').addEventListener('change', async function (e) {
       ctx.showBadges = e.target.checked;
       ctx._$('lbl-badges').classList.toggle('checked', ctx.showBadges);
-      GM_setValue('cr_show_badges', ctx.showBadges);
+      await GM.setValue('cr_show_badges', ctx.showBadges);
       _CRE.updateBadgeVisibility(ctx.showBadges);
     });
 

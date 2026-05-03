@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marketplace Deal Finder
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      29.4
+// @version      29.5
 // @description  Cross-platform deal aggregator for Willhaben and Kleinanzeigen with AI-powered price analysis. Multi-page crawling with Gemini AI.
 // @author       marmoris
 // @match        https://www.willhaben.at/iad/kaufen-und-verkaufen/*
@@ -9,8 +9,6 @@
 // @match        https://www.kleinanzeigen.de/z-*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=willhaben.at
 // @grant        GM_xmlhttpRequest
-// @grant        GM_setValue
-// @grant        GM_getValue
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
@@ -168,14 +166,14 @@
    * @param {string} href - Next page URL (relative or absolute)
    * @param {Object} settings - Current crawl settings
    */
-  function saveCrawlStateAndNavigate(href, settings) {
+  async function saveCrawlStateAndNavigate(href, settings) {
     var state = {
       currentPage: currentPage,
       currentUrl: window.location.href,
       allTopDeals: allTopDeals,
       maxPages: settings.maxPages
     };
-    GM_setValue(P + '_dealfinder_crawl_state', JSON.stringify(state));
+    await GM.setValue(P + '_dealfinder_crawl_state', JSON.stringify(state));
     window.location.href = href;
   }
 
@@ -279,11 +277,11 @@
   /**
    * Stops the crawl gracefully (finishes current page, then saves).
    */
-  function stopDealFinder() {
+  async function stopDealFinder() {
     shouldStop = true;
     isPaused = false;
     captchaPaused = false;
-    GM_setValue(P + '_dealfinder_crawl_state', null);
+    await GM.setValue(P + '_dealfinder_crawl_state', null);
     Logger.log('Crawl stopped by user');
     UI.updateProgress(P, 'Stoppe nach aktueller Seite...', 95, 'warning', IS_WH);
   }
@@ -415,7 +413,7 @@
       var nextUrl = SCRAPER.goToNextPage(currentPage);
       if (nextUrl) {
         Logger.log('Navigating to next page: ' + nextUrl);
-        saveCrawlStateAndNavigate(nextUrl, { apiKey: apiKey, searchContext: searchContext, topX: topX, model: model, maxPages: maxPages });
+        await saveCrawlStateAndNavigate(nextUrl, { apiKey: apiKey, searchContext: searchContext, topX: topX, model: model, maxPages: maxPages });
       } else {
         Logger.log('No more pages available - ending crawl');
         await finishDealFinder();
@@ -481,7 +479,7 @@
    * Called after the modal is created and settings are loaded.
    */
   async function resumeCrawlIfActive() {
-    var rawState = GM_getValue(P + '_dealfinder_crawl_state', null);
+    var rawState = await GM.getValue(P + '_dealfinder_crawl_state', null);
     if (!rawState) {
       Logger.log('Normal session - results preserved');
       return;
@@ -615,7 +613,7 @@
       Logger.log('Script started');
 
       // Pre-populate settings cache from sync storage
-      var rawSettings = GM_getValue(P + '_dealfinder_settings', null);
+      var rawSettings = await GM.getValue(P + '_dealfinder_settings', null);
       if (rawSettings) {
         try {
           var loaded = JSON.parse(rawSettings);

@@ -27,7 +27,7 @@
    */
   class TagRemover {
     constructor() {
-      this.tagsToRemove = GM_getValue('customTagsToRemove', DEFAULT_TAGS);
+      this.tagsToRemove = DEFAULT_TAGS;
       this.init();
     }
 
@@ -62,7 +62,7 @@
     async removeUnwantedTags() {
       tagLog.log('Starting tag removal process...');
       await waitForTagPageReady();
-      this.tagsToRemove = GM_getValue('customTagsToRemove', DEFAULT_TAGS);
+      this.tagsToRemove = await GM.getValue('customTagsToRemove', DEFAULT_TAGS);
 
       var tagsRemoved = 0, maxAttempts = 3;
       for (var attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -154,14 +154,14 @@
           blockBtn.title = 'Hides all posts from this author';
           blockBtn.addEventListener('mouseenter', function () { this.style.backgroundColor = '#545b62'; });
           blockBtn.addEventListener('mouseleave', function () { this.style.backgroundColor = '#6c757d'; });
-          blockBtn.addEventListener('click', function (e) {
+          blockBtn.addEventListener('click', async function (e) {
             e.preventDefault();
             e.stopPropagation();
             var name = authorEl.textContent.trim();
-            var blocked = GM_getValue('blockedAuthors', []);
+            var blocked = await GM.getValue('blockedAuthors', []);
             if (blocked.indexOf(name) === -1) {
               blocked.push(name);
-              GM_setValue('blockedAuthors', blocked);
+              await GM.setValue('blockedAuthors', blocked);
             }
             var container = article.closest('.Plate.ListingElement') || article;
             container.style.display = 'none';

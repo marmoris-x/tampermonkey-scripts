@@ -25,8 +25,8 @@
    * Navigates to a Gutefrage feed section with the saved date parameter.
    * @param {string} section - Feed section: 'alle' or 'unbeantwortet'
    */
-  function navigateToDate(section) {
-    var navDate = GM_getValue('navDate', '');
+  async function navigateToDate(section) {
+    var navDate = await GM.getValue('navDate', '');
     var tz = toSpringeZu(navDate);
     var base = section === 'unbeantwortet' ? '/home/meine/unbeantwortet' : '/home/meine/alle';
     var url = tz ? base + '?springe-zu=' + encodeURIComponent(tz) : base;
@@ -36,8 +36,8 @@
   /**
    * Clears the saved feed navigation date.
    */
-  function resetNavigation() {
-    GM_setValue('navDate', '');
+  async function resetNavigation() {
+    await GM.setValue('navDate', '');
   }
 
   window.__GSF__ = window.__GSF__ || {};

@@ -263,24 +263,25 @@
      * Returns a hash string representing the current filter + blocked/custom state.
      * @returns {string} JSON-stringified filter state hash
      */
-    getFilterHash() {
+    async getFilterHash() {
       return JSON.stringify({
         filters: this.filters,
-        blockedAuthors: GM_getValue('blockedAuthors', []),
-        customTags: GM_getValue('customTagsToRemove', [])
+        blockedAuthors: await GM.getValue('blockedAuthors', []),
+        customTags: await GM.getValue('customTagsToRemove', [])
       });
     }
 
     /**
      * Parses CSV filter fields into cached arrays for faster matching.
      */
-    updateParsedFilters() {
+    async updateParsedFilters() {
+      var blockedAuthors = await GM.getValue('blockedAuthors', []);
       this.parsedFilterData = {
         excludeTopics: parseCSV(this.filters.topicFilters.excludeTopics),
         includeTopics: parseCSV(this.filters.topicFilters.includeTopics),
         keywords: parseCSV(this.filters.textFilters.keywords),
         excludeKeywords: parseCSV(this.filters.textFilters.excludeKeywords),
-        blockedAuthors: GM_getValue('blockedAuthors', []).map(function (a) { return a.trim().toLowerCase(); })
+        blockedAuthors: blockedAuthors.map(function (a) { return a.trim().toLowerCase(); })
       };
     }
 
@@ -288,23 +289,23 @@
      * Applies all active filters to every post on the page.
      * Uses a two-tier cache (in-memory map + DOM data attributes) for performance.
      */
-    applyFilters() {
+    async applyFilters() {
       if (!this.filtersEnabled) return;
 
       var posts = document.querySelectorAll('.Plate.ListingElement');
       var visibleCount = 0;
-      var currentHash = this.getFilterHash();
+      var currentHash = await this.getFilterHash();
       var shortHash = hashString(currentHash);
 
       if (currentHash !== this.lastFilterHash) {
         this.filterCache = {};
         this.lastFilterHash = currentHash;
-        this.updateParsedFilters();
+        await this.updateParsedFilters();
       }
 
       if (Object.keys(this.filterCache).length > 1000) this.filterCache = {};
 
-      if (!this.parsedFilterData || this.parsedFilterData.excludeTopics === null) this.updateParsedFilters();
+      if (!this.parsedFilterData || this.parsedFilterData.excludeTopics === null) await this.updateParsedFilters();
 
       for (var p = 0; p < posts.length; p++) {
         var post = posts[p];

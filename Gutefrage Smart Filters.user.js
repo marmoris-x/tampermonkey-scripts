@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.8
+// @version      3.9
 // @description  Enhanced filtering options and automatic tag management for gutefrage.net
 // @author       marmoris
 // @match        https://www.gutefrage.net/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=gutefrage.net
 // @grant        GM_addStyle
-// @grant        GM_getValue
-// @grant        GM_setValue
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.setValues

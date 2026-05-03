@@ -590,8 +590,8 @@
    * Downloads results as a JSON file.
    * @param {string} prefix
    */
-  function exportJSON(prefix) {
-    var raw = GM_getValue(prefix + '_dealfinder_results', null);
+  async function exportJSON(prefix) {
+    var raw = await GM.getValue(prefix + '_dealfinder_results', null);
     if (!raw) { TM.ui.createToast('Keine Results verfügbar!', { type: 'error' }); return; }
     var savedResults;
     try { savedResults = JSON.parse(raw); } catch (e) { return; }
@@ -610,8 +610,8 @@
    * Downloads results as a CSV file (UTF-8 BOM for Excel compatibility).
    * @param {string} prefix
    */
-  function exportCSV(prefix) {
-    var raw = GM_getValue(prefix + '_dealfinder_results', null);
+  async function exportCSV(prefix) {
+    var raw = await GM.getValue(prefix + '_dealfinder_results', null);
     if (!raw) { TM.ui.createToast('Keine Results verfügbar!', { type: 'error' }); return; }
     var savedResults;
     try { savedResults = JSON.parse(raw); } catch (e) { return; }
