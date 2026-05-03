@@ -1636,13 +1636,12 @@
             var pageText = (document.title + ' ' + document.body.innerText).toLowerCase();
             if (pageText.indexOf('captcha') !== -1 || pageText.indexOf('challenge') !== -1) {
                 captchaPaused = true;
-                var st = {
+                await saveCrawlState({
                     currentPage: currentPage,
                     currentUrl: window.location.href,
                     allTopDeals: allTopDeals,
                     maxPages: maxPages
-                };
-                GM_setValue(P + '_dealfinder_crawl_state', JSON.stringify(st));
+                });
                 pauseDealFinder();
                 updateProgress('CAPTCHA erkannt! Bitte loesen und Fortsetzen klicken', 50, 'warning');
                 return;
@@ -1739,7 +1738,7 @@
 
     async function finishDealFinder() {
         updateProgress('Erstelle finale Ranking-Liste...', 95, 'info');
-        GM_setValue(P + '_dealfinder_crawl_state', null);
+        await clearCrawlState();
 
         if (allTopDeals.length === 0) {
             updateProgress('Keine Deals gefunden!', 100, 'error');
@@ -1946,7 +1945,7 @@
         } catch (error) {
             Logger.error('Error resuming:', error);
             updateProgress('Fehler: ' + error.message, 0, 'error');
-            GM_setValue(P + '_dealfinder_crawl_state', null);
+            await clearCrawlState();
             if (allTopDeals.length > 0) {
                 await finishDealFinder();
             } else {
