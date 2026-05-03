@@ -1,17 +1,16 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.6
+// @version      5.6.1
 // @description  Adds a Tampermonkey menu command to force the current tab into PiP mode.
 // @author       marmoris-x
 // @match        *://*/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @grant        GM_registerMenuCommand
 // @noframes
-// @unwrap
 // @run-at       document-idle
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
@@ -26,6 +25,12 @@
 
     let isActivating = false;
 
+    /**
+     * Toggles Picture-in-Picture mode for the current tab.
+     * If PiP is active, exits it. Otherwise, captures the tab via getDisplayMedia
+     * and requests PiP on a hidden video element.
+     * Cleans up the stream and video element on PiP exit or user cancellation.
+     */
     async function togglePiP() {
         if (document.pictureInPictureElement) {
             try {

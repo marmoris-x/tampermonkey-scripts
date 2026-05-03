@@ -1,18 +1,18 @@
 // ==UserScript==
 // @name         BotGhost Bulk Choice Extractor
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7
+// @version      1.7.1
 // @description  Adds a "Copy Bulk" button next to "Clear All Choices" to copy label/value pairs.
 // @author       marmoris-x
 // @match        https://dashboard.botghost.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=botghost.com
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @grant        GM_setClipboard
 // @noframes
-// @unwrap
-// @run-at       document-end
+// @run-at       document-idle
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/BotGhost%20Bulk%20Choice%20Extractor.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/BotGhost%20Bulk%20Choice%20Extractor.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
@@ -24,15 +24,19 @@
 
     const log = TM.createLogger('BotGhost Bulk Choice Extractor');
 
+    /**
+     * Finds the "Clear All Choices" button and injects a "Copy Bulk" sibling button.
+     * Guarded — skips if the button already exists or the anchor is missing.
+     */
     function createAndInjectButton() {
-        // 1. Find the "Clear All Choices" button as anchor point.
+        // Find the "Clear All Choices" button as anchor point.
         const clearAllButton = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'Clear All Choices');
 
-        // 2. Only proceed if the anchor button exists.
+        // Only proceed if the anchor button exists.
         if (clearAllButton) {
             const targetContainer = clearAllButton.parentElement;
 
-            // 3. Check if container is valid and our button does not exist yet.
+            // Check if container is valid and our button does not exist yet.
             if (targetContainer && !document.getElementById('bulk-copy-button')) {
                 const copyButton = document.createElement('button');
                 copyButton.textContent = 'Copy Bulk';
@@ -76,12 +80,9 @@
         }
     }
 
-    const observer = new MutationObserver(() => {
-        // Called on every DOM change but safe due to guarded checks inside createAndInjectButton.
+    TM.dom.observeMutations(() => {
         createAndInjectButton();
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+    }, document.body);
 
     // Run an initial check on script load.
     createAndInjectButton();

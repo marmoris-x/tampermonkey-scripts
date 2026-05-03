@@ -8,13 +8,12 @@
 // @grant        GM_getValue
 // @run-at       document-start
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=reddit.com
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @noframes
-// @unwrap
-// @version      2.5.3
+// @version      2.5.4
 // @author       marmoris-x
 // @description  Removes NSFW popup, un-blurs content, and makes website accessible
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Reddit%20Content%20Unlocker.user.js
@@ -99,13 +98,26 @@
     `;
 
     // --- Helpers ---
+    /**
+     * Removes all elements matching the given CSS selector.
+     * @param {string} s - CSS selector string
+     */
     const removeAll  = s => document.querySelectorAll(s).forEach(e => e.remove());
+    /**
+     * Force-reveals an element by setting display, opacity, filter, and height to important values.
+     * @param {HTMLElement} el - The element to reveal
+     */
     const reveal     = el => {
         el.style.setProperty('display',  'block', 'important');
         el.style.setProperty('opacity',  '1',     'important');
         el.style.setProperty('filter',   'none',  'important');
         el.style.setProperty('height',   '100%',  'important');
     };
+    /**
+     * Unblurs all images within a root element by removing opacity classes and setting inline styles.
+     * Marks processed images with data-unblurred attribute.
+     * @param {HTMLElement} root - The root element to scan
+     */
     const unblurImgs = root => root.querySelectorAll('img:not([data-unblurred])').forEach(img => {
         img.setAttribute('data-unblurred', '1');
         img.classList.remove('opacity-30', 'opacity-50');
@@ -113,6 +125,10 @@
         img.style.setProperty('filter',  'none', 'important');
     });
 
+    /**
+     * Injects the global CSS that hides blocking modals and removes blur from images.
+     * Only runs once — subsequent calls are no-ops.
+     */
     let _globalCSSInjected = false;
     function injectGlobalCSS() {
         if (_globalCSSInjected) return;
@@ -122,6 +138,10 @@
         document.head.appendChild(s);
     }
 
+    /**
+     * Removes blur from images that have URL-based blur parameters or inline blur styles.
+     * Rewrites image src to strip blur= and format=pjpg parameters.
+     */
     function removeImageBlur() {
         document.querySelectorAll('img[src*="blur="]:not([data-unblurred]), img[style*="blur"]:not([data-unblurred])').forEach(img => {
             img.setAttribute('data-unblurred', '1');
@@ -135,6 +155,10 @@
     }
 
     // --- Main callback ---
+    /**
+     * Main callback — removes blocking elements, un-blurs images and NSFW/spoiler containers.
+     * Called by the MutationObserver and on initial load.
+     */
     function callback() {
         if (!_menuDone) { _menuDone = true; initMenu(); }
         if (!state) return;
@@ -187,6 +211,10 @@
     }
 
     // --- Menu ---
+    /**
+     * Initializes the in-page "Unblur" menu with toggle controls for NSFW and spoiler unblurring.
+     * Persists state via GM_setValue.
+     */
     function initMenu() {
         const menuStyle = document.createElement('style');
         menuStyle.textContent = MENU_CSS;

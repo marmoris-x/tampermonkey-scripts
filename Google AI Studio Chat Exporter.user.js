@@ -1,18 +1,21 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.2.1
+// @version      5.2.2
 // @description  Chat exporter in settings sidebar + native mic dialog repositioned & non-blocking
-// @author       marmoris
+// @author       marmoris-x
 // @match        https://aistudio.google.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @grant        none
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/ui-components.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/markdown-converter.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/ui-components.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/markdown-converter.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @run-at       document-idle
+// @noframes
 // @license      MIT
 // ==/UserScript==
 
@@ -186,6 +189,12 @@
 
     // ==================== EXTRACTION ====================
 
+    /**
+     * Extracts the model's thinking/reasoning content from a chat turn element.
+     * Looks for ms-thought-chunk with an enabled expansion panel.
+     * @param {HTMLElement} turnEl - The chat turn element
+     * @returns {string} Markdown-formatted thought content, or empty string
+     */
     function getThoughts(turnEl) {
         var thoughtChunk = turnEl.querySelector('ms-thought-chunk');
         if (!thoughtChunk) return '';
@@ -195,6 +204,11 @@
         return body ? TM.markdown.htmlToMarkdown(body) : '';
     }
 
+    /**
+     * Extracts the main text content from a chat turn, skipping thought chunks.
+     * @param {HTMLElement} turnEl - The chat turn element
+     * @returns {string} Trimmed markdown content
+     */
     function getContent(turnEl) {
         var out = '';
         var chunks = turnEl.querySelectorAll('ms-text-chunk');
@@ -205,6 +219,10 @@
         return out.trim();
     }
 
+    /**
+     * Extracts all chat turns from the page, collecting role, timestamp, thoughts, and content.
+     * @returns {Array<{role: string, timestamp: string, thoughts: string, content: string}>}
+     */
     function extractAllTurns() {
         var result = [];
         var turnEls = document.querySelectorAll('ms-chat-turn');
@@ -225,6 +243,11 @@
 
     // ==================== FORMATTERS ====================
 
+    /**
+     * Formats chat turns as a Markdown document with optional collapsible thinking sections.
+     * @param {Array} turns - Array of turn objects from extractAllTurns()
+     * @returns {string} Markdown-formatted conversation
+     */
     function turnsToMarkdown(turns) {
         var lines = [];
         for (var i = 0; i < turns.length; i++) {
@@ -241,6 +264,12 @@
         return lines.join('\n\n---\n\n');
     }
 
+    /**
+     * Strips Markdown formatting from turn output, returning plain text.
+     * Removes headings, bold, italic, code blocks, and replaces separators.
+     * @param {Array} turns - Array of turn objects
+     * @returns {string} Plain text conversation
+     */
     function turnsToPlainText(turns) {
         return turnsToMarkdown(turns)
             .replace(/<details>\n<summary>(.*?)<\/summary>\n\n([\s\S]*?)\n\n<\/details>/g, '[$1]\n$2')
@@ -257,6 +286,11 @@
             .trim();
     }
 
+    /**
+     * Exports the chat in the requested format.
+     * @param {string} format - 'markdown' or 'text'
+     * @returns {string|null} The formatted chat, or null if no turns found
+     */
     function exportChat(format) {
         var turns = extractAllTurns();
         if (!turns.length) return null;
@@ -265,6 +299,10 @@
 
     // ==================== SIDEBAR SECTION ====================
 
+    /**
+     * Builds the export section DOM element for the sidebar, including toggle and copy buttons.
+     * @returns {HTMLDivElement}
+     */
     function buildSection() {
         var wrap = document.createElement('div');
         wrap.id = 'ais-export-section';
@@ -302,12 +340,22 @@
         return wrap;
     }
 
+    /**
+     * Creates a visual divider element.
+     * @returns {HTMLDivElement}
+     */
     function makeDivider() {
         var d = document.createElement('div');
         d.className = 'ais-divider';
         return d;
     }
 
+    /**
+     * Creates a section header with a material icon and label text.
+     * @param {string} icon - Material Symbols icon name
+     * @param {string} label - Header label text
+     * @returns {HTMLDivElement}
+     */
     function makeHeader(icon, label) {
         var h = document.createElement('div');
         h.className = 'ais-header';
@@ -315,6 +363,13 @@
         return h;
     }
 
+    /**
+     * Creates a copy button for a specific export format.
+     * @param {string} label - Button display text
+     * @param {string} title - Tooltip text
+     * @param {string} format - 'markdown' or 'text'
+     * @returns {HTMLButtonElement}
+     */
     function makeCopyBtn(label, title, format) {
         var btn = document.createElement('button');
         btn.className = 'ais-copy-btn';
@@ -324,6 +379,13 @@
         return btn;
     }
 
+    /**
+     * Handles the copy action: exports chat, copies to clipboard, shows feedback.
+     * Falls back to textarea-based copy if navigator.clipboard fails.
+     * @param {string} format - 'markdown' or 'text'
+     * @param {HTMLButtonElement} btn - The clicked button element
+     * @param {string} origLabel - Original button label for reset
+     */
     async function handleCopy(format, btn, origLabel) {
         var text = exportChat(format);
         if (!text) {

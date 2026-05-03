@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.6
+// @version      1.6.1
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
 // @author       marmoris-x
 // @match        https://flamecomics.xyz/*
@@ -9,14 +9,11 @@
 // @match        https://flamecomics.com/*
 // @match        https://www.flamecomics.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=flamecomics.com
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
-// @sandbox      JavaScript
-// @inject-into  content
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @grant        none
 // @noframes
-// @unwrap
-// @run-at       document-end
+// @run-at       document-idle
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
@@ -89,6 +86,10 @@
 
     // --- SORT LOGIC ---
 
+    /**
+     * Finds inner DescSeriesCard containers and returns their Mantine Grid Column wrappers.
+     * @returns {HTMLElement[]} Array of wrapper elements
+     */
     function getSeriesWrappers() {
         // Find inner card containers
         const innerCards = document.querySelectorAll('[class*="DescSeriesCard_cardContainer"]');
@@ -105,6 +106,12 @@
         return Array.from(wrappers);
     }
 
+    /**
+     * Parses the hearts/likes count from a series card wrapper.
+     * Handles K (thousands) and M (millions) suffixes.
+     * @param {HTMLElement} wrapper - The series card wrapper element
+     * @returns {number} Numeric hearts count, or 0 if not found
+     */
     function getHeartsCount(wrapper) {
         const heartIcon = wrapper.querySelector('svg.bi-heart-fill');
         if (!heartIcon) return 0;
@@ -125,11 +132,20 @@
         return 0;
     }
 
+    /**
+     * Extracts the comic title from a series card wrapper.
+     * @param {HTMLElement} wrapper - The series card wrapper element
+     * @returns {string} The title text, or empty string
+     */
     function getTitle(wrapper) {
         const titleEl = wrapper.querySelector('[class*="DescSeriesCard_title"]');
         return titleEl ? titleEl.textContent.trim() : '';
     }
 
+    /**
+     * Sorts the series wrappers in the DOM using the provided comparison function.
+     * @param {function} compareFunction - Sort comparator (a, b) => number
+     */
     function performSort(compareFunction) {
         const wrappers = getSeriesWrappers();
         if (wrappers.length === 0) return;
@@ -159,6 +175,10 @@
 
     // --- UI LOGIC ---
 
+    /**
+     * Creates the custom sort dropdown element with all sort options.
+     * @returns {HTMLDivElement} The dropdown element
+     */
     function createDropdown() {
         const dropdown = document.createElement('div');
         dropdown.className = 'custom-sort-dropdown';
@@ -198,13 +218,19 @@
         return dropdown;
     }
 
+    /**
+     * Removes the sort dropdown from the DOM and resets state.
+     */
     function closeDropdown() {
         const dropdown = document.querySelector('.custom-sort-dropdown');
         if (dropdown) dropdown.remove();
         dropdownOpen = false;
     }
 
-    // Find the sort button by searching for a span with text "Sort Order"
+    /**
+     * Finds the native "Sort Order" button on the page.
+     * @returns {HTMLElement|null} The sort button or null
+     */
     function findSortButton() {
         const labels = Array.from(document.querySelectorAll('.mantine-Button-label'));
         const label = labels.find(el => el.textContent.trim() === 'Sort Order');
@@ -215,6 +241,11 @@
         return null;
     }
 
+    /**
+     * Hijacks the native sort button: wraps it, strips its listeners via cloning,
+     * and attaches a custom click handler that opens the sort dropdown.
+     * @param {HTMLElement} button - The sort button element
+     */
     function setupSortButton(button) {
         if (!button || button.getAttribute('data-sort-enhanced') === 'true') return;
 
@@ -258,6 +289,9 @@
         });
     }
 
+    /**
+     * Entry point — sets up the MutationObserver and runs the initial sort button scan.
+     */
     function init() {
         TM.dom.observeMutations(() => {
             const btn = findSortButton();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Search Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.0.4
+// @version      1.0.5
 // @description  Add Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner.
 // @author       marmoris-x
 // @match        *://www.google.com/search*
@@ -14,14 +14,11 @@
 // @match        *://www.google.com.au/search*
 // @match        *://encrypted.google.com/search*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
-// @sandbox      JavaScript
-// @inject-into  content
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @grant        none
 // @noframes
-// @unwrap
-// @run-at       document-end
+// @run-at       document-idle
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20Search%20Enhanced.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20Search%20Enhanced.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
@@ -55,6 +52,9 @@
     // ==========================================
     // STYLES
     // ==========================================
+    /**
+     * Injects the custom CSS styles for the Maps shortcut button.
+     */
     function addStyles() {
         const style = document.createElement('style');
         style.textContent = `
@@ -96,6 +96,10 @@
     //     div[role="listitem"] [jscontroller]  < "Mehr" dropdown (last visible item)
     // ==========================================
     const NavigationModule = {
+        /**
+         * Injects Reddit, YouTube, and Maps tabs into the Google search tab bar.
+         * Clones a reference tab item, clears active state, and inserts before the "Mehr" dropdown.
+         */
         inject() {
             const query = Utils.getQuery();
             if (!query) return;
@@ -170,6 +174,9 @@
     // MODULE: MAPS SHORTCUT BUTTON
     // ==========================================
     const MapsModule = {
+        /**
+         * Injects an "Open in Maps" shortcut button onto the embedded map widget.
+         */
         run() {
             const query = Utils.getQuery();
             if (!query) return;
@@ -193,6 +200,9 @@
     // Strips Google's click-tracking attributes from result links
     // ==========================================
     const CleanerModule = {
+        /**
+         * Strips Google's click-tracking attributes (onmousedown, ping) from result links.
+         */
         run() {
             document.querySelectorAll('a[href^="http"]:not(.gss-clean)').forEach(l => {
                 l.removeAttribute('onmousedown');
@@ -206,11 +216,17 @@
     // MAIN CONTROLLER
     // ==========================================
     const Controller = {
+        /**
+         * Entry point — injects styles, runs all modules, and sets up the MutationObserver.
+         */
         init() {
             addStyles();
             this.run();
             TM.dom.observeMutations(TM.dom.debounce(() => this.run(), 200), document.body);
         },
+        /**
+         * Runs all enhancement modules: navigation tabs, Maps shortcut, and link cleaner.
+         */
         run() {
             NavigationModule.inject();
             if (CONFIG.features.mapShortcut) MapsModule.run();

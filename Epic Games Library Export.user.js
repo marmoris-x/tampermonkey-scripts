@@ -1,22 +1,22 @@
 // ==UserScript==
 // @name         Epic Games Library Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      6.3.1
+// @version      6.3.2
 // @description  High-Performance Game Library Exporter. Start via Tampermonkey menu.
-// @author       marmoris
+// @author       marmoris-x
 // @match        https://www.epicgames.com/account/transactions*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=epicgames.com
 // @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/ui-components.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
+// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/ui-components.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @run-at       document-idle
 // @sandbox      JavaScript
 // @inject-into  content
 // @noframes
-// @unwrap
 // @license      MIT
 // ==/UserScript==
 
@@ -58,6 +58,12 @@
 
         // ── UI construction ──
 
+        /**
+         * Creates a labeled stats display row for the sidebar panel.
+         * @param {string} label - The label text
+         * @param {string|number} initial - Initial value
+         * @returns {{ host: HTMLElement, val: HTMLElement }} Row container and value element
+         */
         function statRow(label, initial) {
             var row = document.createElement('div');
             row.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:6px;color:#888;font-size:12px;';
@@ -81,6 +87,12 @@
         barFill.style.cssText = 'height:100%;width:0%;background:#f1c40f;transition:width 0.2s linear;';
         barWrap.appendChild(barFill);
 
+        /**
+         * Creates a styled button element.
+         * @param {string} text - Button label
+         * @param {string} bg - CSS background value
+         * @returns {HTMLButtonElement}
+         */
         function makeBtn(text, bg) {
             var btn = document.createElement('button');
             btn.textContent = text;
@@ -138,8 +150,17 @@
 
         // ── Core logic ──
 
+        /**
+         * Promise-based delay.
+         * @param {number} ms - Milliseconds to wait
+         * @returns {Promise<void>}
+         */
         function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+        /**
+         * Extracts game titles from the current page's transaction rows.
+         * Filters out items matching CONFIG.ignoreList.
+         */
         function scrapePage() {
             var nodes = document.querySelectorAll(CONFIG.selector);
             for (var i = 0; i < nodes.length; i++) {
@@ -150,6 +171,9 @@
             }
         }
 
+        /**
+         * Completes the scan, updates UI to show export options and final stats.
+         */
         function finishScan() {
             isRunning = false;
             stopBtn.style.display = 'none';
@@ -169,6 +193,10 @@
             log('Scan finished: ' + gamesSet.size + ' games found');
         }
 
+        /**
+         * Main pagination loop — iterates through transaction history pages
+         * until the Next button is disabled or the user hits Stop.
+         */
         async function processLoop() {
             if (isRunning) return;
             isRunning = true;
@@ -210,6 +238,12 @@
             if (isRunning) finishScan();
         }
 
+        /**
+         * Triggers a browser file download from a string.
+         * @param {string} content - File content
+         * @param {string} filename - Output filename
+         * @param {string} type - MIME type (e.g. 'text/plain', 'text/csv')
+         */
         function downloadFile(content, filename, type) {
             var blob = new Blob([content], { type: type });
             var url = URL.createObjectURL(blob);
