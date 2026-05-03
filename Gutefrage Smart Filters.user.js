@@ -1,204 +1,144 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
-// @namespace    http://tampermonkey.net/
-// @version      3.6
-// @description  Kombinierte Lösung: Erweiterte Filteroptionen und automatisches Tag-Management für gutefrage.net
+// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
+// @version      3.7
+// @description  Enhanced filtering options and automatic tag management for gutefrage.net
 // @author       marmoris
 // @match        https://www.gutefrage.net/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=gutefrage.net
+// @icon64       https://www.google.com/s2/favicons?sz=64&domain=gutefrage.net
 // @grant        GM_addStyle
-// @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.setValues
 // @grant        GM_openInTab
 // @grant        window.close
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/storage-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/ui-components.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/i18n-utils.js
 // @run-at       document-idle
+// @inject-into  content
+// @sandbox      JavaScript
+// @noframes
+// @unwrap
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Gutefrage%20Smart%20Filters.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Gutefrage%20Smart%20Filters.user.js
+// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @license      MIT
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
-    // ============================================
-    // SHARED UTILITIES
-    // ============================================
+    // ---- Loggers ----
+    var log = TM.createLogger('Gutefrage Smart Filters');
+    var tagLog = TM.createLogger('Gutefrage Tag Remover');
 
-    class Utils {
-        static async waitForElements(selector, maxWaitTime = 15000, checkInterval = 500) {
-            const startTime = Date.now();
-            return new Promise((resolve) => {
-                const checkForElements = () => {
-                    const elements = document.querySelectorAll(selector);
-                    const elapsed = Date.now() - startTime;
-                    if (elements.length > 0) {
-                        console.log(`[Gutefrage Smart Filters] Elements found: ${selector} after ${elapsed}ms`);
-                        resolve(elements);
-                        return;
-                    }
-                    if (elapsed >= maxWaitTime) {
-                        console.log(`[Gutefrage Smart Filters] Timeout for ${selector} (${maxWaitTime}ms)`);
-                        resolve(elements);
-                        return;
-                    }
-                    setTimeout(checkForElements, checkInterval);
-                };
-                checkForElements();
-            });
-        }
+    // ---- Constants ----
+    var DEFAULT_TAGS = ['islam', 'allah', 'muslime', 'koran', 'mohammed'];
 
-        static async waitForPageReady() {
-            await new Promise(resolve => {
-                if (document.readyState === 'complete') {
-                    resolve();
-                } else {
-                    window.addEventListener('load', resolve);
+    var DEFAULT_FILTERS = {
+        afterDate: '',
+        contentFilters: { onlyBookmarked: false, hideBookmarked: false, onlyWithImages: false, hideWithImages: false, hidePostTypes: [] },
+        interactionFilters: { minAnswers: '', maxAnswers: '', minLikes: '' },
+        textFilters: { keywords: '', excludeKeywords: '' },
+        topicFilters: { excludeTopics: '', includeTopics: '' }
+    };
+
+    // ---- Native FilterMenu improvements ----
+    GM_addStyle([
+        '.FilterMenu { max-height:60vh !important; overflow-y:auto !important; overflow-x:hidden !important; padding-right:10px !important; position:relative !important; scrollbar-width:thin; scrollbar-color:rgba(0,0,0,0.3) rgba(0,0,0,0.1); }',
+        '.FilterMenu::-webkit-scrollbar { width:6px; }',
+        '.FilterMenu::-webkit-scrollbar-track { background:rgba(0,0,0,0.1); border-radius:3px; }',
+        '.FilterMenu::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.3); border-radius:3px; }',
+        '.FilterMenu::-webkit-scrollbar-thumb:hover { background:rgba(0,0,0,0.5); }',
+        '.Toggletip-content { max-height:70vh !important; }',
+        '.FilterMenu-section { position:sticky; top:-1px; background:inherit; z-index:1; padding-bottom:5px; }'
+    ].join('\n'));
+
+    // ---- String helpers ----
+
+    function hashString(str) {
+        var hash = 5381, i;
+        for (i = 0; i < str.length; i++) hash = ((hash << 5) + hash) + str.charCodeAt(i);
+        return (hash & 0x7FFFFFFF).toString(36).substring(0, 8);
+    }
+
+    function parseCSV(text, lowercase) {
+        if (!text || typeof text !== 'string') return [];
+        return text.split(',').map(function (t) { return lowercase !== false ? t.trim().toLowerCase() : t.trim(); }).filter(Boolean);
+    }
+
+    function toSpringeZu(datetimeLocalValue) {
+        if (!datetimeLocalValue) return null;
+        var d = new Date(datetimeLocalValue);
+        var offset = -d.getTimezoneOffset();
+        var sign = offset >= 0 ? '+' : '-';
+        var hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+        var mm = String(Math.abs(offset) % 60).padStart(2, '0');
+        var local = datetimeLocalValue.length === 16 ? datetimeLocalValue + ':00' : datetimeLocalValue;
+        return local + sign + hh + ':' + mm;
+    }
+
+    function topicsMatch(t1, t2) {
+        return TM.i18n.matchAnyTerm(t1, [t2]) || TM.i18n.matchAnyTerm(t2, [t1]);
+    }
+
+    // ---- DOM helpers ----
+
+    function getPostTitle(post) {
+        var el = post.querySelector('.Question-title');
+        return el ? el.textContent.trim() : '';
+    }
+
+    function getPostAuthor(post) {
+        var el = post.querySelector('.ContentMeta-author a');
+        return el ? el.textContent.trim() : '';
+    }
+
+    function getPostDateTime(post) {
+        var el = post.querySelector('time[datetime]');
+        return el ? el.getAttribute('datetime') : '';
+    }
+
+    function getPostImagesStatus(post) {
+        return !!post.querySelector('button[aria-label="Mit Bildern"]') || !!post.querySelector('.ListingElement-image');
+    }
+
+    function getAnswerCount(post) {
+        var selectors = ['a[href*="/frage/"]', 'a[href*="/diskussion/"]', 'a[href*="/umfrage/"]', '.ListingElement-bottomBar a'];
+        for (var s = 0; s < selectors.length; s++) {
+            var links = post.querySelectorAll(selectors[s]);
+            for (var i = 0; i < links.length; i++) {
+                var text = links[i].textContent.trim();
+                if (text.toLowerCase().indexOf('keine antwort') !== -1) return 0;
+                var match = text.match(/(\d+)\s+Antwort/i);
+                if (!match && text.toLowerCase().indexOf('antwort') !== -1) {
+                    var nm = text.match(/(\d+)/);
+                    if (nm) match = [null, nm[1]];
                 }
-            });
-
-            const criticalSelectors = ['.Tag-container', '.Tag', 'article', 'main'];
-            for (const selector of criticalSelectors) {
-                const elements = await Utils.waitForElements(selector, 8000, 300);
-                if (elements.length > 0) break;
+                if (match) return parseInt(match[1], 10);
             }
-
-            const adaptiveDelay = Math.min(3000, Math.max(500, document.querySelectorAll('*').length / 100));
-            await new Promise(resolve => setTimeout(resolve, adaptiveDelay));
         }
+        return 0;
+    }
 
-        static debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-                const later = () => {
-                    timeout = null;
-                    func(...args);
-                };
-                clearTimeout(timeout);
-                timeout = setTimeout(later, wait);
-            };
-        }
+    function getPostFingerprint(post) {
+        return hashString(getPostTitle(post)) + '|' + getPostAuthor(post) + '|' + getPostDateTime(post) + '|' + getPostImagesStatus(post) + '|' + getAnswerCount(post);
+    }
 
-        // Get answer count from a post element
-        static getAnswerCount(post) {
-            const answerSelectors = [
-                'a[href*="/frage/"]', 'a[href*="/diskussion/"]',
-                'a[href*="/umfrage/"]', '.ListingElement-bottomBar a'
-            ];
-
-            for (const selector of answerSelectors) {
-                for (const link of post.querySelectorAll(selector)) {
-                    const text = link.textContent.trim();
-                    if (text.toLowerCase().includes('keine antwort')) {
-                        return 0;
-                    }
-                    let match = text.match(/(\d+)\s+Antwort/i);
-                    if (!match && text.toLowerCase().includes('antwort')) {
-                        const nm = text.match(/(\d+)/);
-                        if (nm) match = [null, nm[1]];
-                    }
-                    if (match) {
-                        return parseInt(match[1]);
-                    }
-                }
-            }
-            return 0;
-        }
-
-        // Get a fingerprint for a post based on its content (for caching)
-        static getPostFingerprint(post) {
-            const title = Utils.getPostTitle(post);
-            const author = Utils.getPostAuthor(post);
-            const datetime = Utils.getPostDateTime(post);
-            const hasImages = Utils.getPostImagesStatus(post);
-            const answerCount = Utils.getAnswerCount(post);
-
-            // Create a simple hash from the content
-            const titleHash = Utils.hashString(title);
-            return `${titleHash}|${author}|${datetime}|${hasImages}|${answerCount}`;
-        }
-
-        // Convert datetime-local value to springe-zu format with local timezone offset
-        static toSpringeZu(datetimeLocalValue) {
-            if (!datetimeLocalValue) return null;
-            const d = new Date(datetimeLocalValue);
-            const offset = -d.getTimezoneOffset();
-            const sign = offset >= 0 ? '+' : '-';
-            const hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
-            const mm = String(Math.abs(offset) % 60).padStart(2, '0');
-            const local = datetimeLocalValue.length === 16 ? datetimeLocalValue + ':00' : datetimeLocalValue;
-            return local + sign + hh + ':' + mm;
-        }
-
-        // Parse comma-separated values into normalized array
-        static parseCSV(text, lowercase = true) {
-            if (!text || typeof text !== 'string') return [];
-            return text.split(',')
-                .map(t => lowercase ? t.trim().toLowerCase() : t.trim())
-                .filter(Boolean);
-        }
-
-        // Simple string hash function (djb2 variant)
-        static hashString(str) {
-            let hash = 5381;
-            for (let i = 0; i < str.length; i++) {
-                hash = ((hash << 5) + hash) + str.charCodeAt(i); // hash * 33 + c
-            }
-            // Convert to base36 string (shorter than hex)
-            return (hash & 0x7FFFFFFF).toString(36).substring(0, 8);
-        }
-
-
-        // Normalize topic strings for comparison (handles "Religion & Glaube" vs "religion-glaube")
-        static normalizeTopic(topic) {
-            if (!topic) return '';
-            // Convert to lowercase
-            let normalized = topic.toLowerCase();
-
-            // Replace German umlauts and ß
-            normalized = normalized
-                .replace(/ä/g, 'ae')
-                .replace(/ö/g, 'oe')
-                .replace(/ü/g, 'ue')
-                .replace(/ß/g, 'ss');
-
-            // Remove spaces, ampersands, hyphens, underscores, commas, periods, and other separators
-            normalized = normalized.replace(/[&\s\-_,.]+/g, '');
-
-            // Remove any remaining non-alphanumeric characters (except letters and numbers)
-            normalized = normalized.replace(/[^a-z0-9]/g, '');
-
-            return normalized;
-        }
-
-        // Match topics with normalization (handles different representations)
-        // Uses substring matching: "Religion" matches "Religion & Glaube"
-        static topicsMatch(topic1, topic2) {
-            const norm1 = Utils.normalizeTopic(topic1);
-            const norm2 = Utils.normalizeTopic(topic2);
-            return norm1.includes(norm2) || norm2.includes(norm1);
-        }
-
-        // Common DOM query helpers
-        static getPostTitle(post) {
-            return post.querySelector('.Question-title')?.textContent.trim() || '';
-        }
-
-        static getPostAuthor(post) {
-            return post.querySelector('.ContentMeta-author a')?.textContent.trim() || '';
-        }
-
-        static getPostDateTime(post) {
-            const timeEl = post.querySelector('time[datetime]');
-            return timeEl ? timeEl.getAttribute('datetime') : '';
-        }
-
-        static getPostImagesStatus(post) {
-            return !!post.querySelector('button[aria-label="Mit Bildern"]') ||
-                   !!post.querySelector('.ListingElement-image');
-        }
+    async function waitForTagPageReady() {
+        if (document.readyState !== 'complete') await new Promise(function (r) { window.addEventListener('load', r); });
+        try { await TM.dom.waitForElement('.Tag-container, .Tag, article, main', 8000); } catch (e) { /* timeout */ }
+        var delay = Math.min(3000, Math.max(500, document.querySelectorAll('*').length / 100));
+        await new Promise(function (r) { setTimeout(r, delay); });
     }
 
     // ============================================
-    // TAG REMOVER MODULE
+    // TAG REMOVER
     // ============================================
 
     class TagRemover {
@@ -214,199 +154,159 @@
         }
 
         removeTag(tagElement) {
-            const hideButton = tagElement.querySelector('.Tag-action');
+            var hideButton = tagElement.querySelector('.Tag-action');
             if (hideButton) {
                 hideButton.click();
-                console.log(`[Tag Remover] Tag removed: ${tagElement.getAttribute('aria-label')}`);
+                tagLog.log('Tag removed:', tagElement.getAttribute('aria-label'));
                 return true;
             }
             return false;
         }
 
         async removeUnwantedTags() {
-            console.log('[Tag Remover] Starting tag removal process...');
-            await Utils.waitForPageReady();
-
-            // Reload tags from storage in case user changed them in sidebar
+            tagLog.log('Starting tag removal process...');
+            await waitForTagPageReady();
             this.tagsToRemove = GM_getValue('customTagsToRemove', DEFAULT_TAGS);
 
-            let tagsRemoved = 0;
-            const maxAttempts = 3;
-
-            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                const tagContainers = document.querySelectorAll('.Tag-container');
-                console.log(`[Tag Remover] Attempt ${attempt}/${maxAttempts}, found ${tagContainers.length} containers`);
+            var tagsRemoved = 0, maxAttempts = 3;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+                var tagContainers = document.querySelectorAll('.Tag-container');
+                tagLog.log('Attempt ' + attempt + '/' + maxAttempts + ', found ' + tagContainers.length + ' containers');
 
                 if (tagContainers.length === 0 && attempt < maxAttempts) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await new Promise(function (r) { setTimeout(r, 2000); });
                     continue;
                 }
 
-                for (const tagContainer of tagContainers) {
-                    const tagSlug = tagContainer.querySelector('.Tag')?.getAttribute('data-tag-slug');
-                    if (tagSlug && this.tagsToRemove.includes(tagSlug.toLowerCase())) {
-                        if (this.removeTag(tagContainer)) {
+                for (var i = 0; i < tagContainers.length; i++) {
+                    var tagSlug = tagContainers[i].querySelector('.Tag');
+                    tagSlug = tagSlug ? tagSlug.getAttribute('data-tag-slug') : null;
+                    if (tagSlug && this.tagsToRemove.indexOf(tagSlug.toLowerCase()) !== -1) {
+                        if (this.removeTag(tagContainers[i])) {
                             tagsRemoved++;
-                            await new Promise(resolve => setTimeout(resolve, 200));
+                            await new Promise(function (r) { setTimeout(r, 200); });
                         }
                     }
                 }
-
                 if (tagContainers.length > 0) break;
             }
 
-            console.log(`[Tag Remover] Completed. Total tags removed: ${tagsRemoved}`);
+            tagLog.log('Completed. Total tags removed: ' + tagsRemoved);
             return tagsRemoved;
         }
 
         addRemoveTagButtons() {
-            const articles = document.querySelectorAll('article.ListingElement, .ContentCard');
+            var btnStyle = [
+                'color:white; border:none; padding:4px 12px; margin-left:8px; border-radius:12px;',
+                'font-size:13px; font-weight:500; cursor:pointer; transition:background-color 0.2s;',
+                'display:inline-flex; align-items:center; height:24px; white-space:nowrap;'
+            ].join(' ');
 
-            articles.forEach(article => {
+            Array.prototype.forEach.call(document.querySelectorAll('article.ListingElement, .ContentCard'), function (article) {
                 if (article.querySelector('.custom-remove-tags-button')) return;
 
-                let buttonContainer = article.querySelector('.ListingElement-bottomBar--withItemActions .u-flex:last-child');
+                var buttonContainer = article.querySelector('.ListingElement-bottomBar--withItemActions .u-flex:last-child');
+                if (!buttonContainer) buttonContainer = article.querySelector('.ContentCard-action, .ContentCard-actions');
                 if (!buttonContainer) {
-                    buttonContainer = article.querySelector('.ContentCard-action, .ContentCard-actions');
-                }
-                if (!buttonContainer) {
-                    const tagSection = article.querySelector('.Tag');
+                    var tagSection = article.querySelector('.Tag');
                     if (tagSection) buttonContainer = tagSection.parentElement;
                 }
+                if (!buttonContainer) return;
 
-                if (buttonContainer) {
-                    const btnStyle = `
-                        color: white;
-                        border: none;
-                        padding: 4px 12px;
-                        margin-left: 8px;
-                        border-radius: 12px;
-                        font-size: 13px;
-                        font-weight: 500;
-                        cursor: pointer;
-                        transition: background-color 0.2s;
-                        display: inline-flex;
-                        align-items: center;
-                        height: 24px;
-                        white-space: nowrap;
-                    `;
+                var removeBtn = document.createElement('button');
+                removeBtn.className = 'Tag custom-remove-tags-button';
+                removeBtn.style.cssText = 'background-color:#dc3545; ' + btnStyle;
+                removeBtn.textContent = 'Tags entfernen';
+                removeBtn.title = 'Removes unwanted tags from this post';
 
-                    const removeTagsButton = document.createElement('button');
-                    removeTagsButton.className = 'Tag custom-remove-tags-button';
-                    removeTagsButton.style.cssText = `background-color: #dc3545; ${btnStyle}`;
-                    removeTagsButton.textContent = 'Tags entfernen';
-                    removeTagsButton.title = 'Entfernt unerwünschte Tags von diesem Beitrag';
+                removeBtn.addEventListener('mouseenter', function () { this.style.backgroundColor = '#c82333'; });
+                removeBtn.addEventListener('mouseleave', function () { this.style.backgroundColor = '#dc3545'; });
 
-                    removeTagsButton.addEventListener('mouseenter', function() { this.style.backgroundColor = '#c82333'; });
-                    removeTagsButton.addEventListener('mouseleave', function() { this.style.backgroundColor = '#dc3545'; });
+                removeBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var ql = article.querySelector('a[href*="/frage/"], .ContentCard-link, .ListingElement-questionLink');
+                    if (ql) {
+                        var url = new URL(ql.href);
+                        url.searchParams.set('removeTagsAuto', 'true');
+                        removeBtn.textContent = 'Wird bearbeitet...';
+                        removeBtn.style.backgroundColor = '#28a745';
+                        if (typeof GM_openInTab !== 'undefined') {
+                            GM_openInTab(url.href, { active: false, insert: true, setParent: true });
+                        } else {
+                            window.open(url.href, '_blank');
+                        }
+                        setTimeout(function () {
+                            removeBtn.textContent = 'Tags entfernen';
+                            removeBtn.style.backgroundColor = '#dc3545';
+                        }, 2000);
+                    }
+                });
 
-                    removeTagsButton.addEventListener('click', async (e) => {
+                buttonContainer.appendChild(removeBtn);
+
+                var authorEl = article.querySelector('.ContentMeta-author a');
+                if (authorEl) {
+                    var blockBtn = document.createElement('button');
+                    blockBtn.className = 'Tag custom-block-author-button';
+                    blockBtn.style.cssText = 'background-color:#6c757d; ' + btnStyle;
+                    blockBtn.textContent = 'Autor sperren';
+                    blockBtn.title = 'Hides all posts from this author';
+                    blockBtn.addEventListener('mouseenter', function () { this.style.backgroundColor = '#545b62'; });
+                    blockBtn.addEventListener('mouseleave', function () { this.style.backgroundColor = '#6c757d'; });
+                    blockBtn.addEventListener('click', function (e) {
                         e.preventDefault();
                         e.stopPropagation();
-
-                        const questionLink = article.querySelector('a[href*="/frage/"], .ContentCard-link, .ListingElement-questionLink');
-                        if (questionLink) {
-                            const url = new URL(questionLink.href);
-                            url.searchParams.set('removeTagsAuto', 'true');
-
-                            removeTagsButton.textContent = 'Wird bearbeitet...';
-                            removeTagsButton.style.backgroundColor = '#28a745';
-
-                            if (typeof GM_openInTab !== 'undefined') {
-                                GM_openInTab(url.href, { active: false, insert: true, setParent: true });
-                            } else {
-                                window.open(url.href, '_blank');
-                            }
-
-                            setTimeout(() => {
-                                removeTagsButton.textContent = 'Tags entfernen';
-                                removeTagsButton.style.backgroundColor = '#dc3545';
-                            }, 2000);
+                        var name = authorEl.textContent.trim();
+                        var blocked = GM_getValue('blockedAuthors', []);
+                        if (blocked.indexOf(name) === -1) {
+                            blocked.push(name);
+                            GM_setValue('blockedAuthors', blocked);
                         }
+                        var container = article.closest('.Plate.ListingElement') || article;
+                        container.style.display = 'none';
                     });
-
-                    buttonContainer.appendChild(removeTagsButton);
-
-                    const authorEl = article.querySelector('.ContentMeta-author a');
-                    if (authorEl) {
-                        const blockAuthorButton = document.createElement('button');
-                        blockAuthorButton.className = 'Tag custom-block-author-button';
-                        blockAuthorButton.style.cssText = `background-color: #6c757d; ${btnStyle}`;
-                        blockAuthorButton.textContent = 'Autor sperren';
-                        blockAuthorButton.title = 'Blendet alle Beiträge dieses Autors aus';
-
-                        blockAuthorButton.addEventListener('mouseenter', function() { this.style.backgroundColor = '#545b62'; });
-                        blockAuthorButton.addEventListener('mouseleave', function() { this.style.backgroundColor = '#6c757d'; });
-
-                        blockAuthorButton.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-
-                            const authorName = authorEl.textContent.trim();
-                            const blocked = GM_getValue('blockedAuthors', []);
-                            if (!blocked.includes(authorName)) {
-                                blocked.push(authorName);
-                                GM_setValue('blockedAuthors', blocked);
-                            }
-
-                            const postContainer = article.closest('.Plate.ListingElement') || article;
-                            postContainer.style.display = 'none';
-                        });
-
-                        buttonContainer.appendChild(blockAuthorButton);
-                    }
+                    buttonContainer.appendChild(blockBtn);
                 }
             });
         }
 
         async autoRemoveAndClose() {
-            const urlParams = new URLSearchParams(window.location.search);
+            var urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('removeTagsAuto') !== 'true') return;
 
-            console.log('[Tag Remover] Auto-remove mode activated');
+            tagLog.log('Auto-remove mode activated');
 
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-                position: fixed;
-                top: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: #ffc107;
-                color: #000;
-                padding: 15px 20px;
-                border-radius: 8px;
-                z-index: 10000;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                font-size: 14px;
-                font-weight: 500;
-            `;
+            var notification = document.createElement('div');
+            notification.style.cssText = [
+                'position:fixed; top:20px; left:50%; transform:translateX(-50%);',
+                'background:#ffc107; color:#000; padding:15px 20px; border-radius:8px;',
+                'z-index:10000; box-shadow:0 4px 12px rgba(0,0,0,0.15); font-size:14px; font-weight:500;'
+            ].join(' ');
             notification.textContent = 'Warte auf vollständiges Laden der Seite...';
             document.body.appendChild(notification);
 
-            const progressInterval = setInterval(() => {
-                const tagContainers = document.querySelectorAll('.Tag-container');
-                notification.textContent = `Seite wird geladen... (${tagContainers.length} Tags gefunden)`;
+            var progressInterval = setInterval(function () {
+                var containers = document.querySelectorAll('.Tag-container');
+                notification.textContent = 'Seite wird geladen... (' + containers.length + ' Tags gefunden)';
             }, 1000);
 
             try {
-                const tagsRemoved = await this.removeUnwantedTags();
+                var tagsRemoved = await this.removeUnwantedTags();
                 clearInterval(progressInterval);
-
                 notification.style.background = '#4CAF50';
                 notification.style.color = '#fff';
-                notification.textContent = `\u2713 ${tagsRemoved} Tag(s) entfernt! Tab wird geschlossen...`;
-
-                setTimeout(() => {
+                notification.textContent = '✓ ' + tagsRemoved + ' Tag(s) entfernt! Tab wird geschlossen...';
+                setTimeout(function () {
                     window.close();
-                    setTimeout(() => {
-                        notification.textContent = 'Bitte schlie\xdfen Sie diesen Tab manuell.';
+                    setTimeout(function () {
+                        notification.textContent = 'Bitte schließen Sie diesen Tab manuell.';
                         notification.style.background = '#17a2b8';
                     }, 500);
                 }, 2000);
-
             } catch (error) {
                 clearInterval(progressInterval);
-                console.error('[Tag Remover] Error:', error);
+                tagLog.error('Error:', error);
                 notification.style.background = '#dc3545';
                 notification.style.color = '#fff';
                 notification.textContent = 'Fehler beim Entfernen der Tags!';
@@ -414,790 +314,305 @@
         }
 
         observeNewContent() {
-            const observer = new MutationObserver((mutations) => {
-                const hasNewContent = mutations.some(mutation => {
-                    return Array.from(mutation.addedNodes).some(node => {
-                        return node.nodeType === 1 && (
-                            node.matches?.('article.ListingElement, .ContentCard') ||
-                            node.querySelector?.('article.ListingElement, .ContentCard')
-                        );
-                    });
-                });
-
-                if (hasNewContent) {
-                    this.addRemoveTagButtons();
+            var self = this;
+            TM.dom.observeMutations(function (node) {
+                if (node.matches && (node.matches('article.ListingElement, .ContentCard') || node.querySelector('article.ListingElement, .ContentCard'))) {
+                    self.addRemoveTagButtons();
                 }
             });
-
-            observer.observe(document.body, { childList: true, subtree: true });
         }
     }
 
     // ============================================
-    // STYLES
-    // ============================================
-
-    // Native FilterMenu improvements
-    GM_addStyle(`
-        .FilterMenu {
-            max-height: 60vh !important;
-            overflow-y: auto !important;
-            overflow-x: hidden !important;
-            padding-right: 10px !important;
-            position: relative !important;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(0,0,0,0.3) rgba(0,0,0,0.1);
-        }
-        .FilterMenu::-webkit-scrollbar { width: 6px; }
-        .FilterMenu::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 3px; }
-        .FilterMenu::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.3); border-radius: 3px; }
-        .FilterMenu::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.5); }
-        .Toggletip-content { max-height: 70vh !important; }
-        .FilterMenu-section {
-            position: sticky;
-            top: -1px;
-            background: inherit;
-            z-index: 1;
-            padding-bottom: 5px;
-        }
-    `);
-
-    // Sidebar layout, design, push-page, dark mode
-    GM_addStyle(`
-        body {
-            transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        body.gf-sidebar-open {
-            margin-right: 360px;
-        }
-
-        /* ── Sidebar shell ── */
-        #gf-sidebar {
-            position: fixed;
-            right: -360px;
-            top: 0;
-            width: 340px;
-            height: 100vh;
-            background: var(--gf-bg, #ffffff);
-            border-left: 1px solid var(--gf-border, rgba(0,0,0,0.09));
-            z-index: 10001;
-            overflow-y: auto;
-            overflow-x: hidden;
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            padding: 0 0 32px;
-            box-sizing: border-box;
-            box-shadow: -6px 0 28px rgba(0,0,0,0.08);
-            font-size: 11px;
-            color: var(--gf-text, #2c3e50);
-            scrollbar-width: thin;
-            scrollbar-color: rgba(0,0,0,0.12) transparent;
-        }
-        #gf-sidebar::-webkit-scrollbar { width: 4px; }
-        #gf-sidebar::-webkit-scrollbar-thumb {
-            background: rgba(0,0,0,0.15);
-            border-radius: 2px;
-        }
-
-        /* ── Tab ── */
-        #gf-sidebar-tab {
-            position: fixed;
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            background: #4a90e2;
-            color: white;
-            border: none;
-            border-radius: 8px 0 0 8px;
-            padding: 16px 8px;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            cursor: pointer;
-            z-index: 10002;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
-            box-shadow: -3px 0 12px rgba(74,144,226,0.35);
-        }
-        #gf-sidebar-tab:hover { background: #3a7bd5; }
-
-        /* ── Header ── */
-        .gf-header {
-            position: sticky;
-            top: 0;
-            background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-            color: white;
-            padding: 14px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 2;
-            box-shadow: 0 2px 10px rgba(74,144,226,0.3);
-        }
-        .gf-header-title {
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.3px;
-        }
-        .gf-header-close {
-            background: rgba(255,255,255,0.18);
-            border: none;
-            color: white;
-            font-size: 14px;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 5px;
-            line-height: 1;
-            transition: background 0.15s;
-        }
-        .gf-header-close:hover { background: rgba(255,255,255,0.32); }
-
-        /* ── Stats bar ── */
-        .gf-stats-bar {
-            margin: 12px 14px 0;
-            padding: 8px 13px;
-            background: rgba(74,144,226,0.07);
-            border: 1px solid rgba(74,144,226,0.2);
-            border-radius: 7px;
-            font-size: 12px;
-            color: #4a90e2;
-            text-align: center;
-            display: none;
-            font-weight: 500;
-        }
-        .gf-stats-bar.active { display: block; }
-
-        /* ── Body padding ── */
-        .gf-body { padding: 0 14px; }
-
-        /* ── Section card ── */
-        .gf-section {
-            margin-top: 10px;
-            background: var(--gf-surface, #f7f8fc);
-            border-radius: 9px;
-            padding: 9px 11px 11px;
-            border: 1px solid var(--gf-border, rgba(0,0,0,0.06));
-        }
-        .gf-section-title {
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.9px;
-            color: var(--gf-muted, #8896a6);
-            margin: 0 0 9px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .gf-section-title::before {
-            content: '';
-            flex-shrink: 0;
-            display: inline-block;
-            width: 3px;
-            height: 11px;
-            background: #4a90e2;
-            border-radius: 2px;
-        }
-
-        /* ── Inputs ── */
-        .gf-input {
-            width: 100%;
-            padding: 6px 9px;
-            border: 1px solid var(--gf-border-input, #dde3ec);
-            border-radius: 6px;
-            font-size: 12px;
-            background: var(--gf-input-bg, #ffffff);
-            color: var(--gf-text, #2c3e50);
-            box-sizing: border-box;
-            transition: border-color 0.15s, box-shadow 0.15s;
-            font-family: inherit;
-        }
-        .gf-input + .gf-input { margin-top: 4px; }
-        .gf-input:focus {
-            outline: none;
-            border-color: #4a90e2;
-            box-shadow: 0 0 0 3px rgba(74,144,226,0.12);
-        }
-        .gf-label {
-            font-size: 10px;
-            color: var(--gf-muted, #8896a6);
-            display: block;
-            margin: 6px 0 3px;
-            font-weight: 500;
-        }
-        .gf-label:first-child { margin-top: 0; }
-        .gf-hint {
-            font-size: 10px;
-            color: var(--gf-hint, #b0bec5);
-            margin-top: 3px;
-            line-height: 1.4;
-        }
-
-
-        /* ── Post type pills ── */
-        .gf-pill-row {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-        .gf-pill-label {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            padding: 5px 12px;
-            border: 1.5px solid var(--gf-border-input, #dde3ec);
-            border-radius: 20px;
-            user-select: none;
-            transition: all 0.15s;
-            color: var(--gf-muted, #7f8c8d);
-            background: var(--gf-input-bg, #fff);
-        }
-        .gf-pill-label:has(input:checked) {
-            background: #4a90e2;
-            color: white;
-            border-color: #4a90e2;
-            box-shadow: 0 2px 6px rgba(74,144,226,0.28);
-        }
-        .gf-pill-label input { display: none; }
-
-        /* ── Toggle rows ── */
-        .gf-toggle-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 3px 0;
-        }
-        .gf-toggle-row + .gf-toggle-row {
-            margin-top: 1px;
-            padding-top: 6px;
-            border-top: 1px solid var(--gf-border, rgba(0,0,0,0.06));
-        }
-        .gf-toggle-label {
-            font-size: 12px;
-            color: var(--gf-text, #2c3e50);
-        }
-
-        /* ── Number row ── */
-        .gf-number-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .gf-number-row input {
-            width: 72px;
-            padding: 7px 8px;
-            border: 1px solid var(--gf-border-input, #dde3ec);
-            border-radius: 6px;
-            font-size: 13px;
-            background: var(--gf-input-bg, #ffffff);
-            color: var(--gf-text, #2c3e50);
-            font-family: inherit;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-        .gf-number-row input:focus {
-            outline: none;
-            border-color: #4a90e2;
-            box-shadow: 0 0 0 3px rgba(74,144,226,0.12);
-        }
-        .gf-number-row span {
-            font-size: 12px;
-            color: var(--gf-muted, #8896a6);
-        }
-
-        /* ── Date navigation buttons ── */
-        .gf-nav-row {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-        }
-        .gf-nav-btn {
-            flex: 1;
-            padding: 7px 8px;
-            font-size: 11px;
-            font-weight: 600;
-            background: var(--gf-input-bg, #fff);
-            color: #4a90e2;
-            border: 1.5px solid #4a90e2;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.15s;
-            font-family: inherit;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .gf-nav-btn:hover {
-            background: #4a90e2;
-            color: white;
-            box-shadow: 0 2px 6px rgba(74,144,226,0.28);
-        }
-        .gf-nav-btn:disabled {
-            opacity: 0.38;
-            cursor: not-allowed;
-            border-color: var(--gf-border-input, #dde3ec);
-            color: var(--gf-muted, #8896a6);
-        }
-        .gf-nav-btn:disabled:hover {
-            background: var(--gf-input-bg, #fff);
-            color: var(--gf-muted, #8896a6);
-            box-shadow: none;
-        }
-        .gf-nav-btn.active {
-            background: #4a90e2;
-            color: white;
-            box-shadow: 0 2px 6px rgba(74,144,226,0.28);
-        }
-        .gf-nav-btn.active:hover {
-            background: #3a7bd5;
-        }
-
-        /* ── Feed navigation reset button ── */
-        #gf-nav-reset {
-            background: var(--gf-surface, #f7f8fc);
-            color: var(--gf-muted, #8896a6);
-            border-color: var(--gf-border-input, #dde3ec);
-        }
-        #gf-nav-reset:hover {
-            background: var(--gf-muted, #8896a6);
-            color: white;
-            box-shadow: 0 2px 6px rgba(136,150,166,0.28);
-        }
-
-        /* ── Reset button ── */
-        .gf-reset-btn {
-            display: block;
-            width: calc(100% - 28px);
-            margin: 14px 14px 0;
-            padding: 10px;
-            background: var(--gf-surface, #f7f8fc);
-            border: 1.5px solid var(--gf-border-input, #dde3ec);
-            border-radius: 7px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            color: var(--gf-muted, #7f8c8d);
-            transition: all 0.2s;
-            font-family: inherit;
-            letter-spacing: 0.2px;
-            text-align: center;
-        }
-        .gf-reset-btn:hover {
-            background: #fff0f0;
-            border-color: #e57373;
-            color: #c0392b;
-        }
-
-        /* ── Dark mode (sidebar-only) ── */
-        #gf-sidebar.gf-dark {
-            --gf-bg: #1e2130;
-            --gf-surface: #262a3c;
-            --gf-border: rgba(255,255,255,0.07);
-            --gf-border-input: rgba(255,255,255,0.13);
-            --gf-text: #dde3ec;
-            --gf-muted: #8890a4;
-            --gf-hint: #4e5a72;
-            --gf-input-bg: #2d3248;
-        }
-        #gf-sidebar.gf-dark .gf-stats-bar {
-            background: rgba(74,144,226,0.12);
-            border-color: rgba(74,144,226,0.25);
-        }
-        #gf-sidebar.gf-dark .gf-reset-btn:hover {
-            background: rgba(192,57,43,0.15);
-            border-color: rgba(192,57,43,0.4);
-            color: #e57373;
-        }
-        #gf-sidebar.gf-dark ~ #gf-sidebar-tab {
-            background: #2a5a9e;
-            box-shadow: -3px 0 12px rgba(42,90,158,0.45);
-        }
-        #gf-sidebar.gf-dark ~ #gf-sidebar-tab:hover { background: #3570be; }
-    `);
-
-    // ============================================
-    // CONSTANTS
-    // ============================================
-
-    const DEFAULT_TAGS = ['islam', 'allah', 'muslime', 'koran', 'mohammed'];
-
-    const DEFAULT_FILTERS = {
-        afterDate: '',
-        contentFilters: {
-            onlyBookmarked: false,
-            hideBookmarked: false,
-            onlyWithImages: false,
-            hideWithImages: false,
-            hidePostTypes: []
-        },
-        interactionFilters: {
-            minAnswers: '',
-            maxAnswers: '',
-            minLikes: ''
-        },
-        textFilters: {
-            keywords: '',
-            excludeKeywords: ''
-        },
-        topicFilters: {
-            excludeTopics: '',
-            includeTopics: ''
-        }
-    };
-
-    // ============================================
-    // ENHANCED FILTER INTEGRATION (logic only)
+    // ENHANCED FILTER INTEGRATION
     // ============================================
 
     class EnhancedFilterIntegration {
         constructor() {
-            if (!this.isHomePage()) return;
+            if (!window.location.pathname.startsWith('/home/')) return;
 
-            this.filters = this.loadFilters();
+            this.filters = {
+                afterDate: DEFAULT_FILTERS.afterDate,
+                contentFilters: { onlyBookmarked: DEFAULT_FILTERS.contentFilters.onlyBookmarked, hideBookmarked: DEFAULT_FILTERS.contentFilters.hideBookmarked, onlyWithImages: DEFAULT_FILTERS.contentFilters.onlyWithImages, hideWithImages: DEFAULT_FILTERS.contentFilters.hideWithImages, hidePostTypes: [] },
+                interactionFilters: { minAnswers: DEFAULT_FILTERS.interactionFilters.minAnswers, maxAnswers: DEFAULT_FILTERS.interactionFilters.maxAnswers, minLikes: DEFAULT_FILTERS.interactionFilters.minLikes },
+                textFilters: { keywords: DEFAULT_FILTERS.textFilters.keywords, excludeKeywords: DEFAULT_FILTERS.textFilters.excludeKeywords },
+                topicFilters: { excludeTopics: DEFAULT_FILTERS.topicFilters.excludeTopics, includeTopics: DEFAULT_FILTERS.topicFilters.includeTopics }
+            };
             this.filtersEnabled = false;
             this.sidebar = null;
-            this.debouncedApplyFilters = Utils.debounce(() => this.applyFilters(), 300);
-            this.filterCache = {}; // Cache for filter results: key = filterHash + '|' + postFingerprint
+            this.debouncedApplyFilters = TM.dom.debounce(function () { this.applyFilters(); }.bind(this), 300);
+            this.filterCache = {};
             this.lastFilterHash = '';
-            this.parsedFilterData = {
-                excludeTopics: null,
-                includeTopics: null,
-                keywords: null,
-                excludeKeywords: null,
-                blockedAuthors: null
-            };
+            this.parsedFilterData = { excludeTopics: null, includeTopics: null, keywords: null, excludeKeywords: null, blockedAuthors: null };
         }
 
-        isHomePage() {
-            return window.location.pathname.startsWith('/home/');
+        async init() {
+            if (!window.location.pathname.startsWith('/home/')) return;
+            this.filters = await this.loadFilters();
         }
 
-        loadFilters() {
-            const saved = GM_getValue('enhancedFilters', {});
+        async loadFilters() {
+            var saved = await TM.storage.loadSetting('enhancedFilters', {});
             return {
-                afterDate: saved.afterDate ?? DEFAULT_FILTERS.afterDate,
-                contentFilters: { ...DEFAULT_FILTERS.contentFilters, ...saved.contentFilters },
-                interactionFilters: { ...DEFAULT_FILTERS.interactionFilters, ...saved.interactionFilters },
-                textFilters: { ...DEFAULT_FILTERS.textFilters, ...saved.textFilters },
-                topicFilters: { ...DEFAULT_FILTERS.topicFilters, ...saved.topicFilters }
+                afterDate: saved.afterDate !== undefined ? saved.afterDate : DEFAULT_FILTERS.afterDate,
+                contentFilters: this._mergeShallow(DEFAULT_FILTERS.contentFilters, saved.contentFilters),
+                interactionFilters: this._mergeShallow(DEFAULT_FILTERS.interactionFilters, saved.interactionFilters),
+                textFilters: this._mergeShallow(DEFAULT_FILTERS.textFilters, saved.textFilters),
+                topicFilters: this._mergeShallow(DEFAULT_FILTERS.topicFilters, saved.topicFilters)
             };
         }
 
-        saveFilters() {
-            GM_setValue('enhancedFilters', this.filters);
+        async saveFilters() {
+            await TM.storage.saveSetting('enhancedFilters', this.filters);
+        }
+
+        _mergeShallow(defaults, overrides) {
+            if (!overrides || typeof overrides !== 'object') return Object.assign({}, defaults);
+            var result = Object.assign({}, defaults);
+            Object.keys(overrides).forEach(function (k) { if (overrides[k] !== undefined) result[k] = overrides[k]; });
+            return result;
         }
 
         enableFilters() {
             if (!this.filtersEnabled) {
                 this.filtersEnabled = true;
                 this.observeNewPosts();
-                console.log('[Gutefrage Smart Filters] Filters activated!');
+                log.log('Filters activated!');
             }
         }
 
         observeNewPosts() {
             if (this.postObserver) return;
-
-            this.postObserver = new MutationObserver((mutations) => {
-                if (!this.filtersEnabled) return;
-
-                const hasNewPosts = mutations.some(mutation => {
-                    return Array.from(mutation.addedNodes).some(node => {
-                        return node.nodeType === 1 && (
-                            node.matches?.('.Plate.ListingElement') ||
-                            node.querySelector?.('.Plate.ListingElement')
-                        );
-                    });
-                });
-
-                if (hasNewPosts) {
-                    this.debouncedApplyFilters();
+            var self = this;
+            this.postObserver = TM.dom.observeMutations(function (node) {
+                if (!self.filtersEnabled) return;
+                if (node.matches && (node.matches('.Plate.ListingElement') || node.querySelector('.Plate.ListingElement'))) {
+                    self.debouncedApplyFilters();
                 }
             });
-
-            this.postObserver.observe(document.body, { childList: true, subtree: true });
         }
 
-        updateFilterValue(filterPath, value) {
-            const paths = filterPath.split('.');
-            let current = this.filters;
-            for (let i = 0; i < paths.length - 1; i++) {
-                current = current[paths[i]];
-            }
+        async updateFilterValue(filterPath, value) {
+            var paths = filterPath.split('.');
+            var current = this.filters;
+            for (var i = 0; i < paths.length - 1; i++) current = current[paths[i]];
             current[paths[paths.length - 1]] = value;
-            this.saveFilters();
+            await this.saveFilters();
             this.updateFilterIndicator();
         }
 
         updateFilterIndicator() {
-            const countSpan = document.querySelector('.Filter-buttonActiveFiltersCount');
+            var countSpan = document.querySelector('.Filter-buttonActiveFiltersCount');
             if (!countSpan) return;
 
-            let activeCount = 0;
+            var activeCount = 0;
             if (this.filters.afterDate) activeCount++;
-
-            const cf = this.filters.contentFilters;
+            var cf = this.filters.contentFilters;
             if (cf.onlyBookmarked) activeCount++;
             if (cf.hideBookmarked) activeCount++;
             if (cf.onlyWithImages) activeCount++;
             if (cf.hideWithImages) activeCount++;
-            if (cf.hidePostTypes?.length > 0) activeCount++;
-
-            const inf = this.filters.interactionFilters;
+            if (cf.hidePostTypes && cf.hidePostTypes.length > 0) activeCount++;
+            var inf = this.filters.interactionFilters;
             if (inf.minAnswers || inf.maxAnswers || inf.minLikes) activeCount++;
-
-            const tf = this.filters.textFilters;
+            var tf = this.filters.textFilters;
             if (tf.keywords || tf.excludeKeywords) activeCount++;
+            var topf = this.filters.topicFilters;
+            if (topf.excludeTopics || topf.includeTopics) activeCount++;
 
-            const top = this.filters.topicFilters;
-            if (top.excludeTopics || top.includeTopics) activeCount++;
-
-            countSpan.textContent = activeCount > 0 ? activeCount : '';
+            countSpan.textContent = activeCount > 0 ? String(activeCount) : '';
             countSpan.style.display = activeCount > 0 ? 'inline-block' : 'none';
         }
 
         getFilterHash() {
-            const blockedAuthors = GM_getValue('blockedAuthors', []);
-            const customTags = GM_getValue('customTagsToRemove', []);
             return JSON.stringify({
                 filters: this.filters,
-                blockedAuthors: blockedAuthors,
-                customTags: customTags
+                blockedAuthors: GM_getValue('blockedAuthors', []),
+                customTags: GM_getValue('customTagsToRemove', [])
             });
         }
 
         updateParsedFilters() {
-            // Parse filter strings once and cache them
             this.parsedFilterData = {
-                excludeTopics: Utils.parseCSV(this.filters.topicFilters.excludeTopics),
-                includeTopics: Utils.parseCSV(this.filters.topicFilters.includeTopics),
-                keywords: Utils.parseCSV(this.filters.textFilters.keywords),
-                excludeKeywords: Utils.parseCSV(this.filters.textFilters.excludeKeywords),
-                blockedAuthors: GM_getValue('blockedAuthors', []).map(a => a.trim().toLowerCase())
+                excludeTopics: parseCSV(this.filters.topicFilters.excludeTopics),
+                includeTopics: parseCSV(this.filters.topicFilters.includeTopics),
+                keywords: parseCSV(this.filters.textFilters.keywords),
+                excludeKeywords: parseCSV(this.filters.textFilters.excludeKeywords),
+                blockedAuthors: GM_getValue('blockedAuthors', []).map(function (a) { return a.trim().toLowerCase(); })
             };
         }
 
         applyFilters() {
             if (!this.filtersEnabled) return;
 
-            const posts = document.querySelectorAll('.Plate.ListingElement');
-            let visibleCount = 0;
+            var posts = document.querySelectorAll('.Plate.ListingElement');
+            var visibleCount = 0;
+            var currentHash = this.getFilterHash();
+            var shortHash = hashString(currentHash);
 
-            const currentHash = this.getFilterHash();
-            const shortHash = Utils.hashString(currentHash);
-
-            // Clear cache if filters changed
             if (currentHash !== this.lastFilterHash) {
                 this.filterCache = {};
                 this.lastFilterHash = currentHash;
                 this.updateParsedFilters();
             }
 
-            // Limit cache size to prevent memory leaks
-            if (Object.keys(this.filterCache).length > 1000) {
-                this.filterCache = {};
-            }
+            if (Object.keys(this.filterCache).length > 1000) this.filterCache = {};
 
-            // Ensure parsed filters are initialized
-            if (!this.parsedFilterData || this.parsedFilterData.excludeTopics === null) {
-                this.updateParsedFilters();
-            }
+            if (!this.parsedFilterData || this.parsedFilterData.excludeTopics === null) this.updateParsedFilters();
 
-            for (const post of posts) {
-                // Calculate fingerprint for cache (survives DOM recycling)
-                const postFingerprint = Utils.getPostFingerprint(post);
-                const cacheKey = currentHash + '|' + postFingerprint;
+            for (var p = 0; p < posts.length; p++) {
+                var post = posts[p];
+                var fingerprint = getPostFingerprint(post);
+                var cacheKey = currentHash + '|' + fingerprint;
 
-                // Check memory cache first
                 if (this.filterCache[cacheKey] !== undefined) {
-                    // Use cached result from memory
-                    const cachedResult = this.filterCache[cacheKey];
-                    if (cachedResult === false) {
-                        post.style.display = 'none';
-                    } else {
-                        visibleCount++;
-                        post.style.display = '';
-                    }
-                    // Also update DOM attributes for consistency
+                    var cached = this.filterCache[cacheKey];
+                    post.style.display = cached ? '' : 'none';
                     post.dataset.filterHash = shortHash;
-                    post.dataset.lastFilterResult = cachedResult ? 'visible' : 'hidden';
+                    post.dataset.lastFilterResult = cached ? 'visible' : 'hidden';
+                    if (cached) visibleCount++;
                     continue;
                 }
 
-                // Fallback to DOM cache (for backward compatibility)
-                const postHash = post.dataset.filterHash;
-                const lastResult = post.dataset.lastFilterResult;
-
+                var postHash = post.dataset.filterHash;
+                var lastResult = post.dataset.lastFilterResult;
                 if (postHash === shortHash && lastResult) {
-                    // Use cached result from DOM
-                    const cachedResult = lastResult === 'visible';
-                    this.filterCache[cacheKey] = cachedResult; // Populate memory cache
-                    if (!cachedResult) {
-                        post.style.display = 'none';
-                    } else {
-                        visibleCount++;
-                        post.style.display = '';
-                    }
+                    var domCached = lastResult === 'visible';
+                    this.filterCache[cacheKey] = domCached;
+                    post.style.display = domCached ? '' : 'none';
+                    if (domCached) visibleCount++;
                     continue;
                 }
 
-                let shouldShow = true;
+                var shouldShow = true;
 
                 // Date filter
-                if (this.filters.afterDate) {
-                    const timeEl = post.querySelector('time[datetime]');
-                    if (timeEl && new Date(timeEl.getAttribute('datetime')) < new Date(this.filters.afterDate)) {
-                        shouldShow = false;
+                if (shouldShow && this.filters.afterDate) {
+                    var timeEl = post.querySelector('time[datetime]');
+                    if (timeEl) {
+                        var postDate = new Date(timeEl.getAttribute('datetime'));
+                        if (postDate < new Date(this.filters.afterDate)) shouldShow = false;
                     }
                 }
 
                 // Post type filter
-                if (shouldShow && this.filters.contentFilters.hidePostTypes?.length > 0) {
-                    const link = post.querySelector('a.ListingElement-questionLink[href]');
+                if (shouldShow && this.filters.contentFilters.hidePostTypes && this.filters.contentFilters.hidePostTypes.length > 0) {
+                    var link = post.querySelector('a.ListingElement-questionLink[href]');
                     if (link) {
-                        const href = link.getAttribute('href');
-                        const type = href.includes('/frage/') ? 'frage'
-                            : href.includes('/diskussion/') ? 'diskussion'
-                            : href.includes('/umfrage/') ? 'umfrage'
-                            : null;
-                        if (type && this.filters.contentFilters.hidePostTypes.includes(type)) {
-                            shouldShow = false;
-                        }
+                        var href = link.getAttribute('href');
+                        var type = href.indexOf('/frage/') !== -1 ? 'frage' : href.indexOf('/diskussion/') !== -1 ? 'diskussion' : href.indexOf('/umfrage/') !== -1 ? 'umfrage' : null;
+                        if (type && this.filters.contentFilters.hidePostTypes.indexOf(type) !== -1) shouldShow = false;
                     }
                 }
 
                 // Bookmark filter
                 if (shouldShow && (this.filters.contentFilters.onlyBookmarked || this.filters.contentFilters.hideBookmarked)) {
-                    const isBookmarked = !!post.querySelector('.Icon--bookmark-filled-large');
+                    var isBookmarked = !!post.querySelector('.Icon--bookmark-filled-large');
                     if (this.filters.contentFilters.onlyBookmarked && !isBookmarked) shouldShow = false;
                     if (shouldShow && this.filters.contentFilters.hideBookmarked && isBookmarked) shouldShow = false;
                 }
 
                 // Images filter
                 if (shouldShow && (this.filters.contentFilters.onlyWithImages || this.filters.contentFilters.hideWithImages)) {
-                    const hasImages = Utils.getPostImagesStatus(post);
+                    var hasImages = getPostImagesStatus(post);
                     if (this.filters.contentFilters.onlyWithImages && !hasImages) shouldShow = false;
                     if (shouldShow && this.filters.contentFilters.hideWithImages && hasImages) shouldShow = false;
                 }
 
-                // Blocked author filter (using cached parsed data)
+                // Blocked author filter
                 if (shouldShow && this.parsedFilterData.blockedAuthors.length > 0) {
-                    const authorName = Utils.getPostAuthor(post).toLowerCase();
-                    if (authorName && this.parsedFilterData.blockedAuthors.includes(authorName)) {
-                        shouldShow = false;
-                    }
+                    var authorName = getPostAuthor(post).toLowerCase();
+                    if (authorName && this.parsedFilterData.blockedAuthors.indexOf(authorName) !== -1) shouldShow = false;
                 }
 
-                // Topic / Themenbereich filter (using cached parsed data)
+                // Topic filter
                 if (shouldShow && (this.parsedFilterData.excludeTopics.length > 0 || this.parsedFilterData.includeTopics.length > 0)) {
-                    // Collect all topic elements (multiple selectors to catch different Gutefrage layouts)
-                    const topicEls = post.querySelectorAll('a[href*="/thema/"], a:has(.BrandAvatar), [data-topic-slug], .ContentMeta-topic, .ContentMeta-category, a.u-strongLight:has(.BrandAvatar--small)');
-                    const topicStrings = [];
-
-                    for (const el of topicEls) {
-                        const text = (el.textContent ?? '').trim().toLowerCase();
+                    var topicEls = post.querySelectorAll('a[href*="/thema/"], a:has(.BrandAvatar), [data-topic-slug], .ContentMeta-topic, .ContentMeta-category, a.u-strongLight:has(.BrandAvatar--small)');
+                    var topicStrings = [];
+                    for (var t = 0; t < topicEls.length; t++) {
+                        var el = topicEls[t];
+                        var text = (el.textContent || '').trim().toLowerCase();
                         if (text) topicStrings.push(text);
-
-                        // Extract slug from href or data attribute
-                        const href = el.getAttribute('href');
+                        var href = el.getAttribute('href');
                         if (href) {
-                            // Try to extract any path segment that looks like a topic/category slug
-                            // Remove leading/trailing slashes, query params, and hash
-                            const cleanHref = href.replace(/^https?:\/\/[^\/]+/, ''); // Remove domain
-                            const path = cleanHref.split('?')[0].split('#')[0]; // Remove query/hash
-                            const slug = path.replace(/^\/|\/$/g, ''); // Trim slashes
-                            if (slug && !slug.match(/^(frage|diskussion|umfrage|home|meine|suche|nutzer)\//)) {
-                                // Add the full slug (e.g., "religion-glaube/goetter-propheten-religioese-figuren")
-                                topicStrings.push(slug);
-
-                                // If slug contains slashes, also add each component
-                                if (slug.includes('/')) {
-                                    const parts = slug.split('/');
-                                    for (const part of parts) {
-                                        if (part) topicStrings.push(part);
-                                    }
+                            var clean = href.replace(/^https?:\/\/[^\/]+/, '').split('?')[0].split('#')[0].replace(/^\/|\/$/g, '');
+                            if (clean && !clean.match(/^(frage|diskussion|umfrage|home|meine|suche|nutzer)\//)) {
+                                topicStrings.push(clean);
+                                if (clean.indexOf('/') !== -1) {
+                                    var parts = clean.split('/');
+                                    for (var pt = 0; pt < parts.length; pt++) { if (parts[pt]) topicStrings.push(parts[pt]); }
                                 }
                             }
                         }
-                        const dataSlug = el.getAttribute('data-topic-slug');
+                        var dataSlug = el.getAttribute('data-topic-slug');
                         if (dataSlug) topicStrings.push(dataSlug.toLowerCase());
                     }
 
-                    // Remove duplicates
-                    const uniqueTopics = [...new Set(topicStrings)];
-
-                    // Exclude topics check
-                    if (this.parsedFilterData.excludeTopics.length > 0 && uniqueTopics.length > 0) {
-                        const hasExcluded = uniqueTopics.some(topic =>
-                            this.parsedFilterData.excludeTopics.some(excl =>
-                                Utils.topicsMatch(topic, excl)
-                            )
-                        );
-                        if (hasExcluded) shouldShow = false;
+                    var uniqueTopics = [];
+                    for (var u = 0; u < topicStrings.length; u++) {
+                        if (uniqueTopics.indexOf(topicStrings[u]) === -1) uniqueTopics.push(topicStrings[u]);
                     }
 
-                    // Include topics check (only if not already excluded)
-                    if (shouldShow && this.parsedFilterData.includeTopics.length > 0) {
-                        // If post has no topics, we can't filter it out based on topics
-                        // (it might be a post without any topic assignment)
-                        if (uniqueTopics.length === 0) {
-                            // Leave it visible - can't determine if it matches or not
-                        } else {
-                            // Post has topics - check if at least one matches included topics
-                            const hasIncluded = uniqueTopics.some(topic =>
-                                this.parsedFilterData.includeTopics.some(inc =>
-                                    Utils.topicsMatch(topic, inc)
-                                )
-                            );
-                            if (!hasIncluded) shouldShow = false;
+                    if (shouldShow && this.parsedFilterData.excludeTopics.length > 0 && uniqueTopics.length > 0) {
+                        for (var ex = 0; ex < uniqueTopics.length; ex++) {
+                            for (var ec = 0; ec < this.parsedFilterData.excludeTopics.length; ec++) {
+                                if (topicsMatch(uniqueTopics[ex], this.parsedFilterData.excludeTopics[ec])) { shouldShow = false; break; }
+                            }
+                            if (!shouldShow) break;
                         }
+                    }
+
+                    if (shouldShow && this.parsedFilterData.includeTopics.length > 0 && uniqueTopics.length > 0) {
+                        var hasMatch = false;
+                        for (var ic = 0; ic < uniqueTopics.length; ic++) {
+                            for (var ic2 = 0; ic2 < this.parsedFilterData.includeTopics.length; ic2++) {
+                                if (topicsMatch(uniqueTopics[ic], this.parsedFilterData.includeTopics[ic2])) { hasMatch = true; break; }
+                            }
+                            if (hasMatch) break;
+                        }
+                        if (!hasMatch) shouldShow = false;
                     }
                 }
 
-                // Text filters (using cached parsed data)
+                // Text filters
                 if (shouldShow && (this.parsedFilterData.keywords.length > 0 || this.parsedFilterData.excludeKeywords.length > 0)) {
-                    const titleText = Utils.getPostTitle(post).toLowerCase();
-                    const bodyText = post.querySelector('.ContentBody')?.textContent.toLowerCase() ?? '';
-                    const authorText = Utils.getPostAuthor(post).toLowerCase();
-                    const searchableText = titleText + ' ' + bodyText + ' ' + authorText;
+                    var titleText = getPostTitle(post).toLowerCase();
+                    var bodyText = post.querySelector('.ContentBody') ? (post.querySelector('.ContentBody').textContent || '').toLowerCase() : '';
+                    var authorText = getPostAuthor(post).toLowerCase();
+                    var searchable = titleText + ' ' + bodyText + ' ' + authorText;
 
                     if (this.parsedFilterData.keywords.length > 0) {
-                        if (!this.parsedFilterData.keywords.some(k => searchableText.includes(k))) {
-                            shouldShow = false;
+                        var kwMatch = false;
+                        for (var kw = 0; kw < this.parsedFilterData.keywords.length; kw++) {
+                            if (searchable.indexOf(this.parsedFilterData.keywords[kw]) !== -1) { kwMatch = true; break; }
                         }
+                        if (!kwMatch) shouldShow = false;
                     }
 
                     if (shouldShow && this.parsedFilterData.excludeKeywords.length > 0) {
-                        if (this.parsedFilterData.excludeKeywords.some(k => searchableText.includes(k))) {
-                            shouldShow = false;
+                        for (var ek = 0; ek < this.parsedFilterData.excludeKeywords.length; ek++) {
+                            if (searchable.indexOf(this.parsedFilterData.excludeKeywords[ek]) !== -1) { shouldShow = false; break; }
                         }
                     }
                 }
 
-
                 // Answer count filter
                 if (shouldShow && (this.filters.interactionFilters.minAnswers !== '' || this.filters.interactionFilters.maxAnswers !== '')) {
-                    const answerCount = Utils.getAnswerCount(post);
-                    const minA = parseInt(this.filters.interactionFilters.minAnswers);
-                    const maxA = parseInt(this.filters.interactionFilters.maxAnswers);
+                    var answerCount = getAnswerCount(post);
+                    var minA = parseInt(this.filters.interactionFilters.minAnswers, 10);
+                    var maxA = parseInt(this.filters.interactionFilters.maxAnswers, 10);
                     if (!isNaN(minA) && answerCount < minA) shouldShow = false;
                     if (shouldShow && !isNaN(maxA) && answerCount > maxA) shouldShow = false;
                 }
 
                 // Likes filter
                 if (shouldShow && this.filters.interactionFilters.minLikes) {
-                    const likeBtn = post.querySelector('.ActionBarIcon button[aria-label*="Daumen"]');
-                    const likes = likeBtn
-                        ? parseInt(likeBtn.getAttribute('aria-label').match(/(\d+)/)?.[1]) || 0
-                        : parseInt(post.querySelector('.ActionBarIcon-count')?.textContent) || 0;
-                    if (likes < parseInt(this.filters.interactionFilters.minLikes)) shouldShow = false;
+                    var likeBtn = post.querySelector('.ActionBarIcon button[aria-label*="Daumen"]');
+                    var likes = likeBtn ? parseInt((likeBtn.getAttribute('aria-label').match(/(\d+)/) || [])[1], 10) || 0 : parseInt((post.querySelector('.ActionBarIcon-count') || {}).textContent, 10) || 0;
+                    if (likes < parseInt(this.filters.interactionFilters.minLikes, 10)) shouldShow = false;
                 }
 
-                // Store cache
-                this.filterCache[cacheKey] = shouldShow; // Memory cache
+                this.filterCache[cacheKey] = shouldShow;
                 post.dataset.filterHash = shortHash;
                 post.dataset.lastFilterResult = shouldShow ? 'visible' : 'hidden';
 
@@ -1205,99 +620,95 @@
                 post.style.display = shouldShow ? '' : 'none';
             }
 
-            this.updateStatsOverlay(visibleCount, posts.length);
+            this.updateStats(visibleCount, posts.length);
         }
 
-        updateStatsOverlay(visible, total) {
-            if (this.sidebar?.isOpen) {
-                this.sidebar.updateStats(visible, total);
-                const overlay = document.getElementById('gf-stats-overlay');
-                if (overlay) overlay.style.display = 'none';
-                return;
-            }
-
-            if (this.sidebar) {
-                this.sidebar.updateStats(visible, total);
-            }
-
-            let overlay = document.getElementById('gf-stats-overlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.id = 'gf-stats-overlay';
-                overlay.style.cssText = `
-                    position: fixed; bottom: 20px; right: 20px;
-                    background: rgba(30,33,48,0.85); color: white;
-                    padding: 7px 14px; border-radius: 20px;
-                    font-size: 12px; z-index: 9999; pointer-events: none;
-                    backdrop-filter: blur(6px); font-weight: 500;
-                `;
-                document.body.appendChild(overlay);
-            }
-
-            const filtered = total - visible;
-            overlay.textContent = `${visible} sichtbar \u00b7 ${filtered} gefiltert`;
-            overlay.style.display = filtered > 0 ? 'block' : 'none';
+        updateStats(visible, total) {
+            if (this.sidebar) this.sidebar.updateStats(visible, total);
         }
     }
 
     // ============================================
-    // SIDEBAR PANEL
+    // SIDEBAR CONTENT CSS (scoped inside shadow DOM)
+    // ============================================
+
+    var SIDEBAR_CSS = [
+        '.gf-stats-bar { margin:8px 0; padding:8px 13px; background:rgba(76,175,80,0.1); border:1px solid rgba(76,175,80,0.25); border-radius:7px; font-size:12px; color:#81c784; text-align:center; display:none; font-weight:500; }',
+        '.gf-stats-bar.active { display:block; }',
+
+        '.gf-section { margin-top:10px; background:#262a3c; border-radius:9px; padding:9px 11px 11px; border:1px solid rgba(255,255,255,0.07); }',
+        '.gf-section-title { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.9px; color:#8890a4; margin:0 0 9px; display:flex; align-items:center; gap:6px; }',
+        '.gf-section-title::before { content:""; flex-shrink:0; display:inline-block; width:3px; height:11px; background:#4CAF50; border-radius:2px; }',
+
+        '.gf-input { width:100%; padding:6px 9px; border:1px solid rgba(255,255,255,0.13); border-radius:6px; font-size:12px; background:#2d3248; color:#dde3ec; box-sizing:border-box; transition:border-color 0.15s; font-family:inherit; }',
+        '.gf-input + .gf-input { margin-top:4px; }',
+        '.gf-input:focus { outline:none; border-color:#4CAF50; box-shadow:0 0 0 3px rgba(76,175,80,0.15); }',
+
+        '.gf-label { font-size:10px; color:#8890a4; display:block; margin:6px 0 3px; font-weight:500; }',
+        '.gf-label:first-child { margin-top:0; }',
+        '.gf-hint { font-size:10px; color:#4e5a72; margin-top:3px; line-height:1.4; }',
+
+        '.gf-pill-row { display:flex; gap:6px; flex-wrap:wrap; }',
+        '.gf-pill-label { display:flex; align-items:center; gap:4px; font-size:12px; font-weight:500; cursor:pointer; padding:5px 12px; border:1.5px solid rgba(255,255,255,0.13); border-radius:20px; user-select:none; transition:all 0.15s; color:#8890a4; background:#2d3248; }',
+        '.gf-pill-label:has(input:checked) { background:#4CAF50; color:#fff; border-color:#4CAF50; box-shadow:0 2px 6px rgba(76,175,80,0.28); }',
+        '.gf-pill-label input { display:none; }',
+
+        '.gf-toggle-row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; }',
+        '.gf-toggle-row + .gf-toggle-row { margin-top:1px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.07); }',
+        '.gf-toggle-label { font-size:12px; color:#dde3ec; }',
+
+        '.gf-number-row { display:flex; align-items:center; gap:8px; }',
+        '.gf-number-row input { width:72px; padding:7px 8px; border:1px solid rgba(255,255,255,0.13); border-radius:6px; font-size:13px; background:#2d3248; color:#dde3ec; font-family:inherit; transition:border-color 0.15s; }',
+        '.gf-number-row input:focus { outline:none; border-color:#4CAF50; box-shadow:0 0 0 3px rgba(76,175,80,0.15); }',
+        '.gf-number-row span { font-size:12px; color:#8890a4; }',
+
+        '.gf-nav-row { display:flex; gap:6px; margin-top:8px; }',
+        '.gf-nav-btn { flex:1; padding:7px 8px; font-size:11px; font-weight:600; background:#2d3248; color:#4CAF50; border:1.5px solid #4CAF50; border-radius:6px; cursor:pointer; transition:all 0.15s; font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+        '.gf-nav-btn:hover { background:#4CAF50; color:#fff; box-shadow:0 2px 6px rgba(76,175,80,0.28); }',
+        '.gf-nav-btn:disabled { opacity:0.38; cursor:not-allowed; border-color:rgba(255,255,255,0.13); color:#8890a4; }',
+        '.gf-nav-btn:disabled:hover { background:#2d3248; color:#8890a4; box-shadow:none; }',
+        '.gf-nav-btn.active { background:#4CAF50; color:#fff; }',
+        '#gf-nav-reset { background:#2d3248; color:#8890a4; border-color:rgba(255,255,255,0.13); }',
+        '#gf-nav-reset:hover { background:#8890a4; color:#fff; }',
+
+        '.gf-reset-btn { display:block; width:100%; margin-top:14px; padding:10px; background:#262a3c; border:1.5px solid rgba(255,255,255,0.07); border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; color:#8890a4; transition:all 0.2s; font-family:inherit; letter-spacing:0.2px; text-align:center; }',
+        '.gf-reset-btn:hover { background:rgba(192,57,43,0.15); border-color:rgba(192,57,43,0.4); color:#e57373; }'
+    ].join('\n');
+
+    // ============================================
+    // SIDEBAR PANEL (wraps TM.ui.createSidebar)
     // ============================================
 
     class SidebarPanel {
         constructor(fi) {
             if (!window.location.pathname.startsWith('/home/')) return;
             this.fi = fi;
-            this.fi.sidebar = this;
-            this.isOpen = GM_getValue('sidebarOpen', false);
-            this.createPanel();
-            if (GM_getValue('darkMode', false)) this.panel.classList.add('gf-dark');
-            this.createToggleTab();
-            if (this.isOpen) this.open(false);
-        }
+            fi.sidebar = this;
 
-        createPanel() {
-            this.panel = document.createElement('div');
-            this.panel.id = 'gf-sidebar';
+            this.sb = TM.ui.createSidebar({
+                width: 340,
+                title: 'Gutefrage Filter',
+                accentColor: '#4CAF50',
+                onOpen: function () {
+                    fi.enableFilters();
+                    setTimeout(function () { fi.applyFilters(); }, 100);
+                },
+                onClose: function () { /* no-op */ }
+            });
+
             this.renderContent();
-            document.body.appendChild(this.panel);
         }
 
-        createToggleTab() {
-            this.tab = document.createElement('button');
-            this.tab.id = 'gf-sidebar-tab';
-            this.tab.textContent = 'Filter & Tools';
-            this.tab.title = 'Erweiterte Filter \u00f6ffnen / schlie\xdfen';
-            this.tab.addEventListener('click', () => this.toggle());
-            document.body.appendChild(this.tab);
-        }
-
-        toggle() { this.isOpen ? this.close() : this.open(); }
-
-        open(save = true) {
-            this.isOpen = true;
-            this.panel.style.right = '0';
-            this.tab.style.right = '340px';
-            document.body.classList.add('gf-sidebar-open');
-            if (save) GM_setValue('sidebarOpen', true);
-            this.fi.enableFilters();
-            setTimeout(() => this.fi.applyFilters(), 100);
-        }
-
-        close(save = true) {
-            this.isOpen = false;
-            this.panel.style.right = '-360px';
-            this.tab.style.right = '0';
-            document.body.classList.remove('gf-sidebar-open');
-            if (save) GM_setValue('sidebarOpen', false);
+        isOpen() {
+            return this.sb.isOpen();
         }
 
         updateStats(visible, total) {
-            const statsEl = this.panel.querySelector('.gf-stats-bar');
+            var statsEl = this.sb.bodyEl.querySelector('.gf-stats-bar');
             if (!statsEl) return;
-            const filtered = total - visible;
+            var filtered = total - visible;
             if (filtered > 0) {
-                statsEl.textContent = `${visible} sichtbar  \u00b7  ${filtered} ausgeblendet`;
+                statsEl.textContent = visible + ' sichtbar  ·  ' + filtered + ' ausgeblendet';
                 statsEl.classList.add('active');
             } else {
                 statsEl.classList.remove('active');
@@ -1305,288 +716,258 @@
         }
 
         renderContent() {
-            const f = this.fi.filters;
-            const hideTypes = f.contentFilters.hidePostTypes || [];
-            const customTags = GM_getValue('customTagsToRemove', DEFAULT_TAGS).join(', ');
-            const blockedAuthors = GM_getValue('blockedAuthors', []).join(', ');
-            const isDark = GM_getValue('darkMode', false);
-            const dateVal = f.afterDate || '';
-            const isUnansweredPage = window.location.pathname.includes('/unbeantwortet');
+            var f = this.fi.filters;
+            var hideTypes = f.contentFilters.hidePostTypes || [];
+            var customTags = GM_getValue('customTagsToRemove', DEFAULT_TAGS).join(', ');
+            var blockedAuthors = GM_getValue('blockedAuthors', []).join(', ');
+            var dateVal = f.afterDate || '';
+            var isUnansweredPage = window.location.pathname.indexOf('/unbeantwortet') !== -1;
 
-            const togBtn = (id, dataFilter, isOn, label) => `
-                <div class="gf-toggle-row">
-                    <span class="gf-toggle-label">${label}</span>
-                    <button class="Toggle-button u-mrm" type="button" id="${id}" role="switch"
-                            aria-checked="${isOn}" ${dataFilter ? `data-filter="${dataFilter}"` : ''}>
-                        <span class="Toggle ${isOn ? 'Toggle--on' : 'Toggle--off'}">
-                            <span class="Toggle-label"></span>
-                        </span>
-                    </button>
-                </div>`;
+            var html = '<style>' + SIDEBAR_CSS + '</style>';
 
-            this.panel.innerHTML = `
-                <div class="gf-header">
-                    <span class="gf-header-title">\u2699 Filter &amp; Tools</span>
-                    <button class="gf-header-close" title="Schlie\xdfen">\u2715</button>
-                </div>
-                <div class="gf-stats-bar"></div>
+            html += '<div class="gf-stats-bar"></div>';
 
-                <div class="gf-body">
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Fragetyp</div>';
+            html += '<div class="gf-pill-row">';
+            html += '<label class="gf-pill-label"><input type="checkbox" data-posttype="frage"' + (hideTypes.indexOf('frage') === -1 ? ' checked' : '') + '> Fragen</label>';
+            html += '<label class="gf-pill-label"><input type="checkbox" data-posttype="diskussion"' + (hideTypes.indexOf('diskussion') === -1 ? ' checked' : '') + '> Diskussionen</label>';
+            html += '<label class="gf-pill-label"><input type="checkbox" data-posttype="umfrage"' + (hideTypes.indexOf('umfrage') === -1 ? ' checked' : '') + '> Umfragen</label>';
+            html += '</div></div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Fragetyp</div>
-                        <div class="gf-pill-row">
-                            <label class="gf-pill-label">
-                                <input type="checkbox" data-posttype="frage" ${!hideTypes.includes('frage') ? 'checked' : ''}> Fragen
-                            </label>
-                            <label class="gf-pill-label">
-                                <input type="checkbox" data-posttype="diskussion" ${!hideTypes.includes('diskussion') ? 'checked' : ''}> Diskussionen
-                            </label>
-                            <label class="gf-pill-label">
-                                <input type="checkbox" data-posttype="umfrage" ${!hideTypes.includes('umfrage') ? 'checked' : ''}> Umfragen
-                            </label>
-                        </div>
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Datum-Filter</div>';
+            html += '<input type="datetime-local" class="gf-input" data-filter="afterDate" value="' + dateVal + '" title="Nur Beiträge ab diesem Datum anzeigen">';
+            html += '<div class="gf-hint">Blendet Beiträge <strong>vor</strong> diesem Datum aus (AB-Filter)</div></div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Datum-Filter</div>
-                        <input type="datetime-local" class="gf-input" data-filter="afterDate"
-                               value="${dateVal}" title="Nur Beitr\u00e4ge ab diesem Datum anzeigen">
-                        <div class="gf-hint">Blendet Beitr\u00e4ge <strong>vor</strong> diesem Datum aus (AB-Filter)</div>
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Feed-Navigation</div>';
+            html += '<span class="gf-label">Zu diesem Datum springen:</span>';
+            html += '<input type="datetime-local" class="gf-input" id="gf-nav-date" value="' + (GM_getValue('navDate', '')) + '" title="Springt im Gutefrage-Feed zu diesem Datum (VOR-Navigation)">';
+            html += '<div class="gf-hint">Springt im Feed zu Beiträgen <strong>vor</strong> diesem Datum</div>';
+            html += '<div class="gf-nav-row">';
+            html += '<button class="gf-nav-btn' + (!isUnansweredPage ? ' active' : '') + '" id="gf-nav-alle" title="In „Alle Beiträge für Dich“ zu diesem Datum springen">Alle Beiträge →</button>';
+            html += '<button class="gf-nav-btn' + (isUnansweredPage ? ' active' : '') + '" id="gf-nav-unbeantwortet" title="In „Unbeantwortet“ zu diesem Datum springen">Unbeantwortet →</button>';
+            html += '<button class="gf-nav-btn" id="gf-nav-reset" title="Feed-Navigation zurücksetzen (Datum löschen)">Zurücksetzen &#x21BA;</button>';
+            html += '</div></div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Feed-Navigation</div>
-                        <span class="gf-label">Zu diesem Datum springen:</span>
-                        <input type="datetime-local" class="gf-input" id="gf-nav-date"
-                               value="${GM_getValue('navDate', '')}"
-                               title="Springt im Gutefrage-Feed zu diesem Datum (VOR-Navigation)">
-                        <div class="gf-hint">Springt im Feed zu Beitr\u00e4gen <strong>vor</strong> diesem Datum</div>
-                        <div class="gf-nav-row">
-                            <button class="gf-nav-btn ${!isUnansweredPage ? 'active' : ''}" id="gf-nav-alle"
-                                    title="In &lsquo;Alle Beitr\u00e4ge f\u00fcr Dich&rsquo; zu diesem Datum springen">
-                                Alle Beitr\u00e4ge \u2192
-                            </button>
-                            <button class="gf-nav-btn ${isUnansweredPage ? 'active' : ''}" id="gf-nav-unbeantwortet"
-                                    title="In &lsquo;Unbeantwortet&rsquo; zu diesem Datum springen">
-                                Unbeantwortet \u2192
-                            </button>
-                            <button class="gf-nav-btn" id="gf-nav-reset"
-                                    title="Feed-Navigation zur\u00fccksetzen (Datum l\u00f6schen)">
-                                Zur\u00fccksetzen \u21BA
-                            </button>
-                        </div>
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Themenbereich</div>';
+            html += '<span class="gf-label">Themen ausschließen (kommagetrennt):</span>';
+            html += '<input type="text" class="gf-input" placeholder="z.B. Liebe, Sport, Tiere" value="' + this._escapeHTML(f.topicFilters.excludeTopics) + '" data-filter="topicFilters.excludeTopics">';
+            html += '<span class="gf-label">Nur diese Themen (kommagetrennt):</span>';
+            html += '<input type="text" class="gf-input" placeholder="z.B. Computer, Technik" value="' + this._escapeHTML(f.topicFilters.includeTopics) + '" data-filter="topicFilters.includeTopics">';
+            html += '<div class="gf-hint">Themenname oder Slug (z.B. computer-internet)</div></div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Themenbereich</div>
-                        <span class="gf-label">Themen ausschlie\xdfen (kommagetrennt):</span>
-                        <input type="text" class="gf-input" placeholder="z.B. Liebe, Sport, Tiere"
-                               value="${f.topicFilters.excludeTopics}" data-filter="topicFilters.excludeTopics">
-                        <span class="gf-label">Nur diese Themen (kommagetrennt):</span>
-                        <input type="text" class="gf-input" placeholder="z.B. Computer, Technik"
-                               value="${f.topicFilters.includeTopics}" data-filter="topicFilters.includeTopics">
-                        <div class="gf-hint">Themenname oder Slug (z.B. computer-internet)</div>
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Bilder-Filter</div>';
+            html += this._toggleHTML('sb-only-with-images', 'contentFilters.onlyWithImages', f.contentFilters.onlyWithImages, 'Nur Beiträge mit Bildern');
+            html += this._toggleHTML('sb-hide-with-images', 'contentFilters.hideWithImages', f.contentFilters.hideWithImages, 'Beiträge mit Bildern ausblenden');
+            html += '<div class="gf-hint">Filtert nach Posts mit oder ohne Bildern</div></div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Bilder-Filter</div>
-                        ${togBtn('sb-only-with-images', 'contentFilters.onlyWithImages', f.contentFilters.onlyWithImages, 'Nur Beitr\u00e4ge mit Bildern')}
-                        ${togBtn('sb-hide-with-images', 'contentFilters.hideWithImages', f.contentFilters.hideWithImages, 'Beitr\u00e4ge mit Bildern ausblenden')}
-                        <div class="gf-hint">Filtert nach Posts mit oder ohne Bildern</div>
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Gemerkte Beiträge</div>';
+            html += this._toggleHTML('sb-only-bookmarked', 'contentFilters.onlyBookmarked', f.contentFilters.onlyBookmarked, 'Nur gemerkte anzeigen');
+            html += this._toggleHTML('sb-hide-bookmarked', 'contentFilters.hideBookmarked', f.contentFilters.hideBookmarked, 'Gemerkte ausblenden');
+            html += '</div>';
 
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Interaktion</div>';
+            html += '<span class="gf-label">Anzahl Antworten:</span>';
+            html += '<div class="gf-number-row">';
+            html += '<input type="number" placeholder="Min" value="' + f.interactionFilters.minAnswers + '" data-filter="interactionFilters.minAnswers" min="0">';
+            html += '<span>bis</span>';
+            html += '<input type="number" placeholder="Max" value="' + f.interactionFilters.maxAnswers + '" data-filter="interactionFilters.maxAnswers" min="0">';
+            html += '</div>';
+            html += '<span class="gf-label">Mindest-Likes:</span>';
+            html += '<input type="number" class="gf-input" placeholder="z.B. 5" value="' + f.interactionFilters.minLikes + '" data-filter="interactionFilters.minLikes" min="0">';
+            html += '</div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Gemerkte Beitr\u00e4ge</div>
-                        ${togBtn('sb-only-bookmarked', 'contentFilters.onlyBookmarked', f.contentFilters.onlyBookmarked, 'Nur gemerkte anzeigen')}
-                        ${togBtn('sb-hide-bookmarked', 'contentFilters.hideBookmarked', f.contentFilters.hideBookmarked, 'Gemerkte ausblenden')}
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Textfilter</div>';
+            html += '<span class="gf-label">Suchbegriffe (kommagetrennt):</span>';
+            html += '<input type="text" class="gf-input" placeholder="z.B. JavaScript, Python" value="' + this._escapeHTML(f.textFilters.keywords) + '" data-filter="textFilters.keywords">';
+            html += '<span class="gf-label">Ausschließen (kommagetrennt):</span>';
+            html += '<input type="text" class="gf-input" placeholder="z.B. Spam, Werbung" value="' + this._escapeHTML(f.textFilters.excludeKeywords) + '" data-filter="textFilters.excludeKeywords">';
+            html += '</div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Interaktion</div>
-                        <span class="gf-label">Anzahl Antworten:</span>
-                        <div class="gf-number-row">
-                            <input type="number" placeholder="Min" value="${f.interactionFilters.minAnswers}"
-                                   data-filter="interactionFilters.minAnswers" min="0">
-                            <span>bis</span>
-                            <input type="number" placeholder="Max" value="${f.interactionFilters.maxAnswers}"
-                                   data-filter="interactionFilters.maxAnswers" min="0">
-                        </div>
-                        <span class="gf-label">Mindest-Likes:</span>
-                        <input type="number" class="gf-input" placeholder="z.B. 5"
-                               value="${f.interactionFilters.minLikes}" data-filter="interactionFilters.minLikes" min="0">
-                    </div>
+            html += '<div class="gf-section">';
+            html += '<div class="gf-section-title">Einstellungen</div>';
+            html += '<span class="gf-label">Tags automatisch entfernen (kommagetrennt):</span>';
+            html += '<input type="text" class="gf-input" id="gf-custom-tags" value="' + this._escapeHTML(customTags) + '">';
+            html += '<span class="gf-label">Gesperrte Autoren (kommagetrennt):</span>';
+            html += '<input type="text" class="gf-input" id="gf-blocked-authors" value="' + this._escapeHTML(blockedAuthors) + '">';
+            html += '</div>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Textfilter</div>
-                        <span class="gf-label">Suchbegriffe (kommagetrennt):</span>
-                        <input type="text" class="gf-input" placeholder="z.B. JavaScript, Python"
-                               value="${f.textFilters.keywords}" data-filter="textFilters.keywords">
-                        <span class="gf-label">Ausschlie\xdfen (kommagetrennt):</span>
-                        <input type="text" class="gf-input" placeholder="z.B. Spam, Werbung"
-                               value="${f.textFilters.excludeKeywords}" data-filter="textFilters.excludeKeywords">
-                    </div>
+            html += '<button class="gf-reset-btn">&#x21BA; Alle Filter zurücksetzen</button>';
 
-                    <div class="gf-section">
-                        <div class="gf-section-title">Einstellungen</div>
-                        <span class="gf-label">Tags automatisch entfernen (kommagetrennt):</span>
-                        <input type="text" class="gf-input" id="gf-custom-tags" value="${customTags}">
-                        <span class="gf-label">Gesperrte Autoren (kommagetrennt):</span>
-                        <input type="text" class="gf-input" id="gf-blocked-authors" value="${blockedAuthors}">
-                    </div>
-
-                    <div class="gf-section">
-                        <div class="gf-section-title">Darstellung</div>
-                        ${togBtn('sb-dark-mode', '', isDark, 'Dark Mode')}
-                    </div>
-
-                    <button class="gf-reset-btn">\u21ba Alle Filter zur\u00fccksetzen</button>
-
-                </div>
-            `;
-
+            this.sb.bodyEl.innerHTML = html;
             this.attachEventListeners();
         }
 
-        attachEventListeners() {
-            const panel = this.panel;
+        _toggleHTML(id, dataFilter, isOn, label) {
+            return [
+                '<div class="gf-toggle-row">',
+                '<span class="gf-toggle-label">' + label + '</span>',
+                '<button class="Toggle-button u-mrm" type="button" id="' + id + '" role="switch" aria-checked="' + isOn + '"' + (dataFilter ? ' data-filter="' + dataFilter + '"' : '') + '>',
+                '<span class="Toggle ' + (isOn ? 'Toggle--on' : 'Toggle--off') + '"><span class="Toggle-label"></span></span>',
+                '</button></div>'
+            ].join('');
+        }
 
-            panel.querySelector('.gf-header-close').addEventListener('click', () => this.close());
+        _escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        attachEventListeners() {
+            var body = this.sb.bodyEl;
+            var fi = this.fi;
+
+            // Close button is handled by the shared sidebar
 
             // Post type checkboxes
-            panel.querySelectorAll('[data-posttype]').forEach(checkbox => {
-                checkbox.addEventListener('change', () => {
-                    const type = checkbox.getAttribute('data-posttype');
-                    const hideTypes = [...(this.fi.filters.contentFilters.hidePostTypes || [])];
-                    if (checkbox.checked) {
-                        const idx = hideTypes.indexOf(type);
+            var typeChecks = body.querySelectorAll('[data-posttype]');
+            for (var tc = 0; tc < typeChecks.length; tc++) {
+                typeChecks[tc].addEventListener('change', function () {
+                    var type = this.getAttribute('data-posttype');
+                    var hideTypes = (fi.filters.contentFilters.hidePostTypes || []).slice();
+                    if (this.checked) {
+                        var idx = hideTypes.indexOf(type);
                         if (idx > -1) hideTypes.splice(idx, 1);
                     } else {
-                        if (!hideTypes.includes(type)) hideTypes.push(type);
+                        if (hideTypes.indexOf(type) === -1) hideTypes.push(type);
                     }
-                    this.fi.filters.contentFilters.hidePostTypes = hideTypes;
-                    this.fi.saveFilters();
-                    this.fi.updateFilterIndicator();
-                    this.fi.enableFilters();
-                    this.fi.debouncedApplyFilters();
+                    fi.filters.contentFilters.hidePostTypes = hideTypes;
+                    fi.saveFilters().then(function () {
+                        fi.updateFilterIndicator();
+                        fi.enableFilters();
+                        fi.debouncedApplyFilters();
+                    });
                 });
-            });
+            }
 
-            // Toggle buttons — mutual exclusion for bookmarks
-            panel.querySelectorAll('.Toggle-button[data-filter]').forEach(button => {
-                button.addEventListener('click', () => {
-                    const toggle = button.querySelector('.Toggle');
-                    const isOn = toggle.classList.contains('Toggle--on');
+            // Toggle buttons with mutual exclusion for bookmark/image pairs
+            var toggleBtns = body.querySelectorAll('.Toggle-button[data-filter]');
+            for (var tb = 0; tb < toggleBtns.length; tb++) {
+                toggleBtns[tb].addEventListener('click', function () {
+                    var toggle = this.querySelector('.Toggle');
+                    var isOn = toggle.classList.contains('Toggle--on');
 
-                    if (!isOn && (button.id === 'sb-only-bookmarked' || button.id === 'sb-hide-bookmarked')) {
-                        const otherId = button.id === 'sb-only-bookmarked' ? 'sb-hide-bookmarked' : 'sb-only-bookmarked';
-                        const other = panel.querySelector(`#${otherId}`);
-                        if (other?.querySelector('.Toggle').classList.contains('Toggle--on')) {
+                    // Mutual exclusion for bookmark toggles
+                    if (!isOn && (this.id === 'sb-only-bookmarked' || this.id === 'sb-hide-bookmarked')) {
+                        var otherId = this.id === 'sb-only-bookmarked' ? 'sb-hide-bookmarked' : 'sb-only-bookmarked';
+                        var other = body.querySelector('#' + otherId);
+                        if (other && other.querySelector('.Toggle').classList.contains('Toggle--on')) {
                             other.querySelector('.Toggle').classList.replace('Toggle--on', 'Toggle--off');
                             other.setAttribute('aria-checked', 'false');
-                            this.fi.updateFilterValue(other.getAttribute('data-filter'), false);
+                            fi.updateFilterValue(other.getAttribute('data-filter'), false);
                         }
                     }
-                    if (!isOn && (button.id === 'sb-only-with-images' || button.id === 'sb-hide-with-images')) {
-                        const otherId = button.id === 'sb-only-with-images' ? 'sb-hide-with-images' : 'sb-only-with-images';
-                        const other = panel.querySelector(`#${otherId}`);
-                        if (other?.querySelector('.Toggle').classList.contains('Toggle--on')) {
-                            other.querySelector('.Toggle').classList.replace('Toggle--on', 'Toggle--off');
-                            other.setAttribute('aria-checked', 'false');
-                            this.fi.updateFilterValue(other.getAttribute('data-filter'), false);
+                    if (!isOn && (this.id === 'sb-only-with-images' || this.id === 'sb-hide-with-images')) {
+                        var otherId2 = this.id === 'sb-only-with-images' ? 'sb-hide-with-images' : 'sb-only-with-images';
+                        var other2 = body.querySelector('#' + otherId2);
+                        if (other2 && other2.querySelector('.Toggle').classList.contains('Toggle--on')) {
+                            other2.querySelector('.Toggle').classList.replace('Toggle--on', 'Toggle--off');
+                            other2.setAttribute('aria-checked', 'false');
+                            fi.updateFilterValue(other2.getAttribute('data-filter'), false);
                         }
                     }
 
                     toggle.classList.toggle('Toggle--on', !isOn);
                     toggle.classList.toggle('Toggle--off', isOn);
-                    button.setAttribute('aria-checked', !isOn);
-                    this.fi.updateFilterValue(button.getAttribute('data-filter'), !isOn);
-                    this.fi.enableFilters();
-                    this.fi.debouncedApplyFilters();
+                    this.setAttribute('aria-checked', !isOn);
+                    fi.updateFilterValue(this.getAttribute('data-filter'), !isOn).then(function () {
+                        fi.enableFilters();
+                        fi.debouncedApplyFilters();
+                    });
                 });
-            });
+            }
 
-            // Dark mode toggle (no data-filter attribute, handled separately)
-            panel.querySelector('#sb-dark-mode').addEventListener('click', () => {
-                const isDark = !GM_getValue('darkMode', false);
-                GM_setValue('darkMode', isDark);
-                this.panel.classList.toggle('gf-dark', isDark);
-                const btn = panel.querySelector('#sb-dark-mode');
-                btn.setAttribute('aria-checked', isDark);
-                btn.querySelector('.Toggle').className = 'Toggle ' + (isDark ? 'Toggle--on' : 'Toggle--off');
-            });
-
-            // Filter inputs (datetime, text, number — all with data-filter)
-            panel.querySelectorAll('input[data-filter]').forEach(input => {
-                input.addEventListener('change', () => {
-                    this.fi.updateFilterValue(input.getAttribute('data-filter'), input.value);
-                    this.fi.enableFilters();
-                    this.fi.debouncedApplyFilters();
+            // Filter inputs
+            var filterInputs = body.querySelectorAll('input[data-filter]');
+            for (var fi2 = 0; fi2 < filterInputs.length; fi2++) {
+                filterInputs[fi2].addEventListener('change', function () {
+                    fi.updateFilterValue(this.getAttribute('data-filter'), this.value).then(function () {
+                        fi.enableFilters();
+                        fi.debouncedApplyFilters();
+                    });
                 });
-            });
+            }
 
-            // Feed navigation — own separate date input, independent of date filter
-            panel.querySelector('#gf-nav-date').addEventListener('change', (e) => {
-                GM_setValue('navDate', e.target.value);
-            });
+            // Feed navigation
+            var navDate = body.querySelector('#gf-nav-date');
+            if (navDate) {
+                navDate.addEventListener('change', function () { GM_setValue('navDate', this.value); });
+            }
 
-            panel.querySelector('#gf-nav-alle').addEventListener('click', () => {
-                const tz = Utils.toSpringeZu(GM_getValue('navDate', ''));
-                const baseUrl = '/home/meine/alle';
-                const url = tz ? `${baseUrl}?springe-zu=${encodeURIComponent(tz)}` : baseUrl;
-                window.location.href = url;
-            });
+            var navAlle = body.querySelector('#gf-nav-alle');
+            if (navAlle) {
+                navAlle.addEventListener('click', function () {
+                    var tz = toSpringeZu(GM_getValue('navDate', ''));
+                    var url = tz ? '/home/meine/alle?springe-zu=' + encodeURIComponent(tz) : '/home/meine/alle';
+                    window.location.href = url;
+                });
+            }
 
-            panel.querySelector('#gf-nav-unbeantwortet').addEventListener('click', () => {
-                const tz = Utils.toSpringeZu(GM_getValue('navDate', ''));
-                const baseUrl = '/home/meine/unbeantwortet';
-                const url = tz ? `${baseUrl}?springe-zu=${encodeURIComponent(tz)}` : baseUrl;
-                window.location.href = url;
-            });
+            var navUnanswered = body.querySelector('#gf-nav-unbeantwortet');
+            if (navUnanswered) {
+                navUnanswered.addEventListener('click', function () {
+                    var tz = toSpringeZu(GM_getValue('navDate', ''));
+                    var url = tz ? '/home/meine/unbeantwortet?springe-zu=' + encodeURIComponent(tz) : '/home/meine/unbeantwortet';
+                    window.location.href = url;
+                });
+            }
 
-            panel.querySelector('#gf-nav-reset').addEventListener('click', () => {
-                // Clear stored date
-                GM_setValue('navDate', '');
-                // Clear input field
-                const dateInput = panel.querySelector('#gf-nav-date');
-                if (dateInput) dateInput.value = '';
-                // Optionally remove springe-zu parameter from current URL and reload
-                const url = new URL(window.location.href);
-                if (url.searchParams.has('springe-zu')) {
-                    url.searchParams.delete('springe-zu');
-                    window.location.href = url.toString();
-                }
-            });
+            var navReset = body.querySelector('#gf-nav-reset');
+            if (navReset) {
+                navReset.addEventListener('click', function () {
+                    GM_setValue('navDate', '');
+                    var dateInput = body.querySelector('#gf-nav-date');
+                    if (dateInput) dateInput.value = '';
+                    var url = new URL(window.location.href);
+                    if (url.searchParams.has('springe-zu')) {
+                        url.searchParams.delete('springe-zu');
+                        window.location.href = url.toString();
+                    }
+                });
+            }
 
-            // Settings: custom tags
-            panel.querySelector('#gf-custom-tags').addEventListener('change', (e) => {
-                const tags = Utils.parseCSV(e.target.value, false); // Keep original case for tags
-                GM_setValue('customTagsToRemove', tags);
-            });
+            // Custom tags
+            var customTagsInput = body.querySelector('#gf-custom-tags');
+            if (customTagsInput) {
+                customTagsInput.addEventListener('change', function () {
+                    GM_setValue('customTagsToRemove', parseCSV(this.value, false));
+                });
+            }
 
-            // Settings: blocked authors
-            panel.querySelector('#gf-blocked-authors').addEventListener('change', (e) => {
-                const authors = Utils.parseCSV(e.target.value, false); // Case preserved, will be lowercased in updateParsedFilters
-                GM_setValue('blockedAuthors', authors);
-                this.fi.enableFilters();
-                this.fi.debouncedApplyFilters();
-            });
+            // Blocked authors
+            var blockedAuthorsInput = body.querySelector('#gf-blocked-authors');
+            if (blockedAuthorsInput) {
+                blockedAuthorsInput.addEventListener('change', function () {
+                    GM_setValue('blockedAuthors', parseCSV(this.value, false));
+                    fi.enableFilters();
+                    fi.debouncedApplyFilters();
+                });
+            }
 
-            // Reset
-            panel.querySelector('.gf-reset-btn').addEventListener('click', () => {
-                this.fi.filters = {
-                    ...DEFAULT_FILTERS,
-                    contentFilters: { ...DEFAULT_FILTERS.contentFilters },
-                    interactionFilters: { ...DEFAULT_FILTERS.interactionFilters },
-                    textFilters: { ...DEFAULT_FILTERS.textFilters },
-                    topicFilters: { ...DEFAULT_FILTERS.topicFilters }
-                };
-                this.fi.saveFilters();
-                this.fi.updateFilterIndicator();
-                this.renderContent();
-                this.fi.applyFilters();
-            });
+            // Reset button
+            var resetBtn = body.querySelector('.gf-reset-btn');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function () {
+                    fi.filters = {
+                        afterDate: DEFAULT_FILTERS.afterDate,
+                        contentFilters: Object.assign({}, DEFAULT_FILTERS.contentFilters),
+                        interactionFilters: Object.assign({}, DEFAULT_FILTERS.interactionFilters),
+                        textFilters: Object.assign({}, DEFAULT_FILTERS.textFilters),
+                        topicFilters: Object.assign({}, DEFAULT_FILTERS.topicFilters)
+                    };
+                    fi.saveFilters();
+                    this.renderContent();
+                    fi.updateFilterIndicator();
+                    fi.applyFilters();
+                }.bind(this));
+            }
         }
     }
 
@@ -1594,12 +975,14 @@
     // INITIALIZATION
     // ============================================
 
-    console.log('[Gutefrage Smart Filters] Initializing...');
+    log.log('Initializing...');
 
     new TagRemover();
 
-    const filterIntegration = new EnhancedFilterIntegration();
-    new SidebarPanel(filterIntegration);
+    var filterIntegration = new EnhancedFilterIntegration();
+    filterIntegration.init().then(function () {
+        new SidebarPanel(filterIntegration);
+    });
 
-    console.log('[Gutefrage Smart Filters] Ready!');
+    log.log('Ready!');
 })();

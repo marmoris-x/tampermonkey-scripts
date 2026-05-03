@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⚠️ First Step for Everything
 
-**ALWAYS read `Userscripts_Gold_Standards_2026.md` first** before editing, creating, or brainstorming scripts. It defines the metadata architecture, security boundaries, performance rules, and distribution standards for this repository. Everything below is a compressed summary; the Gold Standards file is the authoritative reference.
+**ALWAYS fully read `Userscripts_Gold_Standards_2026.md` first** before editing, creating, or brainstorming scripts. It defines the metadata architecture, security boundaries, performance rules, and distribution standards for this repository. Everything below is a compressed summary; the Gold Standards file is the authoritative reference.
 
 ## Commands
 

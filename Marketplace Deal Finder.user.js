@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marketplace Deal Finder
-// @namespace    http://tampermonkey.net/
-// @version      29.2
+// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
+// @version      29.3
 // @description  Automatic AI-powered deal finder for Willhaben & Kleinanzeigen with live ranking and pause function. Multi-page crawling with Gemini AI analysis.
 // @author       marmoris
 // @match        https://www.willhaben.at/iad/kaufen-und-verkaufen/*
@@ -11,13 +11,25 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/storage-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/network-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/ui-components.js
 // @connect      willhaben.at
 // @connect      kleinanzeigen.de
 // @connect      generativelanguage.googleapis.com
 // @noframes
+// @sandbox      JavaScript
+// @inject-into  content
+// @unwrap
 // @run-at       document-idle
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Marketplace%20Deal%20Finder.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Marketplace%20Deal%20Finder.user.js
+// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @license      MIT
 // ==/UserScript==
 
 (function() {
@@ -28,10 +40,19 @@
     const IS_WH = window.location.hostname.includes('willhaben.at');
     const P = IS_WH ? 'wh' : 'ka';
     const SITE_NAME = IS_WH ? 'WILLHABEN' : 'KLEINANZEIGEN';
-    const SCRIPT_PREFIX = `[${IS_WH ? 'WH' : 'KA'}-DealFinder V29.0]`;
     const BTN_GRADIENT = IS_WH
         ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
         : 'linear-gradient(135deg, #86a542 0%, #2d2d2d 100%)';
+    const Logger = TM.createLogger('Marketplace Deal Finder');
+
+    // ==================== CONSTANTS ====================
+
+    // Regex constants for performance (avoid repeated instantiation)
+    const SHIPPING_REGEX = /versand|shipping|porto|lieferung/i;
+    const WHITESPACE_REGEX_G = /\s/g;
+    const THOUSAND_DOT_REGEX_G = /\./g;
+    const COMMA_REGEX_G = /,/g;
+    const DECIMAL_NUMBER_REGEX = /(\d+(?:\.\d+)?)/;
 
     const INITIAL_BATCH_SIZE = 8;
     const MAX_RETRIES = 2;
@@ -39,28 +60,19 @@
     const DESCRIPTION_PREVIEW_LENGTH = 150;
     const SETTINGS_VERSION = 1;
     const MAX_CACHE_SIZE = 100;
-    const REQUEST_TIMEOUT = 15000; // 15 seconds for general requests
-    const GEMINI_API_TIMEOUT = 60000; // 60 seconds for Gemini API
-    const RETRY_BASE_DELAY = 2000; // 2 seconds
-    const RATE_LIMIT_BASE_DELAY = 5000; // 5 seconds
-    const MAX_RATE_LIMIT_DELAY = 300000; // 5 minutes
-    const RE_RANK_MAX_DEALS = 30; // Maximum number of deals to send for global re-ranking
-
-<<<<<<< Updated upstream
-=======
-    // Regex constants for performance (avoid repeated instantiation)
-    const SHIPPING_REGEX = /versand|shipping|porto|lieferung/i;
-    const WHITESPACE_REGEX_G = /\s/g;
-    const THOUSAND_DOT_REGEX_G = /\./g;
-    const COMMA_REGEX_G = /,/g;
-    const DECIMAL_NUMBER_REGEX = /(\d+(?:\.\d+)?)/;
-    // UI and timing constants
-    const PAUSE_POLL_INTERVAL = 500; // ms between pause loop checks
-    const JITTER_FACTOR = 0.2; // +0‑20% jitter multiplier
-    const MIN_TITLE_LENGTH = 5; // minimum characters for valid title
-    // Page increment constants for resume logic
+    const REQUEST_TIMEOUT = 15000;
+    const GEMINI_API_TIMEOUT = 60000;
+    const RETRY_BASE_DELAY = 2000;
+    const RATE_LIMIT_BASE_DELAY = 5000;
+    const MAX_RATE_LIMIT_DELAY = 300000;
+    const RE_RANK_MAX_DEALS = 30;
+    const PAUSE_POLL_INTERVAL = 500;
+    const JITTER_FACTOR = 0.2;
+    const MIN_TITLE_LENGTH = 5;
     const SAME_PAGE_INCREMENT = 0;
     const NEW_PAGE_INCREMENT = 1;
+    const MAX_INIT_RETRIES = 5;
+
     // Deal property keys for type-safe access
     const DEAL_KEYS = {
         URL: 'url',
@@ -72,8 +84,8 @@
         PAGE: 'page'
     };
 
->>>>>>> Stashed changes
-    // Unit 1: Fixed model IDs — add/remove/rename entries here; UI auto-updates
+    // ==================== GEMINI MODEL DEFINITIONS ====================
+
     const GEMINI_MODELS = {
         flash: {
             id: 'gemini-2.0-flash',
@@ -94,6 +106,7 @@
             icon: '💡', label: 'Lite', desc: 'Sparsam & schnell'
         }
     };
+
     // Model key constants for type safety
     const MODEL = {
         FLASH: 'flash',
@@ -101,20 +114,22 @@
         NANO: 'nano'
     };
 
-    // Global state
+    // ==================== GLOBAL STATE ====================
+
     let isRunning = false;
     let isPaused = false;
     let shouldStop = false;
     let captchaPaused = false;
     let allTopDeals = [];
     let currentPage = 1;
-    let activeRequests = new Set(); // Set for O(1) add/delete operations
-    let descriptionCache = new Map(); // LRU cache for descriptions (max size MAX_CACHE_SIZE)
+    let activeRequests = new Set();
+    let descriptionCache = new Map();
     let initRetries = 0;
     let cachedSettings = null;
-    const MAX_INIT_RETRIES = 5;
 
-    // Unit 2: XSS escaping
+    // ==================== HELPERS ====================
+
+    // XSS escaping
     function escapeHTML(str) {
         if (!str) return '';
         return String(str)
@@ -125,48 +140,42 @@
             .replace(/'/g, '&#39;');
     }
 
-    // Unit 3: Score validation helper
-    function isValidScore(score) {
-<<<<<<< Updated upstream
+    // Validate and return a numeric score, or null if invalid
+    function getValidScore(score) {
         const num = Number(score);
-        return Number.isFinite(num);
-=======
+        return Number.isFinite(num) ? num : null;
+    }
+
+    // Check if score is a valid finite number
+    function isValidScore(score) {
         return getValidScore(score) !== null;
     }
 
     // Parse price string to numeric value (supports European/international formats)
     function parsePriceText(priceStr) {
         if (!priceStr || typeof priceStr !== 'string') return null;
-        // Remove spaces (thousand separators)
         let normalized = priceStr.replace(WHITESPACE_REGEX_G, '');
-        // Determine decimal separator
         const hasComma = normalized.includes(',');
         const hasDot = normalized.includes('.');
         if (hasComma) {
-            // European format: dots are thousand separators, comma is decimal
             normalized = normalized.replace(THOUSAND_DOT_REGEX_G, '');
             normalized = normalized.replace(COMMA_REGEX_G, '.');
         } else if (hasDot) {
-            // International format: dots could be thousand separators or decimal
-            // If multiple dots, assume thousand separators except last dot
             const parts = normalized.split('.');
             if (parts.length > 1) {
                 normalized = parts.slice(0, -1).join('') + '.' + parts[parts.length - 1];
             }
         }
         const match = normalized.match(DECIMAL_NUMBER_REGEX);
-        const parsed = match ? parseFloat(match[1]) : null;
-        debugLog(`Price parsing: "${priceStr}" -> normalized "${normalized}" -> ${parsed}`);
-        return parsed;
+        return match ? parseFloat(match[1]) : null;
     }
 
-    // Unit 1: Helper to sort deals by validated score
+    // Sort deals by validated score descending
     function sortDealsByScore(deals) {
-        // Sort copy with single validation per deal
         return deals.slice().sort((a, b) => (getValidScore(b.score) ?? 0) - (getValidScore(a.score) ?? 0));
     }
 
-    // Helper to check if text consists only of a price (e.g., "12,50 €" or "350 € VB")
+    // Check if text consists only of a price (e.g., "12,50 €" or "350 € VB")
     function isPriceOnlyText(text) {
         return /^\s*[\d.,]+\s*€?\s*(VB)?\s*$/i.test(text);
     }
@@ -183,19 +192,22 @@
         return new Set(arr.map(item => item[key]));
     }
 
-    // Add positive jitter to a base value (percent as decimal, e.g., 0.2 for +0‑20%)
+    // Add positive jitter to a base value (percent as decimal, e.g., 0.2 for +0-20%)
     function addJitter(base, percent) {
         return base * (1 + Math.random() * percent);
     }
 
-    // Normalize URL by removing hash fragment for comparison purposes
+    // Normalize URL by removing hash fragment for comparison
     function normalizeUrl(url) {
         if (!url) return url;
         return url.split('#')[0];
->>>>>>> Stashed changes
     }
 
     // ==================== STORAGE ====================
+    //
+    // Uses async TM.storage internally for persistence via GM.getValue/GM.setValue.
+    // Function signatures preserved for backward compatibility.
+    // Cached settings pattern avoids repeated async reads for UI code.
 
     const DEFAULT_SETTINGS = {
         version: SETTINGS_VERSION,
@@ -211,130 +223,106 @@
         maxPages: 10
     };
 
-    function saveSettings(settings) {
-        console.log(`${SCRIPT_PREFIX} saveSettings: Saving:`, settings);
-        GM_setValue(`${P}_dealfinder_settings`, JSON.stringify(settings));
-        // Deep copy modelMapping to prevent cache mutation
-        cachedSettings = {
+    function deepCopySettings(settings) {
+        return {
             ...settings,
             modelMapping: { ...(settings.modelMapping || DEFAULT_SETTINGS.modelMapping) }
         };
     }
 
-    function loadSettings() {
+    // Load settings from storage. Async first call populates cache; subsequent
+    // sync access through cache is fast (no async overhead for UI code paths).
+    async function loadSettings() {
         if (cachedSettings !== null) {
-            // Return deep copy to prevent mutation of cached modelMapping
-            return {
-                ...cachedSettings,
-                modelMapping: { ...(cachedSettings.modelMapping || DEFAULT_SETTINGS.modelMapping) }
-            };
+            return deepCopySettings(cachedSettings);
         }
-        const saved = GM_getValue(`${P}_dealfinder_settings`, null);
+        const saved = await TM.storage.loadSetting(`${P}_dealfinder_settings`, null);
         if (!saved) {
-            console.log(`${SCRIPT_PREFIX} loadSettings: No saved settings, returning defaults`);
-            // Deep copy DEFAULT_SETTINGS including modelMapping
-            cachedSettings = {
-                ...DEFAULT_SETTINGS,
-                modelMapping: { ...DEFAULT_SETTINGS.modelMapping }
-            };
-            return {
-                ...cachedSettings,
-                modelMapping: { ...cachedSettings.modelMapping }
-            };
+            cachedSettings = deepCopySettings(DEFAULT_SETTINGS);
+            return deepCopySettings(cachedSettings);
         }
         try {
-            const loaded = JSON.parse(saved);
-            console.log(`${SCRIPT_PREFIX} loadSettings: Loaded raw:`, loaded);
-            // Migrate: if model is a full ID (not a slot key), reset to 'flash'
+            const loaded = (typeof saved === 'string') ? JSON.parse(saved) : saved;
             if (loaded.model && !GEMINI_MODELS[loaded.model]) {
                 loaded.model = MODEL.FLASH;
             }
             const merged = Object.assign({}, DEFAULT_SETTINGS, loaded);
-            console.log(`${SCRIPT_PREFIX} loadSettings: Merged settings:`, merged);
-            // Deep copy modelMapping to prevent cache mutation
-            cachedSettings = {
-                ...merged,
-                modelMapping: { ...(merged.modelMapping || DEFAULT_SETTINGS.modelMapping) }
-            };
-            return {
-                ...cachedSettings,
-                modelMapping: { ...cachedSettings.modelMapping }
-            };
+            cachedSettings = deepCopySettings(merged);
+            return deepCopySettings(cachedSettings);
         } catch (e) {
-            console.warn(SCRIPT_PREFIX + ' Corrupted settings storage:', saved);
-            GM_setValue(`${P}_dealfinder_settings`, null);
-            // Deep copy DEFAULT_SETTINGS including modelMapping
-            cachedSettings = {
-                ...DEFAULT_SETTINGS,
-                modelMapping: { ...DEFAULT_SETTINGS.modelMapping }
-            };
-            return {
-                ...cachedSettings,
-                modelMapping: { ...cachedSettings.modelMapping }
-            };
+            Logger.warn('Corrupted settings storage, resetting to defaults');
+            await TM.storage.saveSetting(`${P}_dealfinder_settings`, null);
+            cachedSettings = deepCopySettings(DEFAULT_SETTINGS);
+            return deepCopySettings(cachedSettings);
         }
     }
 
-    function saveCrawlState(state) {
-        GM_setValue(`${P}_dealfinder_crawl_state`, JSON.stringify(state));
-        console.log(`${SCRIPT_PREFIX} Crawl-State gespeichert:`, state);
+    // Persist settings to storage and update in-memory cache
+    async function saveSettings(settings) {
+        await TM.storage.saveSetting(`${P}_dealfinder_settings`, JSON.stringify(settings));
+        cachedSettings = deepCopySettings(settings);
     }
 
-    function loadCrawlState() {
-        const saved = GM_getValue(`${P}_dealfinder_crawl_state`, null);
+    // Crawl state — persisted as a single JSON blob per-site
+    async function saveCrawlState(state) {
+        await TM.storage.saveSetting(`${P}_dealfinder_crawl_state`, JSON.stringify(state));
+        Logger.log('Crawl state saved:', state.currentPage, 'page', state.allTopDeals?.length, 'deals');
+    }
+
+    async function loadCrawlState() {
+        const saved = await TM.storage.loadSetting(`${P}_dealfinder_crawl_state`, null);
         if (!saved) return null;
         try {
-            return JSON.parse(saved);
+            return (typeof saved === 'string') ? JSON.parse(saved) : saved;
         } catch (e) {
-            console.warn(SCRIPT_PREFIX + ' Corrupted crawl state:', saved);
-            GM_setValue(`${P}_dealfinder_crawl_state`, null);
+            Logger.warn('Corrupted crawl state, resetting');
+            await TM.storage.saveSetting(`${P}_dealfinder_crawl_state`, null);
             return null;
         }
     }
 
-    function clearCrawlState() {
-        GM_setValue(`${P}_dealfinder_crawl_state`, null);
-        console.log(`${SCRIPT_PREFIX} Crawl-State gelöscht`);
+    async function clearCrawlState() {
+        await TM.storage.saveSetting(`${P}_dealfinder_crawl_state`, null);
+        Logger.log('Crawl state cleared');
     }
 
-    function saveResults(results) {
-        GM_setValue(`${P}_dealfinder_results`, JSON.stringify(results));
-        console.log(`${SCRIPT_PREFIX} Results gespeichert:`, results.deals.length, 'Deals');
+    // Results — persisted results for display after crawl completes
+    async function saveResults(results) {
+        await TM.storage.saveSetting(`${P}_dealfinder_results`, JSON.stringify(results));
+        Logger.log('Results saved:', results.deals.length, 'deals');
     }
 
-    function loadResults() {
-        const saved = GM_getValue(`${P}_dealfinder_results`, null);
+    async function loadResults() {
+        const saved = await TM.storage.loadSetting(`${P}_dealfinder_results`, null);
         if (!saved) return null;
         try {
-            return JSON.parse(saved);
+            return (typeof saved === 'string') ? JSON.parse(saved) : saved;
         } catch (e) {
-            console.warn(SCRIPT_PREFIX + ' Corrupted results storage:', saved);
-            GM_setValue(`${P}_dealfinder_results`, null);
+            Logger.warn('Corrupted results storage, resetting');
+            await TM.storage.saveSetting(`${P}_dealfinder_results`, null);
             return null;
         }
     }
 
-    function clearResults() {
-        GM_setValue(`${P}_dealfinder_results`, null);
-        console.log(`${SCRIPT_PREFIX} Results gelöscht`);
+    async function clearResults() {
+        await TM.storage.saveSetting(`${P}_dealfinder_results`, null);
+        Logger.log('Results cleared');
     }
 
-    function saveAvailableModels(models) {
-        GM_setValue(`${P}_available_models`, JSON.stringify(models));
+    // Available models cache
+    async function saveAvailableModels(models) {
+        await TM.storage.saveSetting(`${P}_available_models`, JSON.stringify(models));
     }
 
-    function loadAvailableModels() {
-        const saved = GM_getValue(`${P}_available_models`, null);
+    async function loadAvailableModels() {
+        const saved = await TM.storage.loadSetting(`${P}_available_models`, null);
         if (!saved) return null;
-        try { return JSON.parse(saved); } catch (e) { return null; }
+        try { return (typeof saved === 'string') ? JSON.parse(saved) : saved; } catch (e) { return null; }
     }
 
-    // ==================== UI ====================
+    // ==================== UI — SETTINGS VIEW ====================
 
-    function renderSettingsView() {
-        const settings = loadSettings();
-        const savedResults = loadResults();
-
+    function renderSettingsView(settings, savedResults) {
         // UX-04: Pre-fill searchContext from URL keyword if empty
         let autoContext = settings.searchContext;
         if (!autoContext) {
@@ -348,7 +336,6 @@
             }
         }
 
-        // Handle both old locale-string timestamps and new ISO timestamps
         let savedTs = '';
         if (savedResults && savedResults.timestamp) {
             const ts = savedResults.timestamp;
@@ -454,7 +441,10 @@
         `;
     }
 
-    function generateMarkdown(deals, pages, timestamp = new Date().toISOString()) {
+    // ==================== UI — MARKDOWN / RESULTS / LIVE RANKING ====================
+
+    function generateMarkdown(deals, pages, timestamp) {
+        timestamp = timestamp || new Date().toISOString();
         let md = `# 🏆 ${SITE_NAME} DEAL FINDER - FINALE RANKING\n\n`;
         md += `**Gefunden:** ${deals.length} Top-Deals  \n`;
         md += `**Analysierte Seiten:** ${pages}  \n`;
@@ -476,7 +466,7 @@
         return md;
     }
 
-    function renderResultsView(dealsToShow = null) {
+    function renderResultsView(dealsToShow) {
         const deals = dealsToShow || allTopDeals;
 
         const dealsHTML = deals.map((deal, index) => {
@@ -556,7 +546,7 @@
         if (!container || !content) return;
         if (allTopDeals.length === 0) { container.style.display = 'none'; return; }
 
-        const settings = loadSettings();
+        const settings = cachedSettings || DEFAULT_SETTINGS;
         container.style.display = 'block';
         const topItems = [...allTopDeals]
             .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
@@ -573,178 +563,31 @@
         `}).join('');
     }
 
-    function createModal() {
-        const modalId = `${P}-dealfinder-modal`;
+    // ==================== MODAL MANAGEMENT ====================
+
+    const SIDEBAR_WIDTH = '400px';
+
+    async function createModal() {
+        const modalId = P + '-dealfinder-modal';
         if (document.getElementById(modalId)) return;
+        const settings = await loadSettings();
+        const savedResults = await loadResults();
         const modal = document.createElement('div');
         modal.id = modalId;
-        modal.style.cssText = `
-            display: none; position: fixed; top: 0; right: 0; width: 400px; height: 100vh;
-            background: white; z-index: 999999; box-shadow: -5px 0 20px rgba(0,0,0,0.2);
-            overflow-y: auto; transition: transform 0.3s ease;
-        `;
-        modal.innerHTML = renderSettingsView();
+        modal.style.cssText = [
+            'display: none; position: fixed; top: 0; right: 0; width: 400px; height: 100vh;',
+            'background: white; z-index: 999999; box-shadow: -5px 0 20px rgba(0,0,0,0.2);',
+            'overflow-y: auto; transition: transform 0.3s ease;'
+        ].join(' ');
+        modal.innerHTML = renderSettingsView(settings, savedResults);
         document.body.appendChild(modal);
         attachEventListeners();
         restoreModelSelect();
     }
 
-    function attachEventListeners() {
-        const startBtn = document.getElementById(`${P}-start-btn`);
-        const pauseBtn = document.getElementById(`${P}-pause-btn`);
-        const stopBtn = document.getElementById(`${P}-stop-btn`);
-        const closeBtn = document.getElementById(`${P}-close-btn-x`);
-        const showResultsBtn = document.getElementById(`${P}-show-results-btn`);
-        const apiKeyInput = document.getElementById(`${P}-api-key`);
-        const searchContextInput = document.getElementById(`${P}-search-context`);
-
-        if (startBtn) startBtn.addEventListener('click', () => {
-            startDealFinder().catch(error => {
-                console.error(`${SCRIPT_PREFIX} Unhandled error in startDealFinder:`, error);
-                updateProgress(`❌ Fehler: ${error.message}`, 0);
-                resetUI();
-            });
-        });
-        if (pauseBtn) pauseBtn.addEventListener('click', pauseDealFinder);
-        if (stopBtn) stopBtn.addEventListener('click', stopDealFinder);
-        if (closeBtn) closeBtn.addEventListener('click', closeModal);
-        if (showResultsBtn) showResultsBtn.addEventListener('click', showSavedResults);
-
-        // UX-06: auto-save on blur
-        if (apiKeyInput) apiKeyInput.addEventListener('blur', () => {
-            const s = loadSettings();
-            const newKey = apiKeyInput.value.trim();
-            if (s.apiKey !== newKey) {
-                s.apiKey = newKey;
-                saveSettings(s);
-            }
-        });
-        if (searchContextInput) searchContextInput.addEventListener('blur', () => {
-            const s = loadSettings();
-            const newContext = searchContextInput.value.trim();
-            if (s.searchContext !== newContext) {
-                s.searchContext = newContext;
-                saveSettings(s);
-            }
-        });
-
-        [startBtn, pauseBtn, stopBtn, showResultsBtn].forEach(btn => {
-            if (btn) {
-                btn.addEventListener('mouseenter', () => btn.style.opacity = '0.9');
-                btn.addEventListener('mouseleave', () => btn.style.opacity = '1');
-            }
-        });
-    }
-
-    function showSavedResults() {
-        const savedResults = loadResults();
-        if (savedResults) switchToResultsView(savedResults.deals);
-    }
-
-    function switchToResultsView(deals = null) {
-        const modal = document.getElementById(`${P}-dealfinder-modal`);
-        if (!modal) return;
-        modal.innerHTML = renderResultsView(deals);
-
-        const closeBtn = document.getElementById(`${P}-close-btn-x`);
-        const backBtn = document.getElementById(`${P}-back-to-settings`);
-        const exportBtn = document.getElementById(`${P}-export-markdown-btn`);
-        const exportJsonBtn = document.getElementById(`${P}-export-json-btn`);
-        const exportCsvBtn = document.getElementById(`${P}-export-csv-btn`);
-        const clearBtn = document.getElementById(`${P}-clear-results-btn`);
-
-        if (closeBtn) closeBtn.addEventListener('click', closeModal);
-        if (backBtn) backBtn.addEventListener('click', switchToSettingsView);
-        if (exportBtn) exportBtn.addEventListener('click', exportMarkdown);
-        if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportJSON);
-        if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportCSV);
-        if (clearBtn) clearBtn.addEventListener('click', clearResultsAndGoBack);
-
-        [exportBtn, exportJsonBtn, exportCsvBtn, clearBtn, backBtn].forEach(btn => {
-            if (btn) {
-                btn.addEventListener('mouseenter', () => btn.style.opacity = '0.9');
-                btn.addEventListener('mouseleave', () => btn.style.opacity = '1');
-            }
-        });
-    }
-
-    async function exportMarkdown() {
-        const savedResults = loadResults();
-        if (!savedResults) { alert('Keine Results verfügbar!'); return; }
-        const md = generateMarkdown(savedResults.deals, savedResults.pages, savedResults.timestamp);
-        try {
-            await navigator.clipboard.writeText(md);
-            const btn = document.getElementById(`${P}-export-markdown-btn`);
-            if (btn) {
-                const orig = btn.textContent;
-                btn.textContent = '✅ Kopiert!';
-                setTimeout(() => { btn.textContent = orig; }, 2000);
-            }
-            console.log(`${SCRIPT_PREFIX} Markdown in Zwischenablage kopiert!`);
-        } catch (error) {
-            console.error(`${SCRIPT_PREFIX} Clipboard-Fehler:`, error);
-            alert('Fehler beim Kopieren. Bitte Fenster fokussieren und nochmal versuchen.');
-        }
-    }
-
-    function exportJSON() {
-        const savedResults = loadResults();
-        if (!savedResults) { alert('Keine Results verfügbar!'); return; }
-        const blob = new Blob([JSON.stringify(savedResults, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `deals-${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    }
-
-    function exportCSV() {
-        const savedResults = loadResults();
-        if (!savedResults) { alert('Keine Results verfügbar!'); return; }
-        const header = ['Rang', 'Titel', 'Preis', 'Score', 'Begründung', 'Seite', 'URL'];
-        const rows = savedResults.deals.map((d, i) => [
-            i + 1,
-            `"${(d.title || '').replace(/"/g, '""')}"`,
-            `"${(d.price || '').replace(/"/g, '""')}"`,
-            d.score !== undefined && Number.isFinite(Number(d.score)) ? d.score : '',
-            `"${(d.reasoning || '').replace(/"/g, '""')}"`,
-            d.page || '',
-            `"${(d.url || '').replace(/"/g, '""')}"`
-        ]);
-        const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n');
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `deals-${Date.now()}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    }
-
-    function clearResultsAndGoBack() {
-        if (confirm('Möchtest du die gespeicherten Results wirklich löschen?')) {
-            clearResults();
-            switchToSettingsView();
-        }
-    }
-
-    function switchToSettingsView() {
-        if (isRunning) return;
-        const modal = document.getElementById(`${P}-dealfinder-modal`);
-        if (!modal) return;
-        modal.innerHTML = renderSettingsView();
-        attachEventListeners();
-        restoreModelSelect();
-    }
-
-    const SIDEBAR_WIDTH = '400px';
-
     function openModal() {
-        const modal = document.getElementById(`${P}-dealfinder-modal`);
-        const floatBtn = document.getElementById(`${P}-dealfinder-btn`);
+        var modal = document.getElementById(P + '-dealfinder-modal');
+        var floatBtn = document.getElementById(P + '-dealfinder-btn');
         if (modal) modal.style.display = 'block';
         if (floatBtn) floatBtn.style.display = 'none';
         document.documentElement.style.transition = 'margin-right 0.3s ease';
@@ -753,118 +596,277 @@
 
     function closeModal() {
         if (isRunning) {
-            const btn = document.getElementById(`${P}-close-btn-x`);
+            var btn = document.getElementById(P + '-close-btn-x');
             if (btn) {
                 btn.style.color = '#dc3545';
-                btn.title = 'Crawl läuft – erst stoppen';
-                setTimeout(() => { btn.style.color = '#999'; btn.title = ''; }, 1000);
+                btn.title = 'Crawl laeuft - erst stoppen';
+                setTimeout(function () { btn.style.color = '#999'; btn.title = ''; }, 1000);
             }
             return;
         }
-        const modal = document.getElementById(`${P}-dealfinder-modal`);
-        const floatBtn = document.getElementById(`${P}-dealfinder-btn`);
+        var modal = document.getElementById(P + '-dealfinder-modal');
+        var floatBtn = document.getElementById(P + '-dealfinder-btn');
         if (modal) modal.style.display = 'none';
         if (floatBtn) floatBtn.style.display = 'block';
         document.documentElement.style.marginRight = '';
     }
 
-    function updateProgress(text, percentage, type = 'info') {
-        const container = document.getElementById(`${P}-progress-container`);
-        const progressText = document.getElementById(`${P}-progress-text`);
-        const progressBar = document.getElementById(`${P}-progress-bar`);
+    function attachEventListeners() {
+        var startBtn = document.getElementById(P + '-start-btn');
+        var pauseBtn = document.getElementById(P + '-pause-btn');
+        var stopBtn = document.getElementById(P + '-stop-btn');
+        var closeBtn = document.getElementById(P + '-close-btn-x');
+        var showResultsBtn = document.getElementById(P + '-show-results-btn');
+        var apiKeyInput = document.getElementById(P + '-api-key');
+        var searchContextInput = document.getElementById(P + '-search-context');
+
+        if (startBtn) startBtn.addEventListener('click', function () {
+            startDealFinder()['catch'](function (error) {
+                Logger.error('Unhandled error in startDealFinder:', error);
+                updateProgress('Fehler: ' + error.message, 0, 'error');
+                resetUI();
+            });
+        });
+        if (pauseBtn) pauseBtn.addEventListener('click', pauseDealFinder);
+        if (stopBtn) stopBtn.addEventListener('click', stopDealFinder);
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+        if (showResultsBtn) showResultsBtn.addEventListener('click', showSavedResults);
+
+        if (apiKeyInput) apiKeyInput.addEventListener('blur', async function () {
+            var s = await loadSettings();
+            var newKey = apiKeyInput.value.trim();
+            if (s.apiKey !== newKey) {
+                s.apiKey = newKey;
+                await saveSettings(s);
+            }
+        });
+        if (searchContextInput) searchContextInput.addEventListener('blur', async function () {
+            var s = await loadSettings();
+            var newContext = searchContextInput.value.trim();
+            if (s.searchContext !== newContext) {
+                s.searchContext = newContext;
+                await saveSettings(s);
+            }
+        });
+
+        [startBtn, pauseBtn, stopBtn, showResultsBtn].forEach(function (btn) {
+            if (btn) {
+                btn.addEventListener('mouseenter', function () { btn.style.opacity = '0.9'; });
+                btn.addEventListener('mouseleave', function () { btn.style.opacity = '1'; });
+            }
+        });
+    }
+
+    // ==================== VIEW SWITCHING ====================
+
+    async function showSavedResults() {
+        var savedResults = await loadResults();
+        if (savedResults) switchToResultsView(savedResults.deals);
+    }
+
+    function switchToResultsView(deals) {
+        deals = deals || null;
+        var modal = document.getElementById(P + '-dealfinder-modal');
+        if (!modal) return;
+        modal.innerHTML = renderResultsView(deals);
+
+        var closeBtn = document.getElementById(P + '-close-btn-x');
+        var backBtn = document.getElementById(P + '-back-to-settings');
+        var exportMdBtn = document.getElementById(P + '-export-markdown-btn');
+        var exportJsonBtn = document.getElementById(P + '-export-json-btn');
+        var exportCsvBtn = document.getElementById(P + '-export-csv-btn');
+        var clearBtn = document.getElementById(P + '-clear-results-btn');
+
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+        if (backBtn) backBtn.addEventListener('click', switchToSettingsView);
+        if (exportMdBtn) exportMdBtn.addEventListener('click', exportMarkdown);
+        if (exportJsonBtn) exportJsonBtn.addEventListener('click', exportJSON);
+        if (exportCsvBtn) exportCsvBtn.addEventListener('click', exportCSV);
+        if (clearBtn) clearBtn.addEventListener('click', clearResultsAndGoBack);
+
+        [exportMdBtn, exportJsonBtn, exportCsvBtn, clearBtn, backBtn].forEach(function (btn) {
+            if (btn) {
+                btn.addEventListener('mouseenter', function () { btn.style.opacity = '0.9'; });
+                btn.addEventListener('mouseleave', function () { btn.style.opacity = '1'; });
+            }
+        });
+    }
+
+    async function switchToSettingsView() {
+        if (isRunning) return;
+        var modal = document.getElementById(P + '-dealfinder-modal');
+        if (!modal) return;
+        var settings = await loadSettings();
+        var savedResults = await loadResults();
+        modal.innerHTML = renderSettingsView(settings, savedResults);
+        attachEventListeners();
+        restoreModelSelect();
+    }
+
+    // ==================== EXPORT FUNCTIONS ====================
+
+    async function exportMarkdown() {
+        var savedResults = await loadResults();
+        if (!savedResults) { TM.ui.createToast('Keine Results verfuegbar!', { type: 'error' }); return; }
+        var md = generateMarkdown(savedResults.deals, savedResults.pages, savedResults.timestamp);
+        try {
+            await navigator.clipboard.writeText(md);
+            var btn = document.getElementById(P + '-export-markdown-btn');
+            if (btn) {
+                var orig = btn.textContent;
+                btn.textContent = 'Kopiert!';
+                setTimeout(function () { btn.textContent = orig; }, 2000);
+            }
+            Logger.log('Markdown copied to clipboard');
+        } catch (error) {
+            Logger.error('Clipboard error:', error);
+            TM.ui.createToast('Fehler beim Kopieren. Bitte Fenster fokussieren und nochmal versuchen.', { type: 'error', duration: 5000 });
+        }
+    }
+
+    function exportJSON() {
+        var raw = GM_getValue(P + '_dealfinder_results', null);
+        if (!raw) { TM.ui.createToast('Keine Results verfuegbar!', { type: 'error' }); return; }
+        var savedResults;
+        try { savedResults = JSON.parse(raw); } catch (e) { return; }
+        var blob = new Blob([JSON.stringify(savedResults, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'deals-' + Date.now() + '.json';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    }
+
+    function exportCSV() {
+        var raw = GM_getValue(P + '_dealfinder_results', null);
+        if (!raw) { TM.ui.createToast('Keine Results verfuegbar!', { type: 'error' }); return; }
+        var savedResults;
+        try { savedResults = JSON.parse(raw); } catch (e) { return; }
+        var header = ['Rang', 'Titel', 'Preis', 'Score', 'Begruendung', 'Seite', 'URL'];
+        var rows = savedResults.deals.map(function (d, i) {
+            return [
+                i + 1,
+                '"' + (d.title || '').replace(/"/g, '""') + '"',
+                '"' + (d.price || '').replace(/"/g, '""') + '"',
+                d.score !== undefined && Number.isFinite(Number(d.score)) ? d.score : '',
+                '"' + (d.reasoning || '').replace(/"/g, '""') + '"',
+                d.page || '',
+                '"' + (d.url || '').replace(/"/g, '""') + '"'
+            ];
+        });
+        var csv = [header.join(','), rows.map(function (r) { return r.join(','); }).join('\n')].join('\n');
+        var bom = String.fromCharCode(0xFEFF);
+        var blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'deals-' + Date.now() + '.csv';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    }
+
+    async function clearResultsAndGoBack() {
+        if (!confirm('Moechtest du die gespeicherten Results wirklich loeschen?')) return;
+        await clearResults();
+        switchToSettingsView();
+    }
+
+    // ==================== PROGRESS / STATUS BAR ====================
+
+    var statusBar = null;
+
+    function updateProgress(text, percentage, type) {
+        type = type || 'info';
+        var container = document.getElementById(P + '-progress-container');
+        var progressText = document.getElementById(P + '-progress-text');
+        var progressBar = document.getElementById(P + '-progress-bar');
         if (container) {
             container.style.display = 'block';
-            // Update border color based on type
-            container.style.borderLeftColor = type === 'error' ? '#dc3545' :
-                                            type === 'warning' ? '#ffc107' :
-                                            type === 'success' ? '#28a745' :
-                                            '#667eea';
+            container.style.borderLeftColor = type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : type === 'success' ? '#28a745' : '#667eea';
         }
         if (progressText) {
             progressText.textContent = text;
-            // Color coding for errors/warnings
-            progressText.style.color = type === 'error' ? '#dc3545' :
-                                     type === 'warning' ? '#ffc107' :
-                                     type === 'success' ? '#28a745' :
-                                     '#333';
+            progressText.style.color = type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : type === 'success' ? '#28a745' : '#333';
         }
         if (progressBar) {
             progressBar.style.width = percentage + '%';
-            progressBar.style.backgroundColor = type === 'error' ? '#dc3545' :
-                                              type === 'warning' ? '#ffc107' :
-                                              type === 'success' ? '#28a745' :
-                                              '#007bff';
+            progressBar.style.backgroundColor = type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : type === 'success' ? '#28a745' : '#007bff';
             progressBar.style.transition = 'width 0.3s ease, background-color 0.3s ease';
         }
+        if (!statusBar) {
+            statusBar = TM.ui.createStatusBar({ accentColor: IS_WH ? '#667eea' : '#86a542' });
+        }
+        statusBar.setText(text);
+        statusBar.setProgress(percentage);
     }
 
-    // Helper for error states
-    function showError(message, percentage = 0) {
-        updateProgress(`❌ ${message}`, percentage, 'error');
+    function showError(message, percentage) {
+        updateProgress('Fehler: ' + message, percentage || 0, 'error');
     }
 
-    function showWarning(message, percentage = 0) {
-        updateProgress(`⚠️ ${message}`, percentage, 'warning');
+    function showWarning(message, percentage) {
+        updateProgress('Warnung: ' + message, percentage || 0, 'warning');
     }
 
-    function showSuccess(message, percentage = 100) {
-        updateProgress(`✅ ${message}`, percentage, 'success');
+    function showSuccess(message, percentage) {
+        updateProgress('Erfolg: ' + message, percentage || 100, 'success');
     }
 
-    // ==================== SITE-SPECIFIC: Willhaben ====================
+    // ==================== SITE-SPECIFIC: WILLHABEN ====================
 
     function wh_findCurrentSelectors() {
-        const adSelectors = [
+        var adSelectors = [
             'a[data-testid^="search-result-entry-header-"]',
             'article[data-testid^="search-result-entry-"]',
-            '[data-testid*="search-result-entry"]',
+            '[data-testid*="search-result-entry"]'
         ];
-        // Try each selector in priority order, stop at first match
-        for (const selector of adSelectors) {
-            const adEntries = document.querySelectorAll(selector);
-            if (adEntries.length > 0) {
-                console.log(`${SCRIPT_PREFIX} Gefunden: ${adEntries.length} Anzeigen (Selector: ${selector})`);
-                return { adEntries };
+        for (var si = 0; si < adSelectors.length; si++) {
+            var entries = document.querySelectorAll(adSelectors[si]);
+            if (entries.length > 0) {
+                Logger.log('Found ' + entries.length + ' ads (selector: ' + adSelectors[si] + ')');
+                return { adEntries: entries };
             }
         }
-        const uniqueUrls = new Set();
-        const uniqueAds = [];
-        const urlRegex = /\/iad\/kaufen-und-verkaufen\/.*\/\d+/;
-        document.querySelectorAll('a[href*="/iad/kaufen-und-verkaufen/"]').forEach(link => {
-            const url = link.href;
-            if (url.match(urlRegex) && !uniqueUrls.has(url)) {
+        var uniqueUrls = new Set();
+        var uniqueAds = [];
+        var urlRegex = /\/iad\/kaufen-und-verkaufen\/.*\/\d+/;
+        document.querySelectorAll('a[href*="/iad/kaufen-und-verkaufen/"]').forEach(function (link) {
+            var url = link.href;
+            if (urlRegex.test(url) && !uniqueUrls.has(url)) {
                 uniqueUrls.add(url);
-                // Try to find a parent container that likely contains title and price
-                const container = link.closest('article, div[class*="box"], [data-testid*="search-result"], .ad-item, .list-item');
+                var container = link.closest('article, div[class*="box"], [data-testid*="search-result"], .ad-item, .list-item');
                 uniqueAds.push(container || link);
             }
         });
         if (uniqueAds.length > 0) {
-            console.log(`${SCRIPT_PREFIX} Gefunden: ${uniqueAds.length} Anzeigen (Fallback-Methode)`);
+            Logger.log('Found ' + uniqueAds.length + ' ads (fallback method)');
             return { adEntries: uniqueAds };
         }
         return null;
     }
 
     function wh_extractBasicInfo(ad) {
-        let title = 'Titel nicht verfügbar';
-        for (const selector of ['h3', 'h2', '[data-testid*="title"]']) {
-            const el = ad.querySelector(selector);
+        var title = 'Title not available';
+        [].concat(['h3', 'h2', '[data-testid*="title"]']).forEach(function (s) {
+            var el = ad.querySelector(s);
             if (el) {
-                const text = el.textContent.trim();
-                // Unit 7: only exclude if text STARTS with a price number + € and nothing else
-                if (text.length > MIN_TITLE_LENGTH && !isPriceOnlyText(text)) { title = text; break; }
+                var text = el.textContent.trim();
+                if (text.length > MIN_TITLE_LENGTH && !isPriceOnlyText(text)) title = text;
             }
-        }
-        let price = 'Preis nicht verfügbar';
-        for (const el of ad.querySelectorAll('span, div, p')) {
-            const text = el.textContent.trim();
-            if ((text.includes('€') || text.includes('EUR')) && text.length < 20 && !text.includes('...')) {
+        });
+        var price = 'Price not available';
+        var spans = ad.querySelectorAll('span, div, p');
+        for (var pi = 0; pi < spans.length; pi++) {
+            var text = spans[pi].textContent.trim();
+            if ((text.indexOf('€') !== -1 || text.indexOf('EUR') !== -1) && text.length < 20 && text.indexOf('...') === -1) {
                 price = text; break;
             }
         }
-        const url = ad.href || ad.querySelector('a[href*="/iad/"]')?.href || 'URL nicht verfügbar';
-        return { title, price, url };
+        var url = ad.href || (ad.querySelector('a[href*="/iad/"]') ? ad.querySelector('a[href*="/iad/"]').href : 'URL not available');
+        return { title: title, price: price, url: url };
     }
 
     function wh_descSelectors() {
@@ -876,29 +878,19 @@
         ];
     }
 
-    // Unit 4 BUG-03: save currentPage (not +1); resume increments it
-    function saveCrawlStateAndNavigate(href, settings) {
-        saveCrawlState({
-            currentPage,
-            currentUrl: window.location.href,
-            allTopDeals,
-            maxPages: settings.maxPages
-        });
-        window.location.href = href;
-    }
-
     function wh_goToNextPage(settings) {
-        let nextButton = document.querySelector('[data-testid="pagination-bottom-next-button"]');
+        var nextButton = document.querySelector('[data-testid="pagination-bottom-next-button"]');
         if (!nextButton) {
-            const targetPage = currentPage + 1;
-            for (const btn of document.querySelectorAll('[data-testid*="pagination"] a, nav a')) {
-                const text = btn.textContent?.trim();
-                const href = btn.getAttribute('href');
+            var targetPage = currentPage + 1;
+            var paginationLinks = document.querySelectorAll('[data-testid*="pagination"] a, nav a');
+            for (var li = 0; li < paginationLinks.length; li++) {
+                var btn = paginationLinks[li];
+                var text = (btn.textContent || '').trim();
+                var href = btn.getAttribute('href');
                 if (text && (
                     text === String(targetPage) ||
-                    text.toLowerCase().includes('weiter') ||
-                    text.toLowerCase().includes('next') ||
-                    text.toLowerCase().includes('nächste') ||
+                    text.toLowerCase().indexOf('weiter') !== -1 ||
+                    text.toLowerCase().indexOf('next') !== -1 ||
                     text === '›' || text === '>'
                 )) {
                     if (!btn.hasAttribute('disabled') && btn.getAttribute('aria-disabled') !== 'true' && href) {
@@ -908,86 +900,79 @@
             }
         }
         if (nextButton) {
-            const isDisabled = nextButton.hasAttribute('disabled');
-            const ariaDisabled = nextButton.getAttribute('aria-disabled') === 'true';
-            const href = nextButton.getAttribute('href');
-            console.log(`${SCRIPT_PREFIX} Next-Button disabled:`, isDisabled, '| aria-disabled:', ariaDisabled, '| href:', href);
+            var isDisabled = nextButton.hasAttribute('disabled');
+            var ariaDisabled = nextButton.getAttribute('aria-disabled') === 'true';
+            var href = nextButton.getAttribute('href');
+            Logger.log('Next button disabled:', isDisabled, '| aria-disabled:', ariaDisabled, '| href:', href);
             if (!isDisabled && !ariaDisabled && href) {
-                // Unit 7: same-URL guard
                 try {
                     if (new URL(href, location.href).href === location.href) {
-                        console.log(`${SCRIPT_PREFIX} ❌ Next-Button zeigt auf gleiche Seite - übersprungen`);
-                    } else {
-                        saveCrawlStateAndNavigate(href, settings);
-                        return true;
+                        Logger.log('Next button points to same page - skipped');
+                        return false;
                     }
                 } catch (e) {
-                    console.warn(`${SCRIPT_PREFIX} Ungültige URL im Next-Button:`, href, e);
+                    Logger.warn('Invalid URL in next button:', href, e);
+                    return false;
                 }
+                saveCrawlStateAndNavigate(href, settings);
+                return true;
             }
-            console.log(`${SCRIPT_PREFIX} ❌ Next-Button nicht nutzbar`);
+            Logger.log('Next button not usable');
         }
         return false;
     }
 
-    // ==================== SITE-SPECIFIC: Kleinanzeigen ====================
+    // ==================== SITE-SPECIFIC: KLEINANZEIGEN ====================
 
     function ka_findCurrentSelectors() {
-        const adSelectors = ['article[data-adid]', 'li.ad-listitem', '.aditem'];
-        // Try each selector in priority order, stop at first match
-        for (const selector of adSelectors) {
-            const adEntries = document.querySelectorAll(selector);
-            if (adEntries.length > 0) {
-                console.log(`${SCRIPT_PREFIX} Gefunden: ${adEntries.length} Anzeigen (Selector: ${selector})`);
-                return { adEntries };
+        var adSelectors = ['article[data-adid]', 'li.ad-listitem', '.aditem'];
+        for (var si = 0; si < adSelectors.length; si++) {
+            var entries = document.querySelectorAll(adSelectors[si]);
+            if (entries.length > 0) {
+                Logger.log('Found ' + entries.length + ' ads (selector: ' + adSelectors[si] + ')');
+                return { adEntries: entries };
             }
         }
-        const uniqueUrls = new Set();
-        const uniqueAds = [];
-        const urlRegex = /\/s-anzeige\/.*\/\d+/;
-        document.querySelectorAll('a[href*="/s-anzeige/"]').forEach(link => {
-            const url = link.href;
-            if (url.match(urlRegex) && !uniqueUrls.has(url)) {
+        var uniqueUrls = new Set();
+        var uniqueAds = [];
+        var urlRegex = /\/s-anzeige\/.*\/\d+/;
+        document.querySelectorAll('a[href*="/s-anzeige/"]').forEach(function (link) {
+            var url = link.href;
+            if (urlRegex.test(url) && !uniqueUrls.has(url)) {
                 uniqueUrls.add(url);
-                // Try to find a parent container that likely contains title and price
-                const container = link.closest('article, li, .aditem, .ad-listitem, [data-adid]');
+                var container = link.closest('article, li, .aditem, .ad-listitem, [data-adid]');
                 uniqueAds.push(container || link);
             }
         });
         if (uniqueAds.length > 0) {
-            console.log(`${SCRIPT_PREFIX} Gefunden: ${uniqueAds.length} Anzeigen (Fallback-Methode)`);
+            Logger.log('Found ' + uniqueAds.length + ' ads (fallback method)');
             return { adEntries: uniqueAds };
         }
         return null;
     }
 
     function ka_extractBasicInfo(ad) {
-        let title = 'Titel nicht verfügbar';
-        for (const selector of ['h2', 'h3', 'a[class*="ellipsis"]', '[class*="title"]']) {
-            const el = ad.querySelector(selector);
+        var title = 'Title not available';
+        [].concat(['h2', 'h3', 'a[class*="ellipsis"]', '[class*="title"]']).forEach(function (s) {
+            var el = ad.querySelector(s);
             if (el) {
-                const text = el.textContent.trim();
-<<<<<<< Updated upstream
-                if (text.length > 5 && !text.includes('€')) { title = text; break; }
-=======
-                if (text.length > MIN_TITLE_LENGTH && !isPriceOnlyText(text)) { title = text; break; }
->>>>>>> Stashed changes
+                var text = el.textContent.trim();
+                if (text.length > MIN_TITLE_LENGTH && !isPriceOnlyText(text)) title = text;
             }
-        }
-        let price = 'Preis nicht verfügbar';
-        for (const el of ad.querySelectorAll('span, div, p, strong')) {
-            const text = el.textContent.trim();
-            // Unit 7: VB fix — only match standalone VB or price+VB, not arbitrary text containing "VB"
-            if ((text.includes('€') || text.includes('EUR') || /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(text.trim())) && text.length < 30 && !text.includes('...')) {
+        });
+        var price = 'Price not available';
+        var spans = ad.querySelectorAll('span, div, p, strong');
+        for (var pi = 0; pi < spans.length; pi++) {
+            var text = spans[pi].textContent.trim();
+            if ((text.indexOf('€') !== -1 || text.indexOf('EUR') !== -1 || /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(text.trim())) && text.length < 30 && text.indexOf('...') === -1) {
                 price = text; break;
             }
         }
-        let url = ad.getAttribute('data-href') || ad.href || ad.querySelector('a[href*="/s-anzeige/"]')?.href || 'URL nicht verfügbar';
-        // Only prepend domain if URL is a relative path starting with '/'
-        if (url && url.startsWith('/')) {
+        var url = ad.getAttribute('data-href') || ad.href || (ad.querySelector('a[href*="/s-anzeige/"]') ? ad.querySelector('a[href*="/s-anzeige/"]').href : 'URL not available');
+        if (url && url.indexOf('/') === 0) {
             url = 'https://www.kleinanzeigen.de' + url;
         }
-        return { title, price, url };
+        return { title: title, price: price, url: url };
     }
 
     function ka_descSelectors() {
@@ -1000,65 +985,47 @@
     }
 
     function ka_goToNextPage(settings) {
-        let nextButton = document.querySelector('a[class*="pagination-next"]');
+        var nextButton = document.querySelector('a[class*="pagination-next"]');
         if (!nextButton) {
-            for (const link of document.querySelectorAll('[class*="pagination"] a, nav a, .pagination a')) {
-                const text = link.textContent?.trim().toLowerCase();
-                const href = link.getAttribute('href');
-                if ((text === 'weiter' || text === '>' || text === '›') && href && href.includes('seite:')) {
-                    nextButton = link; break;
+            var paginationLinks = document.querySelectorAll('[class*="pagination"] a, nav a, .pagination a');
+            for (var li = 0; li < paginationLinks.length; li++) {
+                var linkEl = paginationLinks[li];
+                var text = (linkEl.textContent || '').trim().toLowerCase();
+                var href = linkEl.getAttribute('href');
+                if ((text === 'weiter' || text === '>' || text === '›') && href && href.indexOf('seite:') !== -1) {
+                    nextButton = linkEl; break;
                 }
             }
         }
         if (!nextButton) {
-            const targetPage = currentPage + 1;
-            for (const link of document.querySelectorAll('a[href*="seite:"]')) {
-                const href = link.getAttribute('href');
-                if (href && href.includes(`seite:${targetPage}`)) { nextButton = link; break; }
+            var targetPage = currentPage + 1;
+            var seiteLinks = document.querySelectorAll('a[href*="seite:"]');
+            for (var sl = 0; sl < seiteLinks.length; sl++) {
+                var href = seiteLinks[sl].getAttribute('href');
+                if (href && href.indexOf('seite:' + targetPage) !== -1) {
+                    nextButton = seiteLinks[sl]; break;
+                }
             }
         }
         if (nextButton) {
-            const href = nextButton.getAttribute('href');
-            console.log(`${SCRIPT_PREFIX} Next-Button href:`, href);
+            var href = nextButton.getAttribute('href');
+            Logger.log('Next button href:', href);
             if (href) {
-                // Unit 7: same-URL guard
                 try {
                     if (new URL(href, location.href).href === location.href) {
-                        console.log(`${SCRIPT_PREFIX} ❌ Next-Button zeigt auf gleiche Seite - übersprungen`);
+                        Logger.log('Next button points to same page - skipped');
                         return false;
                     }
                 } catch (e) {
-                    console.warn(`${SCRIPT_PREFIX} Ungültige URL im Next-Button:`, href, e);
+                    Logger.warn('Invalid URL in next button:', href, e);
+                    return false;
                 }
                 saveCrawlStateAndNavigate(href, settings);
                 return true;
             }
-            console.log(`${SCRIPT_PREFIX} ❌ Next-Button hat keine href`);
+            Logger.log('Next button has no href');
         }
         return false;
-    }
-
-    function waitForElement(selector, timeout = 10000) {
-        return new Promise((resolve, reject) => {
-            const element = document.querySelector(selector);
-            if (element) { resolve(element); return; }
-            let pendingCheck = false;
-            let timer;
-            const observer = new MutationObserver((mutations, obs) => {
-                if (pendingCheck) return;
-                pendingCheck = true;
-                requestAnimationFrame(() => {
-                    pendingCheck = false;
-                    const el = document.querySelector(selector);
-                    if (el) { clearTimeout(timer); obs.disconnect(); resolve(el); }
-                });
-            });
-            // Unit 8: observe documentElement instead of body
-            const root = document.documentElement || document.body;
-            if (!root) { reject(new Error('document root not available')); return; }
-            observer.observe(root, { childList: true, subtree: true });
-            timer = setTimeout(() => { observer.disconnect(); reject(new Error(`Element ${selector} not found`)); }, timeout);
-        });
     }
 
     // ==================== DISPATCHERS ====================
@@ -1071,190 +1038,188 @@
         return IS_WH ? wh_extractBasicInfo(ad) : ka_extractBasicInfo(ad);
     }
 
-    function fetchFullDescription(url, retryCount = 0) {
-        // Unit 4: check cache first
+    function goToNextPage(settings) {
+        Logger.log('Searching for next button...');
+        var result = IS_WH ? wh_goToNextPage(settings) : ka_goToNextPage(settings);
+        if (!result) Logger.log('No more pages available - ending crawl');
+        return result;
+    }
+
+    // Save crawl state and navigate to next page
+    function saveCrawlStateAndNavigate(href, settings) {
+        var state = {
+            currentPage: currentPage,
+            currentUrl: window.location.href,
+            allTopDeals: allTopDeals,
+            maxPages: settings.maxPages
+        };
+        // Use sync GM_setValue for reliable persistence before navigation
+        GM_setValue(P + '_dealfinder_crawl_state', JSON.stringify(state));
+        window.location.href = href;
+    }
+
+    // ==================== DESCRIPTION FETCHING ====================
+
+    function fetchFullDescription(url, retryCount) {
+        retryCount = retryCount || 0;
         if (descriptionCache.has(url)) {
-            const desc = descriptionCache.get(url);
-            // Move to end (LRU) - delete and reinsert to update order
-            descriptionCache.delete(url);
+            var desc = descriptionCache.get(url);
+            descriptionCache['delete'](url);
             descriptionCache.set(url, desc);
             return Promise.resolve({ success: true, description: desc });
         }
-        const descSelectors = IS_WH ? wh_descSelectors() : ka_descSelectors();
-        return new Promise((resolve) => {
-            const req = GM_xmlhttpRequest({
+        var descSelectors = IS_WH ? wh_descSelectors() : ka_descSelectors();
+        return new Promise(function (resolve) {
+            GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
                 timeout: REQUEST_TIMEOUT,
-                onload: function(response) {
-                    activeRequests.delete(req);
+                onload: function (response) {
                     try {
                         if (response.status >= 200 && response.status < 300) {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(response.responseText, 'text/html');
-                            let fullDesc = null;
-                            for (const selector of descSelectors) {
-                                const element = doc.querySelector(selector);
+                            var parser = new DOMParser();
+                            var doc = parser.parseFromString(response.responseText, 'text/html');
+                            var fullDesc = null;
+                            for (var si = 0; si < descSelectors.length; si++) {
+                                var element = doc.querySelector(descSelectors[si]);
                                 if (element && element.textContent.trim().length > 20) {
                                     fullDesc = element.textContent.replace(/\s+/g, ' ').trim();
                                     break;
                                 }
                             }
                             if (fullDesc) {
-                                // LRU eviction: remove oldest entry if cache full
                                 if (descriptionCache.size >= MAX_CACHE_SIZE) {
-                                    const firstKey = descriptionCache.keys().next().value;
-                                    descriptionCache.delete(firstKey);
+                                    var firstKey = descriptionCache.keys().next().value;
+                                    descriptionCache['delete'](firstKey);
                                 }
                                 descriptionCache.set(url, fullDesc);
                                 resolve({ success: true, description: fullDesc });
-                            } else if (retryCount < MAX_RETRIES) {
-                                if (shouldStop) {
-                                    resolve({ success: false, description: 'Aborted' });
-                                    return;
-                                }
-                                setTimeout(() => fetchFullDescription(url, retryCount + 1).then(resolve), 1000);
-                            } else {
-                                resolve({ success: false, description: 'Beschreibung nicht verfügbar' });
-                            }
-                        } else if (retryCount < MAX_RETRIES) {
-                            if (shouldStop) {
-                                resolve({ success: false, description: 'Aborted' });
+                                return;
+                            } else if (retryCount < MAX_RETRIES && !shouldStop) {
+                                setTimeout(function () { fetchFullDescription(url, retryCount + 1).then(resolve); }, 1000);
                                 return;
                             }
-                            setTimeout(() => fetchFullDescription(url, retryCount + 1).then(resolve), 1000);
-                        } else {
-                            resolve({ success: false, description: 'Beschreibung nicht verfügbar' });
-                        }
-                    } catch (error) {
-                        if (shouldStop) {
-                            resolve({ success: false, description: 'Aborted' });
+                        } else if (retryCount < MAX_RETRIES && !shouldStop) {
+                            setTimeout(function () { fetchFullDescription(url, retryCount + 1).then(resolve); }, 1000);
                             return;
                         }
-                        if (retryCount < MAX_RETRIES) {
-                            setTimeout(() => fetchFullDescription(url, retryCount + 1).then(resolve), 1000);
-                        } else {
-                            resolve({ success: false, description: 'Beschreibung nicht verfügbar' });
+                    } catch (e) {
+                        if (retryCount < MAX_RETRIES && !shouldStop) {
+                            setTimeout(function () { fetchFullDescription(url, retryCount + 1).then(resolve); }, 1000);
+                            return;
                         }
                     }
+                    resolve({ success: false, description: 'Description not available' });
                 },
-                onerror: function() {
-                    activeRequests.delete(req);
-                    if (shouldStop) {
-                        resolve({ success: false, description: 'Aborted' });
-                        return;
+                onerror: function () {
+                    if (retryCount < MAX_RETRIES && !shouldStop) {
+                        setTimeout(function () { fetchFullDescription(url, retryCount + 1).then(resolve); }, 1000);
+                    } else {
+                        resolve({ success: false, description: 'Description not available' });
                     }
-                    retryCount < MAX_RETRIES
-                        ? setTimeout(() => fetchFullDescription(url, retryCount + 1).then(resolve), 1000)
-                        : resolve({ success: false, description: 'Beschreibung nicht verfügbar' });
                 },
-                ontimeout: function() {
-                    activeRequests.delete(req);
-                    if (shouldStop) {
-                        resolve({ success: false, description: 'Aborted' });
-                        return;
+                ontimeout: function () {
+                    if (retryCount < MAX_RETRIES && !shouldStop) {
+                        setTimeout(function () { fetchFullDescription(url, retryCount + 1).then(resolve); }, 1000);
+                    } else {
+                        resolve({ success: false, description: 'Description not available' });
                     }
-                    retryCount < MAX_RETRIES
-                        ? setTimeout(() => fetchFullDescription(url, retryCount + 1).then(resolve), 1000)
-                        : resolve({ success: false, description: 'Beschreibung nicht verfügbar' });
                 }
             });
-            if (req) activeRequests.add(req);
         });
     }
 
-    function fetchGeminiModels(apiKey) {
-        const area = document.getElementById(`${P}-model-area`);
-        if (!area) return;
-        area.innerHTML = '<small style="color:#aaa;font-size:12px;">Lade Modelle…</small>';
+    // ==================== GEMINI MODEL UI ====================
 
-        const req = GM_xmlhttpRequest({
+    function fetchGeminiModels(apiKey) {
+        var area = document.getElementById(P + '-model-area');
+        if (!area) return;
+        area.innerHTML = '<small style="color:#aaa;font-size:12px;">Loading models...</small>';
+
+        var req = GM_xmlhttpRequest({
             method: 'GET',
-            url: `https://generativelanguage.googleapis.com/v1beta/models`,
+            url: 'https://generativelanguage.googleapis.com/v1beta/models',
             timeout: REQUEST_TIMEOUT,
             headers: { 'x-goog-api-key': apiKey },
-            onload: function(response) {
-                activeRequests.delete(req);
+            onload: function (response) {
                 try {
                     if (response.status !== 200) {
-                        console.error(`${SCRIPT_PREFIX} Models API Fehler:`, response.status, response.responseText);
-                        throw new Error(`HTTP ${response.status}: ${response.responseText.substring(0, 120)}`);
+                        Logger.error('Models API error:', response.status);
+                        throw new Error('HTTP ' + response.status);
                     }
-                    const data = JSON.parse(response.responseText);
-                    const modelIds = (data.models || [])
-                        .filter(m =>
-                            Array.isArray(m.supportedGenerationMethods) &&
-                            m.supportedGenerationMethods.includes('generateContent') &&
-                            m.name.includes('gemini')
-                        )
-                        .map(m => m.name.replace('models/', ''));
-                    if (modelIds.length === 0) throw new Error('Keine Gemini-Modelle gefunden');
+                    var data = JSON.parse(response.responseText);
+                    var modelIds = (data.models || [])
+                        .filter(function (m) {
+                            return Array.isArray(m.supportedGenerationMethods) &&
+                                m.supportedGenerationMethods.indexOf('generateContent') !== -1 &&
+                                m.name.indexOf('gemini') !== -1;
+                        })
+                        .map(function (m) { return m.name.replace('models/', ''); });
+                    if (modelIds.length === 0) throw new Error('No Gemini models found');
                     saveAvailableModels(modelIds);
                     showModelMapper(modelIds);
                 } catch (e) {
                     restoreModelSelect();
+                    Logger.error('Failed to load models:', e);
                     if (area) {
-                        const hint = area.querySelector('small');
-                        if (hint) hint.textContent = `Fehler: ${e.message}`;
+                        var hint = area.querySelector('small');
+                        if (hint) hint.textContent = 'Error: ' + e.message;
                     }
-                    console.error(`${SCRIPT_PREFIX} Modelle laden fehlgeschlagen:`, e);
                 }
             },
-            onerror: function() {
-                activeRequests.delete(req);
-                restoreModelSelect();
-            },
-            ontimeout: function() {
-                activeRequests.delete(req);
-                restoreModelSelect();
-            }
+            onerror: function () { restoreModelSelect(); },
+            ontimeout: function () { restoreModelSelect(); }
         });
-        if (req) activeRequests.add(req);
     }
 
     function showModelMapper(modelIds) {
-        const area = document.getElementById(`${P}-model-area`);
+        var area = document.getElementById(P + '-model-area');
         if (!area) return;
-        const settings = loadSettings();
-        const mapping = settings.modelMapping || DEFAULT_SETTINGS.modelMapping;
+        var mapping = (cachedSettings && cachedSettings.modelMapping) || DEFAULT_SETTINGS.modelMapping;
 
-        area.innerHTML = `
-            <div style="border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; background: #fafafa;">
-                <div style="font-size: 11px; color: #888; margin-bottom: 10px; font-weight: 600;">Welches Modell steckt hinter…</div>
-                ${Object.entries(GEMINI_MODELS).map(([key, m]) => `
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <span style="font-size: 13px; font-weight: 600; color: #444; min-width: 70px;">${m.icon} ${m.label}</span>
-                        <select id="${P}-map-${key}" style="flex: 1; padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white;">
-                            ${modelIds.map(id => `<option value="${escapeHTML(id)}" ${(mapping[key] || m.id) === id ? 'selected' : ''}>${escapeHTML(id)}</option>`).join('')}
-                        </select>
-                    </div>
-                `).join('')}
-                <div style="display: flex; gap: 8px; margin-top: 10px;">
-                    <button id="${P}-map-save" style="flex: 1; padding: 7px; background: #28a745; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">✓ Speichern</button>
-                    <button id="${P}-map-cancel" style="padding: 7px 14px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; cursor: pointer; color: #555;">Abbrechen</button>
-                </div>
-            </div>
-        `;
+        var html = '<div style="border:1px solid #e0e0e0;border-radius:4px;padding:12px;background:#fafafa;">';
+        html += '<div style="font-size:11px;color:#888;margin-bottom:10px;font-weight:600;">Which model maps to...</div>';
+        var modelKeys = Object.keys(GEMINI_MODELS);
+        for (var ki = 0; ki < modelKeys.length; ki++) {
+            var key = modelKeys[ki];
+            var m = GEMINI_MODELS[key];
+            var currentVal = mapping[key] || m.id;
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">';
+            html += '<span style="font-size:13px;font-weight:600;color:#444;min-width:70px;">' + m.icon + ' ' + m.label + '</span>';
+            html += '<select id="' + P + '-map-' + key + '" style="flex:1;padding:5px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;background:white;">';
+            for (var mi = 0; mi < modelIds.length; mi++) {
+                var selected = currentVal === modelIds[mi] ? ' selected' : '';
+                html += '<option value="' + escapeHTML(modelIds[mi]) + '"' + selected + '>' + escapeHTML(modelIds[mi]) + '</option>';
+            }
+            html += '</select></div>';
+        }
+        html += '<div style="display:flex;gap:8px;margin-top:10px;">';
+        html += '<button id="' + P + '-map-save" style="flex:1;padding:7px;background:#28a745;color:white;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;">Save</button>';
+        html += '<button id="' + P + '-map-cancel" style="padding:7px 14px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:13px;cursor:pointer;color:#555;">Cancel</button>';
+        html += '</div></div>';
+        area.innerHTML = html;
 
-        // Helper to save current mapping
-        function saveModelMapping(showFeedback = false) {
-            const s = loadSettings();
+        function saveModelMapping(showFeedback) {
+            showFeedback = showFeedback || false;
+            var s = JSON.parse(JSON.stringify(cachedSettings || DEFAULT_SETTINGS));
             s.modelMapping = s.modelMapping || {};
-            Object.keys(GEMINI_MODELS).forEach(key => {
-                const sel = document.getElementById(`${P}-map-${key}`);
-                if (sel) s.modelMapping[key] = sel.value;
+            modelKeys.forEach(function (k) {
+                var sel = document.getElementById(P + '-map-' + k);
+                if (sel) s.modelMapping[k] = sel.value;
             });
-            saveSettings(s);
-            console.log(`${SCRIPT_PREFIX} Model-Mapping gespeichert:`, s.modelMapping);
+            // Persist synchronously for reliability
+            GM_setValue(P + '_dealfinder_settings', JSON.stringify(s));
+            cachedSettings = s;
+            Logger.log('Model mapping saved:', s.modelMapping);
 
             if (showFeedback) {
-                const saveBtn = document.getElementById(`${P}-map-save`);
+                var saveBtn = document.getElementById(P + '-map-save');
                 if (saveBtn) {
-                    const originalText = saveBtn.textContent;
-                    saveBtn.textContent = '✓ Gespeichert!';
+                    var orig = saveBtn.textContent;
+                    saveBtn.textContent = 'Saved!';
                     saveBtn.style.background = '#28a745';
-                    setTimeout(() => {
-                        saveBtn.textContent = originalText;
+                    setTimeout(function () {
+                        saveBtn.textContent = orig;
                         restoreModelSelect();
                     }, 800);
                 } else {
@@ -1263,437 +1228,328 @@
             }
         }
 
-        // Auto-save on select change (with debounce)
-        Object.keys(GEMINI_MODELS).forEach(key => {
-            const sel = document.getElementById(`${P}-map-${key}`);
+        modelKeys.forEach(function (k) {
+            var sel = document.getElementById(P + '-map-' + k);
             if (sel) {
-                sel.addEventListener('change', () => {
+                sel.addEventListener('change', function () {
                     saveModelMapping(false);
-                    // Optional: show small indicator that it auto-saved
-                    const indicatorId = `${P}-map-indicator-${key}`;
-                    const indicator = document.getElementById(indicatorId);
+                    var indicatorId = P + '-map-indicator-' + k;
+                    var indicator = document.getElementById(indicatorId);
                     if (!indicator) {
-                        const div = document.createElement('div');
+                        var div = document.createElement('div');
                         div.id = indicatorId;
-                        div.style.cssText = 'position: absolute; top: -20px; right: 0; font-size: 11px; color: #28a745;';
+                        div.style.cssText = 'position:absolute;top:-20px;right:0;font-size:11px;color:#28a745;';
                         sel.parentNode.style.position = 'relative';
                         sel.parentNode.appendChild(div);
                     }
-                    const indicatorEl = document.getElementById(indicatorId);
-                    indicatorEl.textContent = '✓ auto-gespeichert';
-                    setTimeout(() => indicatorEl.textContent = '', 1500);
+                    document.getElementById(indicatorId).textContent = 'auto-saved';
+                    setTimeout(function () { document.getElementById(indicatorId).textContent = ''; }, 1500);
                 });
             }
         });
 
-        // Save button for explicit confirmation
-        document.getElementById(`${P}-map-save`)?.addEventListener('click', () => saveModelMapping(true));
-        document.getElementById(`${P}-map-cancel`)?.addEventListener('click', restoreModelSelect);
+        var mapSaveBtn = document.getElementById(P + '-map-save');
+        if (mapSaveBtn) mapSaveBtn.addEventListener('click', function () { saveModelMapping(true); });
+        var mapCancelBtn = document.getElementById(P + '-map-cancel');
+        if (mapCancelBtn) mapCancelBtn.addEventListener('click', restoreModelSelect);
     }
 
     function restoreModelSelect() {
-        const area = document.getElementById(`${P}-model-area`);
+        var area = document.getElementById(P + '-model-area');
         if (!area) return;
-        const settings = loadSettings();
-        console.log(`${SCRIPT_PREFIX} restoreModelSelect mit Mapping:`, settings.modelMapping);
-        area.innerHTML = `
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <select id="${P}-model-select" style="
-                    flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px;
-                    font-size: 13px; background: white; cursor: pointer; color: #333;
-                ">
-                    ${Object.entries(GEMINI_MODELS).map(([key, m]) => `
-                        <option value="${key}" ${settings.model === key ? 'selected' : ''}>
-                            ${m.icon} ${m.label} — ${settings.modelMapping?.[key] || m.id}
-                        </option>
-                    `).join('')}
-                </select>
-                <button id="${P}-load-models-btn" title="Modellzuweisung ändern"
-                    style="padding: 8px 11px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; font-size: 15px; cursor: pointer; line-height: 1; color: #555;">↻</button>
-            </div>
-            <small style="color: #aaa; font-size: 11px; display: block; margin-top: 4px;">
-                ↻ um zuzuweisen, welches Gemini-Modell hinter Flash/Pro/Lite steckt
-            </small>
-        `;
-        // Re-attach events
-        const sel = document.getElementById(`${P}-model-select`);
-        if (sel) sel.addEventListener('change', () => {
-            const s = loadSettings(); s.model = sel.value; saveSettings(s);
-        });
-        const apiKeyEl = document.getElementById(`${P}-api-key`);
-        document.getElementById(`${P}-load-models-btn`)?.addEventListener('click', () => {
-            const key = apiKeyEl?.value.trim();
-            if (!key) return;
-            fetchGeminiModels(key);
-        });
-    }
+        var settings = cachedSettings || DEFAULT_SETTINGS;
+        var html = '<div style="display:flex;gap:8px;align-items:center;">';
+        html += '<select id="' + P + '-model-select" style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;background:white;cursor:pointer;color:#333;">';
+        var modelKeys = Object.keys(GEMINI_MODELS);
+        for (var ki = 0; ki < modelKeys.length; ki++) {
+            var key = modelKeys[ki];
+            var m = GEMINI_MODELS[key];
+            var selected = settings.model === key ? ' selected' : '';
+            var modelId = (settings.modelMapping && settings.modelMapping[key]) || m.id;
+            html += '<option value="' + key + '"' + selected + '>' + m.icon + ' ' + m.label + ' - ' + escapeHTML(modelId) + '</option>';
+        }
+        html += '</select>';
+        html += '<button id="' + P + '-load-models-btn" title="Change model assignment" style="padding:8px 11px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:15px;cursor:pointer;line-height:1;color:#555;">↻</button>';
+        html += '</div>';
+        html += '<small style="color:#aaa;font-size:11px;display:block;margin-top:4px;">Click ↻ to assign which Gemini model goes with Flash/Pro/Lite</small>';
+        area.innerHTML = html;
 
-    function goToNextPage(settings) {
-        console.log(`${SCRIPT_PREFIX} 🔍 Suche Next-Button...`);
-        const result = IS_WH ? wh_goToNextPage(settings) : ka_goToNextPage(settings);
-        if (!result) console.log(`${SCRIPT_PREFIX} 🛑 Keine weitere Seite verfügbar - beende Crawl`);
-        return result;
+        var sel = document.getElementById(P + '-model-select');
+        if (sel) {
+            sel.addEventListener('change', function () {
+                var s = JSON.parse(JSON.stringify(cachedSettings || DEFAULT_SETTINGS));
+                s.model = sel.value;
+                GM_setValue(P + '_dealfinder_settings', JSON.stringify(s));
+                cachedSettings = s;
+            });
+        }
+        var loadBtn = document.getElementById(P + '-load-models-btn');
+        var apiKeyEl = document.getElementById(P + '-api-key');
+        if (loadBtn && apiKeyEl) {
+            loadBtn.addEventListener('click', function () {
+                var key = apiKeyEl.value.trim();
+                if (key) fetchGeminiModels(key);
+            });
+        }
     }
 
     // ==================== GEMINI API ====================
 
     function computePriceStats(adsData) {
-        const prices = adsData
-            .map(ad => {
-                const match = (ad.price || '')
-                    .replace(/\./g, '')        // Tausenderpunkte entfernen
-                    .replace(/,/g, '.')        // Dezimalkomma zu Punkt
-                    .match(/(\d+(?:\.\d+)?)/); // Dezimalzahl matchen
-                return match ? parseFloat(match[1]) : null;
-            })
-            .filter(p => p !== null && p > 0);
+        var prices = [];
+        for (var ai = 0; ai < adsData.length; ai++) {
+            var ad = adsData[ai];
+            var match = (ad.price || '')
+                .replace(/\./g, '')
+                .replace(/,/g, '.')
+                .match(/(\d+(?:\.\d+)?)/);
+            if (match) {
+                var p = parseFloat(match[1]);
+                if (p > 0) prices.push(p);
+            }
+        }
         if (prices.length === 0) return null;
-        const sorted = [...prices].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-        const mean = prices.reduce((s, p) => s + p, 0) / prices.length;
+        var sorted = prices.slice().sort(function (a, b) { return a - b; });
+        var mid = Math.floor(sorted.length / 2);
+        var median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+        var sum = 0;
+        for (var si = 0; si < prices.length; si++) sum += prices[si];
+        var mean = sum / prices.length;
         return { min: sorted[0], max: sorted[sorted.length - 1], mean: Math.round(mean), median: Math.round(median), count: prices.length };
     }
 
-    function callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey = MODEL.FLASH, retryCount = 0, onRetry = null) {
-        return new Promise((resolve, reject) => {
-            // Resolve slot key → actual model ID via settings.modelMapping
-            const mapping = loadSettings().modelMapping || DEFAULT_SETTINGS.modelMapping;
-            const slotConfig = GEMINI_MODELS[modelKey];
-            const modelId = mapping[modelKey] || slotConfig?.id || modelKey;
-            const modelName = slotConfig ? `${slotConfig.icon} ${slotConfig.label} (${modelId})` : modelId;
-            const modelConfig = {
-                id: modelId,
-                name: modelName,
-                url: `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`
-            };
-            const stats = computePriceStats(adsData);
-            const statsSection = stats ? `\n\n## Preisverteilung\n- Minimum: ${stats.min} €\n- Maximum: ${stats.max} €\n- Durchschnitt: ${stats.mean} €\n- Median: ${stats.median} €\n- Anzeigen mit Preis: ${stats.count}` : '';
+    function callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount, onRetry) {
+        modelKey = modelKey || MODEL.FLASH;
+        retryCount = retryCount || 0;
+        onRetry = onRetry || null;
+        return new Promise(function (resolve, reject) {
+            var mapping = (cachedSettings && cachedSettings.modelMapping) || DEFAULT_SETTINGS.modelMapping;
+            var slotConfig = GEMINI_MODELS[modelKey];
+            var modelId = (mapping && mapping[modelKey]) || (slotConfig ? slotConfig.id : modelKey);
+            var modelUrl = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent';
+            Logger.log('Using model:', modelId);
 
-            const prompt = `Du bist ein Experte für Schnäppchen und Preisanalyse.
+            var stats = computePriceStats(adsData);
+            var statsSection = stats ? '\n\n## Price Distribution\n- Min: ' + stats.min + ' EUR\n- Max: ' + stats.max + ' EUR\n- Avg: ' + stats.mean + ' EUR\n- Median: ' + stats.median + ' EUR\n- Listings with price: ' + stats.count : '';
 
-SUCHKONTEXT: ${searchContext}
+            var prompt = 'You are a deal and price analysis expert.\n\nSEARCH CONTEXT: ' + searchContext + '\n\nTASK:\nAnalyze the following ' + SITE_NAME + ' listings and find the ' + topX + ' BEST deals.\n\nCRITERIA for a good deal:\n- 35-90% below the usual new price\n- Guaranteed profit on resale possible\n- MUST BUY quality\n- Real added value for the buyer' + statsSection + '\n\nLISTINGS:\n';
 
-AUFGABE:
-Analysiere die folgenden ${SITE_NAME}-Anzeigen und finde die ${topX} BESTEN Schnäppchen/Deals.
+            for (var adi = 0; adi < adsData.length; adi++) {
+                var ad = adsData[adi];
+                prompt += '\nListing ' + (adi + 1) + ':\nTitle: ' + (ad.title || '') + '\nPrice: ' + (ad.price || '') + '\nDescription: ' + ((ad.description || '').substring(0, 400)) + '\nURL: ' + (ad.url || '') + '\n---\n';
+            }
 
-KRITERIEN für ein gutes Schnäppchen:
-- 35-90% unter dem üblichen Neupreis
-- Bei Wiederverkauf garantierter Gewinn möglich
-- MUST BUY Qualität
-- Echter Mehrwert für den Käufer${statsSection}
+            prompt += '\nRESPONSE FORMAT (JSON ONLY, NO EXTRA TEXT):\n{\n  "topDeals": [\n    {\n      "title": "...",\n      "price": "...",\n      "description": "...",\n      "url": "...",\n      "reasoning": "Why is this a top deal? (1-2 sentences)",\n      "score": 85\n    }\n  ]\n}\n\nSort the top ' + topX + ' deals by quality (best first). Score is 0-100 (100 = absolute bargain).';
 
-ANZEIGEN:
-${adsData.map((ad, idx) => `
-Anzeige ${idx + 1}:
-Titel: ${ad.title}
-Preis: ${ad.price}
-Beschreibung: ${(ad.description || '').substring(0, 400)}
-URL: ${ad.url}
-`).join('\n---\n')}
+            var baseTokens = 2048;
+            var tokensPerDeal = 150;
+            var requiredTokens = Math.max(baseTokens, adsData.length * tokensPerDeal + 500);
+            var maxOutputTokens = Math.min(8192, requiredTokens);
 
-ANTWORT-FORMAT (NUR JSON, KEINE ZUSÄTZLICHEN TEXTE):
-{
-  "topDeals": [
-    {
-      "title": "...",
-      "price": "...",
-      "description": "...",
-      "url": "...",
-      "reasoning": "Warum ist das ein Top-Deal? (1-2 Sätze)",
-      "score": 85
-    }
-  ]
-}
-
-Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-100 (100 = absolutes Schnäppchen).`;
-
-            console.log(`${SCRIPT_PREFIX} Using model: ${modelConfig.name} (${modelConfig.id})`);
-
-            // Adaptive token limit based on number of deals
-            const baseTokens = 2048;
-            const tokensPerDeal = 150;
-            const requiredTokens = Math.max(baseTokens, adsData.length * tokensPerDeal + 500);
-            const maxOutputTokens = Math.min(8192, requiredTokens);
-
-            const requestBody = {
+            var requestBody = {
                 contents: [{ parts: [{ text: prompt }] }],
                 generationConfig: {
                     temperature: 0.1,
                     topK: 40,
                     topP: 0.95,
                     maxOutputTokens: maxOutputTokens,
-<<<<<<< Updated upstream
-                    responseMimeType: 'application/json'
-=======
                     responseMimeType: 'application/json',
                     responseSchema: {
-                        type: "object",
+                        type: 'object',
                         properties: {
                             topDeals: {
-                                type: "array",
+                                type: 'array',
                                 items: {
-                                    type: "object",
+                                    type: 'object',
                                     properties: {
-                                        title: { type: "string" },
-                                        price: { type: "string" },
-                                        description: { type: "string" },
-                                        url: { type: "string" },
-                                        score: { type: "number" },
-                                        reasoning: { type: "string" }
+                                        title: { type: 'string' },
+                                        price: { type: 'string' },
+                                        description: { type: 'string' },
+                                        url: { type: 'string' },
+                                        score: { type: 'number' },
+                                        reasoning: { type: 'string' }
                                     },
-                                    required: ["title", "price", "description", "url", "score", "reasoning"]
+                                    required: ['title', 'price', 'description', 'url', 'score', 'reasoning']
                                 }
                             }
                         },
-                        required: ["topDeals"]
+                        required: ['topDeals']
                     }
->>>>>>> Stashed changes
                 }
             };
 
-            const req = GM_xmlhttpRequest({
+            var req = GM_xmlhttpRequest({
                 method: 'POST',
-                url: modelConfig.url,
+                url: modelUrl,
                 headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                 data: JSON.stringify(requestBody),
                 timeout: GEMINI_API_TIMEOUT,
-                onload: function(response) {
-                    activeRequests.delete(req);
+                onload: function (response) {
                     try {
                         if (response.status === 200) {
-                            const data = JSON.parse(response.responseText);
-                            const finishReason = data.candidates?.[0]?.finishReason;
-                            console.log(`${SCRIPT_PREFIX} Gemini finishReason:`, finishReason);
+                            var data = JSON.parse(response.responseText);
+                            var finishReason = data.candidates && data.candidates[0] ? data.candidates[0].finishReason : null;
+                            Logger.log('Gemini finishReason:', finishReason);
 
-                            // Check for safety blocks or missing content
-                            if (!data.candidates?.[0]?.content?.parts) {
-                                const reason = data.candidates?.[0]?.finishReason || 'UNKNOWN';
-                                if (['SAFETY', 'RECITATION'].includes(reason)) {
-                                    reject(new Error(`Gemini: Inhalt blockiert (${reason})`));
+                            if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+                                var reason = finishReason || 'UNKNOWN';
+                                if (reason === 'SAFETY' || reason === 'RECITATION') {
+                                    reject(new Error('Gemini: Content blocked (' + reason + ')'));
                                 } else {
-                                    reject(new Error(`Gemini: Kein Inhalt (finishReason: ${reason})`));
+                                    reject(new Error('Gemini: No content (finishReason: ' + reason + ')'));
                                 }
                                 return;
                             }
 
-                            const parts = data.candidates[0].content.parts;
-                            let fullText = parts.map(p => p.text).join('');
-                            console.log(`${SCRIPT_PREFIX} AI Antwort (${parts.length} parts, ${fullText.length} chars):`, fullText.substring(0, 500));
+                            var parts = data.candidates[0].content.parts;
+                            var fullText = '';
+                            for (var pi = 0; pi < parts.length; pi++) {
+                                fullText += parts[pi].text || '';
+                            }
+                            Logger.log('AI response (' + parts.length + ' parts, ' + fullText.length + ' chars)');
 
                             if (finishReason === 'MAX_TOKENS') {
-                                console.warn(`${SCRIPT_PREFIX} ⚠️ Response bei MAX_TOKENS abgeschnitten!`);
-                            } else if (finishReason && finishReason !== 'STOP') {
-                                console.warn(`${SCRIPT_PREFIX} ⚠️ Unerwarteter finishReason: ${finishReason}`);
+                                Logger.warn('Response truncated at MAX_TOKENS');
                             }
 
-                            // Methode 1: Direktes JSON
                             try {
-                                const direct = JSON.parse(fullText);
-                                if (direct.topDeals) {
-                                    console.log(`${SCRIPT_PREFIX} ✅ Direktes JSON erfolgreich geparst`);
-                                    resolve(direct);
+                                var parsed = JSON.parse(fullText);
+                                if (parsed.topDeals) {
+                                    Logger.log('Direct JSON parsed successfully');
+                                    resolve(parsed);
                                     return;
                                 }
                             } catch (e) {}
 
-                            // Methode 2: Markdown Codeblock (object or array)
-                            let jsonText = null;
-                            const markdownMatch = fullText.match(/```(?:json)?\s*([\{\[][\s\S]*[\}\]])\s*```/);
-                            if (markdownMatch) {
-                                jsonText = markdownMatch[1];
-                                console.log(`${SCRIPT_PREFIX} JSON via Markdown extrahiert (${jsonText.length} chars)`);
-                            }
+                            // Try JSON code block extraction
+                            var jsonMatch = fullText.match(/```(?:json)?\s*([\s\S]*?)```/);
+                            var jsonText = jsonMatch ? jsonMatch[1] : null;
 
-                            // Methode 3: Rohes JSON (object or array)
+                            // Try raw JSON extraction
                             if (!jsonText) {
-                                const rawMatch = fullText.match(/([\{\[][\s\S]*[\}\]])/);
-                                if (rawMatch) {
-                                    jsonText = rawMatch[1];
-                                    console.log(`${SCRIPT_PREFIX} JSON raw extrahiert (${jsonText.length} chars)`);
-                                }
+                                var rawMatch = fullText.match(/(\{[\s\S]*\})/);
+                                if (rawMatch) jsonText = rawMatch[1];
                             }
 
                             if (jsonText) {
                                 try {
                                     resolve(JSON.parse(jsonText));
-                                } catch (parseError) {
-                                    console.error(`${SCRIPT_PREFIX} JSON Parse Fehler:`, parseError);
-                                    if (shouldStop) {
-                                        reject(new Error('Aborted'));
-                                        return;
-                                    }
-                                    if (retryCount < MAX_RETRIES) {
-<<<<<<< Updated upstream
-                                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
-=======
-                                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
->>>>>>> Stashed changes
-                                    } else {
-                                        reject(new Error('JSON Parse Fehler'));
-                                    }
-                                }
-                            } else {
-                                console.error(`${SCRIPT_PREFIX} Kein JSON in Antwort gefunden`);
-                                if (shouldStop) {
-                                    reject(new Error('Aborted'));
                                     return;
-                                }
-                                if (retryCount < MAX_RETRIES) {
-<<<<<<< Updated upstream
-                                    setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
-=======
-                                    setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
->>>>>>> Stashed changes
-                                } else {
-                                    reject(new Error('Kein JSON in AI-Antwort'));
+                                } catch (parseError) {
+                                    Logger.error('JSON parse error:', parseError);
                                 }
                             }
-                        } else if ([400, 401, 403].includes(response.status)) {
-                            // Unit 1: no retry for auth/client errors
-                            console.error(`${SCRIPT_PREFIX} FINALE FEHLER (kein Retry) - Status: ${response.status}`);
-                            reject(new Error(`Gemini API Fehler: ${response.status} - ${response.responseText}`));
-                        } else if ([429, 503].includes(response.status)) {
-                            // Unit 1: exponential backoff with Retry-After header support
+
+                            Logger.error('No JSON found in response');
+                            if (retryCount < MAX_RETRIES && !shouldStop) {
+                                var delay = addJitter(RETRY_BASE_DELAY, 0.5);
+                                setTimeout(function () {
+                                    callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve)['catch'](reject);
+                                }, delay);
+                            } else {
+                                reject(new Error('No JSON in AI response'));
+                            }
+                        } else if (response.status === 400 || response.status === 401 || response.status === 403) {
+                            Logger.error('Final error (no retry) - Status:', response.status);
+                            reject(new Error('Gemini API error: ' + response.status));
+                        } else if (response.status === 429 || response.status === 503) {
                             if (retryCount < RATE_LIMIT_MAX_RETRIES) {
-                                let delay = RATE_LIMIT_BASE_DELAY * Math.pow(2, retryCount); // base 5s
-                                let serverDictated = false;
-                                // Try to parse Retry-After header
-                                const headers = response.responseHeaders;
-                                if (headers) {
-                                    const match = headers.match(/retry-after:\s*(\d+)/i);
-                                    if (match) {
-                                        const seconds = parseInt(match[1], 10);
+                                var delay = RATE_LIMIT_BASE_DELAY * Math.pow(2, retryCount);
+                                var serverDictated = false;
+                                if (response.responseHeaders) {
+                                    var raMatch = response.responseHeaders.match(/retry-after:\s*(\d+)/i);
+                                    if (raMatch) {
+                                        var seconds = parseInt(raMatch[1], 10);
                                         if (!isNaN(seconds)) {
-                                            delay = seconds * 1000; // convert to ms
+                                            delay = seconds * 1000;
                                             serverDictated = true;
-                                            console.log(`${SCRIPT_PREFIX} Retry-After header: ${seconds}s`);
                                         }
                                     }
                                 }
-                                // Add jitter (+0‑20%) – never less than Retry‑After header
                                 delay = addJitter(delay, JITTER_FACTOR);
-                                // Only cap self-generated backoff delays; server-dictated Retry-After must be honoured
                                 if (!serverDictated) delay = Math.min(delay, MAX_RATE_LIMIT_DELAY);
-                                console.log(`${SCRIPT_PREFIX} Rate limit ${response.status} - Retry ${retryCount + 1} in ${Math.round(delay)}ms`);
-                                // Notify UI about retry
-                                if (onRetry) {
-                                    onRetry(response.status, retryCount + 1, Math.round(delay / 1000));
-                                }
-                                if (shouldStop) {
-                                    reject(new Error('Aborted'));
-                                    return;
-                                }
-                                setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), delay);
+                                Logger.log('Rate limit', response.status, '- Retry', (retryCount + 1), 'in', Math.round(delay), 'ms');
+                                if (onRetry) onRetry(response.status, retryCount + 1, Math.round(delay / 1000));
+                                if (shouldStop) { reject(new Error('Aborted')); return; }
+                                setTimeout(function () {
+                                    callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve)['catch'](reject);
+                                }, delay);
                             } else {
-                                reject(new Error(`Gemini API Fehler: ${response.status}`));
+                                reject(new Error('Gemini API error: ' + response.status));
                             }
                         } else if (retryCount < MAX_RETRIES) {
-                            console.log(`${SCRIPT_PREFIX} Gemini API Fehler ${response.status} - Retry ${retryCount + 1}`);
-                            // Notify UI about retry for non-rate-limit errors
-                            if (onRetry) {
-                                onRetry(response.status, retryCount + 1, 2); // 2 seconds delay
-                            }
-                            if (shouldStop) {
-                                reject(new Error('Aborted'));
-                                return;
-                            }
-<<<<<<< Updated upstream
-                            setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
-=======
-                            setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
->>>>>>> Stashed changes
+                            Logger.log('API error', response.status, '- Retry', (retryCount + 1));
+                            if (onRetry) onRetry(response.status, retryCount + 1, 2);
+                            if (shouldStop) { reject(new Error('Aborted')); return; }
+                            setTimeout(function () {
+                                callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve)['catch'](reject);
+                            }, addJitter(RETRY_BASE_DELAY, 0.5));
                         } else {
-                            console.error(`${SCRIPT_PREFIX} FINALE FEHLER - Status: ${response.status}`);
-                            reject(new Error(`Gemini API Fehler: ${response.status} - ${response.responseText}`));
+                            Logger.error('Final error - Status:', response.status);
+                            reject(new Error('Gemini API error: ' + response.status));
                         }
                     } catch (error) {
-                        if (shouldStop) {
-                            reject(new Error('Aborted'));
-                            return;
-                        }
+                        if (shouldStop) { reject(new Error('Aborted')); return; }
                         if (retryCount < MAX_RETRIES) {
-<<<<<<< Updated upstream
-                            setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
-=======
-                            setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
->>>>>>> Stashed changes
+                            setTimeout(function () {
+                                callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve)['catch'](reject);
+                            }, addJitter(RETRY_BASE_DELAY, 0.5));
                         } else {
                             reject(error);
                         }
                     }
                 },
-                onerror: function() {
-                    activeRequests.delete(req);
-                    if (shouldStop) {
-                        reject(new Error('Aborted'));
-                        return;
-                    }
+                onerror: function () {
+                    if (shouldStop) { reject(new Error('Aborted')); return; }
                     if (retryCount < MAX_RETRIES) {
-                        // Notify UI about network error retry
-                        if (onRetry) {
-                            onRetry('network_error', retryCount + 1, 2);
-                        }
-<<<<<<< Updated upstream
-                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
-=======
-                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
->>>>>>> Stashed changes
+                        if (onRetry) onRetry('network_error', retryCount + 1, 2);
+                        setTimeout(function () {
+                            callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve)['catch'](reject);
+                        }, addJitter(RETRY_BASE_DELAY, 0.5));
                     } else {
-                        reject(new Error('Netzwerkfehler bei Gemini API'));
+                        reject(new Error('Network error in Gemini API'));
                     }
                 },
-                ontimeout: function() {
-                    activeRequests.delete(req);
-                    if (shouldStop) {
-                        reject(new Error('Aborted'));
-                        return;
-                    }
+                ontimeout: function () {
+                    if (shouldStop) { reject(new Error('Aborted')); return; }
                     if (retryCount < MAX_RETRIES) {
-                        // Notify UI about timeout retry
-                        if (onRetry) {
-                            onRetry('timeout', retryCount + 1, 2);
-                        }
-<<<<<<< Updated upstream
-                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), RETRY_BASE_DELAY);
-=======
-                        setTimeout(() => callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve).catch(reject), addJitter(RETRY_BASE_DELAY, 0.5));
->>>>>>> Stashed changes
+                        if (onRetry) onRetry('timeout', retryCount + 1, 2);
+                        setTimeout(function () {
+                            callGeminiAPI(adsData, searchContext, topX, apiKey, modelKey, retryCount + 1, onRetry).then(resolve)['catch'](reject);
+                        }, addJitter(RETRY_BASE_DELAY, 0.5));
                     } else {
-                        reject(new Error('Timeout bei Gemini API'));
+                        reject(new Error('Timeout in Gemini API'));
                     }
                 }
             });
-            if (req) activeRequests.add(req);
         });
     }
 
-    // ==================== HAUPT-FUNKTIONEN ====================
+    // ==================== MAIN CRAWL LOGIC ====================
 
     async function startDealFinder() {
-        const apiKey = document.getElementById(`${P}-api-key`).value.trim();
-        const searchContext = document.getElementById(`${P}-search-context`).value.trim();
-        const topX = parseInt(document.getElementById(`${P}-top-x`).value);
-        const maxPages = parseInt(document.getElementById(`${P}-max-pages`).value) || 10;
-        const model = document.getElementById(`${P}-model-select`)?.value || MODEL.FLASH;
+        var apiKey = document.getElementById(P + '-api-key').value.trim();
+        var searchContext = document.getElementById(P + '-search-context').value.trim();
+        var topX = parseInt(document.getElementById(P + '-top-x').value);
+        var maxPages = parseInt(document.getElementById(P + '-max-pages').value) || 10;
+        var modelEl = document.getElementById(P + '-model-select');
+        var model = modelEl ? modelEl.value : MODEL.FLASH;
 
         if (!apiKey) { alert('Bitte gib deinen Gemini API Key ein!'); return; }
         if (!searchContext) { alert('Bitte gib einen Suchkontext ein!'); return; }
         if (!Number.isFinite(topX) || topX < 1 || topX > 10) { alert('AI-Picks muss zwischen 1 und 10 liegen!'); return; }
         if (!Number.isFinite(maxPages) || maxPages < 1 || maxPages > 100) { alert('Maximale Seiten muss zwischen 1 und 100 liegen!'); return; }
 
-        // Preserve existing settings (especially modelMapping) when saving
-        const currentSettings = loadSettings();
+        var currentSettings = await loadSettings();
         currentSettings.apiKey = apiKey;
         currentSettings.searchContext = searchContext;
         currentSettings.topX = topX;
         currentSettings.model = model;
         currentSettings.maxPages = maxPages;
-        saveSettings(currentSettings);
+        await saveSettings(currentSettings);
 
-        // UX-05: Request notification permission
         if ('Notification' in window) {
-            Notification.requestPermission().catch(() => {});
+            Notification.requestPermission()['catch'](function () {});
         }
 
         currentPage = 1;
@@ -1708,47 +1564,45 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
         try {
             await processCurrentPage(apiKey, searchContext, topX, model, maxPages);
         } catch (error) {
-            console.error(`${SCRIPT_PREFIX} Fehler:`, error);
-            updateProgress(`❌ Fehler: ${error.message}`, 0);
+            Logger.error('Error:', error);
+            updateProgress('Fehler: ' + error.message, 0, 'error');
             if (allTopDeals.length > 0) {
                 await finishDealFinder();
             } else {
                 resetUI();
-                alert(`Fehler: ${error.message}`);
+                alert('Fehler: ' + error.message);
             }
         }
     }
 
     function pauseDealFinder() {
         isPaused = true;
-        const pauseBtn = document.getElementById(`${P}-pause-btn`);
+        var pauseBtn = document.getElementById(P + '-pause-btn');
         if (!pauseBtn) return;
-        pauseBtn.textContent = '▶ Fortsetzen';
+        pauseBtn.textContent = 'Fortsetzen';
         pauseBtn.style.background = '#28a745';
         pauseBtn.removeEventListener('click', pauseDealFinder);
         pauseBtn.addEventListener('click', resumeDealFinder);
-        updateProgress('⏸ Pausiert - Klicke Fortsetzen...', 50);
+        updateProgress('Pausiert - Klicke Fortsetzen...', 50, 'warning');
     }
 
     function resumeDealFinder() {
         isPaused = false;
-        const pauseBtn = document.getElementById(`${P}-pause-btn`);
+        var pauseBtn = document.getElementById(P + '-pause-btn');
         if (!pauseBtn) return;
-        pauseBtn.textContent = '⏸ Pause';
+        pauseBtn.textContent = 'Pause';
         pauseBtn.style.background = '#ffc107';
         pauseBtn.removeEventListener('click', resumeDealFinder);
         pauseBtn.addEventListener('click', pauseDealFinder);
 
-        // If we're still running and it was a CAPTCHA pause, restart processing
         if (isRunning && captchaPaused) {
             captchaPaused = false;
-            const settings = loadSettings();
-            const crawlState = loadCrawlState();
-            const maxPages = crawlState?.maxPages || settings.maxPages;
-            processCurrentPage(settings.apiKey, settings.searchContext, settings.topX, settings.model, maxPages)
-                .catch(error => {
-                    console.error(`${SCRIPT_PREFIX} Resume error:`, error);
-                    updateProgress(`❌ Resume error: ${error.message}`, 0);
+            var settings = cachedSettings || DEFAULT_SETTINGS;
+            var maxPages = settings.maxPages || 10;
+            processCurrentPage(settings.apiKey, settings.searchContext, settings.topX, settings.model || MODEL.FLASH, maxPages)
+                ['catch'](function (error) {
+                    Logger.error('Resume error:', error);
+                    updateProgress('Fehler: ' + error.message, 0, 'error');
                     resetUI();
                 });
         }
@@ -1756,109 +1610,103 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
 
     function stopDealFinder() {
         shouldStop = true;
-        isPaused = false; // Force exit from pause loop
+        isPaused = false;
         captchaPaused = false;
-        clearCrawlState();
-        // Unit 3: abort in-flight requests
-        activeRequests.forEach(req => { try { req.abort(); } catch (e) {} });
-        activeRequests = new Set();
-        updateProgress('⏹ Stoppe nach aktueller Seite...', 95);
+        GM_setValue(P + '_dealfinder_crawl_state', null);
+        Logger.log('Crawl stopped by user');
+        updateProgress('Stoppe nach aktueller Seite...', 95, 'warning');
     }
 
-    async function processCurrentPage(apiKey, searchContext, topX, model, maxPages = 10) {
+    async function processCurrentPage(apiKey, searchContext, topX, model, maxPages) {
+        maxPages = maxPages || 10;
         await waitIfPaused();
         if (shouldStop) { await finishDealFinder(); return; }
 
-        // Unit 5: maxPages guard
         if (currentPage > maxPages) { await finishDealFinder(); return; }
 
-        updateProgress(`📋 Seite ${currentPage}: Lade alle Anzeigen...`, 10);
+        updateProgress('Seite ' + currentPage + ': Lade alle Anzeigen...', 10, 'info');
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(function (r) { setTimeout(r, 1500); });
         window.scrollTo({ top: 0, behavior: 'smooth' });
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(function (r) { setTimeout(r, 1500); });
 
-        updateProgress(`📋 Seite ${currentPage}: Sammle Anzeigen...`, 15);
-        const selectors = findCurrentSelectors();
+        updateProgress('Seite ' + currentPage + ': Sammle Anzeigen...', 15, 'info');
+        var selectors = findCurrentSelectors();
         if (!selectors) {
-            // Unit 7: CAPTCHA detection
-            const pageText = (document.title + ' ' + document.body.innerText).toLowerCase();
-            if (pageText.includes('captcha') || pageText.includes('challenge')) {
+            var pageText = (document.title + ' ' + document.body.innerText).toLowerCase();
+            if (pageText.indexOf('captcha') !== -1 || pageText.indexOf('challenge') !== -1) {
                 captchaPaused = true;
-<<<<<<< Updated upstream
-=======
-                // Save state before CAPTCHA pause to survive page reload
-                const settings = loadSettings();
-                saveCrawlState({
-                    currentPage,
+                var st = {
+                    currentPage: currentPage,
                     currentUrl: window.location.href,
-                    allTopDeals,
-                    maxPages: settings.maxPages
-                });
->>>>>>> Stashed changes
+                    allTopDeals: allTopDeals,
+                    maxPages: maxPages
+                };
+                GM_setValue(P + '_dealfinder_crawl_state', JSON.stringify(st));
                 pauseDealFinder();
-                updateProgress('⚠️ CAPTCHA erkannt! Bitte lösen und Fortsetzen klicken', 50);
+                updateProgress('CAPTCHA erkannt! Bitte loesen und Fortsetzen klicken', 50, 'warning');
                 return;
             }
             throw new Error('Keine Anzeigen gefunden');
         }
 
-        // Unit 4: deduplicate by URL in one pass
-        updateProgress(`📋 Seite ${currentPage}: Sammle Basis-Daten...`, 20);
-        const seenUrls = new Set();
-        const adsData = [];
-        for (const ad of Array.from(selectors.adEntries)) {
-            const info = extractBasicInfo(ad);
+        updateProgress('Seite ' + currentPage + ': Sammle Basis-Daten...', 20, 'info');
+        var seenUrls = new Set();
+        var adsData = [];
+        var adArray = Array.from(selectors.adEntries);
+        for (var adi = 0; adi < adArray.length; adi++) {
+            var info = extractBasicInfo(adArray[adi]);
             if (!seenUrls.has(info.url)) {
                 seenUrls.add(info.url);
                 adsData.push(info);
             }
         }
-        console.log(`${SCRIPT_PREFIX} ${adsData.length} Anzeigen gefunden (dedupliziert)`);
+        Logger.log(adsData.length + ' ads found (deduplicated)');
 
-        updateProgress(`📋 Seite ${currentPage}: Lade Details (0/${adsData.length})...`, 30);
-        let completedCount = 0;
+        updateProgress('Seite ' + currentPage + ': Lade Details (0/' + adsData.length + ')...', 30, 'info');
+        var completedCount = 0;
 
-        for (let i = 0; i < adsData.length; i += INITIAL_BATCH_SIZE) {
-            // Unit 4: pause check inside each batch iteration
+        for (var bi = 0; bi < adsData.length; bi += INITIAL_BATCH_SIZE) {
             await waitIfPaused();
             if (shouldStop) break;
 
-            const batch = adsData.slice(i, Math.min(i + INITIAL_BATCH_SIZE, adsData.length));
-            await Promise.all(batch.map((adData, batchIndex) => {
-                const index = i + batchIndex;
-                const fetchPromise = adData.url && adData.url.startsWith('http')
-                    ? fetchFullDescription(adData.url)
-                    : Promise.resolve({ description: 'Beschreibung nicht verfügbar' });
-                return fetchPromise.then(result => {
-                    completedCount++;
-                    if (shouldStop) return;
-                    // Throttle progress updates to reduce DOM writes
-                    if (completedCount % 5 === 0 || completedCount === adsData.length) {
-                        updateProgress(`📋 Seite ${currentPage}: Lade Details (${completedCount}/${adsData.length})...`, 30 + (completedCount / adsData.length) * 40);
-                    }
-                    adsData[index].description = result.description;
-                });
-            }));
+            var batch = adsData.slice(bi, Math.min(bi + INITIAL_BATCH_SIZE, adsData.length));
+            var batchFns = [];
+            for (var bj = 0; bj < batch.length; bj++) {
+                var adData = batch[bj];
+                var index = bi + bj;
+                (function (idx, url) {
+                    var fetchPromise = url && url.indexOf('http') === 0
+                        ? fetchFullDescription(url)
+                        : Promise.resolve({ success: false, description: 'Description not available' });
+                    batchFns.push(fetchPromise.then(function (result) {
+                        completedCount++;
+                        if (completedCount % 5 === 0 || completedCount === adsData.length) {
+                            updateProgress('Seite ' + currentPage + ': Lade Details (' + completedCount + '/' + adsData.length + ')...', 30 + (completedCount / adsData.length) * 40, 'info');
+                        }
+                        adsData[idx].description = result.description;
+                    }));
+                })(index, adData.url);
+            }
+            await Promise.all(batchFns);
 
-            // Unit 4: random delay between batches
-            if (i + INITIAL_BATCH_SIZE < adsData.length) {
-                await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+            if (bi + INITIAL_BATCH_SIZE < adsData.length) {
+                await new Promise(function (r) { setTimeout(r, 500 + Math.random() * 1000); });
             }
         }
 
         if (shouldStop) { await finishDealFinder(); return; }
 
-        updateProgress(`🤖 Seite ${currentPage}: AI analysiert Angebote...`, 75);
-        console.log(`${SCRIPT_PREFIX} Sende ${adsData.length} Anzeigen an Gemini ${GEMINI_MODELS[model]?.name || model}...`);
+        var modelName = GEMINI_MODELS[model] ? GEMINI_MODELS[model].name : model;
+        updateProgress('Seite ' + currentPage + ': AI analysiert Angebote...', 75, 'info');
+        Logger.log('Sending ' + adsData.length + ' listings to ' + modelName + '...');
 
-        // Retry callback for UI feedback
-        const onRetry = (status, retryNum, delaySeconds) => {
-            const statusText = typeof status === 'number' ? `HTTP ${status}` : status;
-            showWarning(`API ${statusText} - Retry ${retryNum} in ${delaySeconds}s...`, 75);
+        var onRetry = function (status, retryNum, delaySeconds) {
+            var statusText = typeof status === 'number' ? 'HTTP ' + status : status;
+            showWarning('API ' + statusText + ' - Retry ' + retryNum + ' in ' + delaySeconds + 's...', 75);
         };
 
-        let aiResult = null;
+        var aiResult = null;
         try {
             aiResult = await callGeminiAPI(adsData, searchContext, topX, apiKey, model, 0, onRetry);
         } catch (error) {
@@ -1866,74 +1714,74 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                 await finishDealFinder();
                 return;
             }
-            throw error; // rethrow other errors
+            throw error;
         }
+
         if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
-            console.log(`${SCRIPT_PREFIX} AI hat ${aiResult.topDeals.length} Top-Deals gefunden`);
-            allTopDeals.push(...aiResult.topDeals.map(deal => ({ ...deal, page: currentPage })));
-            updateProgress(`✅ Seite ${currentPage}: ${aiResult.topDeals.length} Top-Deals gefunden!`, 90);
+            Logger.log('AI found ' + aiResult.topDeals.length + ' top deals');
+            for (var tdi = 0; tdi < aiResult.topDeals.length; tdi++) {
+                var deal = aiResult.topDeals[tdi];
+                deal.page = currentPage;
+                allTopDeals.push(deal);
+            }
+            updateProgress('Seite ' + currentPage + ': ' + aiResult.topDeals.length + ' Top-Deals gefunden!', 90, 'success');
             updateLiveRanking();
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(function (r) { setTimeout(r, 1500); });
 
-        if (!shouldStop && goToNextPage({ apiKey, searchContext, topX, model, maxPages })) {
-            // page reload in progress — goToNextPage navigates via window.location.href
+        if (!shouldStop && goToNextPage({ apiKey: apiKey, searchContext: searchContext, topX: topX, model: model, maxPages: maxPages })) {
+            // Navigation triggers page reload; execution continues in resumeCrawlIfActive
         } else {
             await finishDealFinder();
         }
     }
 
     async function finishDealFinder() {
-        updateProgress('📊 Erstelle finale Ranking-Liste...', 95);
-        clearCrawlState();
+        updateProgress('Erstelle finale Ranking-Liste...', 95, 'info');
+        GM_setValue(P + '_dealfinder_crawl_state', null);
 
         if (allTopDeals.length === 0) {
-            updateProgress('❌ Keine Deals gefunden!', 100);
+            updateProgress('Keine Deals gefunden!', 100, 'error');
             alert('Keine Top-Deals gefunden! Versuche andere Suchkriterien.');
             resetUI();
             return;
         }
 
-        // Guard: skip API re-ranking if user stopped the crawl
         if (shouldStop) {
-            updateProgress('⏹ Crawl gestoppt. Speichere bisherige Deals...', 100);
-            saveResults({ deals: allTopDeals, pages: currentPage, timestamp: new Date().toISOString() });
+            updateProgress('Crawl gestoppt. Speichere bisherige Deals...', 100, 'warning');
+            await saveResults({ deals: allTopDeals, pages: currentPage, timestamp: new Date().toISOString() });
             switchToResultsView();
             resetUI();
             return;
         }
 
-        // Deduplicate across pages (same listing can shift pages on live marketplaces)
-        const uniqueDealsMap = new Map();
-        for (const d of allTopDeals) {
+        // Deduplicate across pages
+        var uniqueDealsMap = new Map();
+        for (var di = 0; di < allTopDeals.length; di++) {
+            var d = allTopDeals[di];
             if (!uniqueDealsMap.has(d.url)) uniqueDealsMap.set(d.url, d);
         }
         allTopDeals = Array.from(uniqueDealsMap.values());
 
-        // Unit 6: Global re-ranking across all collected deals
+        // Global re-ranking across all collected deals
         if (allTopDeals.length > 1) {
             try {
-                const settings = loadSettings();
-                updateProgress('🤖 Globales Re-Ranking aller Deals...', 97);
-                // Retry callback for UI feedback
-                const onRetry = (status, retryNum, delaySeconds) => {
-                    const statusText = typeof status === 'number' ? `HTTP ${status}` : status;
-                    showWarning(`Global Re-Ranking: API ${statusText} - Retry ${retryNum} in ${delaySeconds}s...`, 97);
+                var settings = cachedSettings || DEFAULT_SETTINGS;
+                updateProgress('Globales Re-Ranking aller Deals...', 97, 'info');
+
+                var onRetry = function (status, retryNum, delaySeconds) {
+                    var statusText = typeof status === 'number' ? 'HTTP ' + status : status;
+                    showWarning('Global Re-Ranking: API ' + statusText + ' - Retry ' + retryNum + ' in ' + delaySeconds + 's...', 97);
                 };
 
-                // Limit re-ranking to top N deals to avoid token overflow
-<<<<<<< Updated upstream
-                const dealsToReRank = allTopDeals.slice(0, RE_RANK_MAX_DEALS);
-                const otherDeals = allTopDeals.slice(RE_RANK_MAX_DEALS);
-=======
-                const sortedTopDeals = sortDealsByScore(allTopDeals);
-                debugLog(`Global re-ranking: sorted ${sortedTopDeals.length} deals, top scores: ${sortedTopDeals.slice(0, 3).map(d => d.score).join(', ')}`);
-                const dealsToReRank = sortedTopDeals.slice(0, RE_RANK_MAX_DEALS);
->>>>>>> Stashed changes
+                var sortedTopDeals = sortDealsByScore(allTopDeals);
+                var dealsToReRank = sortedTopDeals.slice(0, RE_RANK_MAX_DEALS);
 
-                const reRankResult = await callGeminiAPI(
-                    dealsToReRank.map(d => ({ title: d.title, price: d.price, description: (d.description || '').substring(0, 400), url: d.url })),
+                var reRankResult = await callGeminiAPI(
+                    dealsToReRank.map(function (d) {
+                        return { title: d.title, price: d.price, description: (d.description || '').substring(0, 400), url: d.url };
+                    }),
                     settings.searchContext || '',
                     dealsToReRank.length,
                     settings.apiKey,
@@ -1941,49 +1789,46 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                     0,
                     onRetry
                 );
+
                 if (reRankResult && reRankResult.topDeals && reRankResult.topDeals.length > 0) {
-                    const reRankedDeals = reRankResult.topDeals.map(rd => {
-<<<<<<< Updated upstream
-                        const orig = dealsToReRank.find(d => d.url === rd.url)
-                                   || dealsToReRank.find(d => d.title === rd.title);
-                        return { ...rd, page: orig?.page ?? 'unbekannt' };
-                    });
-                    // Combine re-ranked deals (now in new order) with remaining deals
-                    allTopDeals = [...reRankedDeals, ...otherDeals].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-                    console.log(`${SCRIPT_PREFIX} Global Re-Ranking abgeschlossen (${reRankedDeals.length} Deals neu sortiert)`);
-=======
-                        const orig = urlToDeal.get(rd.url) || titleToDeal.get(rd.title);
-                        // Restore original canonical data to prevent LLM URL hallucinations causing duplicates
+                    // Build lookup maps for canonical data
+                    var urlToDeal = new Map();
+                    var titleToDeal = new Map();
+                    for (var ri = 0; ri < dealsToReRank.length; ri++) {
+                        urlToDeal.set(dealsToReRank[ri].url, dealsToReRank[ri]);
+                        titleToDeal.set(dealsToReRank[ri].title, dealsToReRank[ri]);
+                    }
+
+                    var reRankedDeals = reRankResult.topDeals.map(function (rd) {
+                        var orig = urlToDeal.get(rd.url) || titleToDeal.get(rd.title);
                         return {
-                            ...rd,
-                            url: orig?.url || rd.url,
-                            title: orig?.title || rd.title,
-                            description: orig?.description || rd.description,
-                            page: orig?.page ?? 'unbekannt'
+                            title: (orig && orig.title) || rd.title,
+                            price: rd.price,
+                            description: (orig && orig.description) || rd.description,
+                            url: (orig && orig.url) || rd.url,
+                            score: rd.score,
+                            reasoning: rd.reasoning,
+                            page: (orig && orig.page) || 'unknown'
                         };
                     });
-                    // Identify deals from sortedTopDeals that were NOT re-ranked (match by canonical original URL)
-                    const reRankedUrls = extractSet(reRankedDeals, DEAL_KEYS.URL);
-                    const remainingDeals = sortedTopDeals.filter(d => !reRankedUrls.has(d.url));
-                    // Concatenate and sort — avoids broken merge when LLM returns unsorted output
-                    allTopDeals = sortDealsByScore([...reRankedDeals, ...remainingDeals]);
-                    console.log(`${SCRIPT_PREFIX} Global Re-Ranking abgeschlossen (${reRankedDeals.length} Deals neu sortiert, ${remainingDeals.length} Deals behalten)`);
->>>>>>> Stashed changes
+
+                    var reRankedUrls = extractSet(reRankedDeals, DEAL_KEYS.URL);
+                    var remainingDeals = sortedTopDeals.filter(function (d) { return !reRankedUrls.has(d.url); });
+                    allTopDeals = sortDealsByScore(reRankedDeals.concat(remainingDeals));
+                    Logger.log('Global re-ranking complete (' + reRankedDeals.length + ' deals re-ranked, ' + remainingDeals.length + ' deals kept)');
                 }
             } catch (e) {
-                console.warn(`${SCRIPT_PREFIX} Global Re-Ranking fehlgeschlagen:`, e);
+                Logger.warn('Global re-ranking failed:', e);
             }
         }
 
-        // Unit 8: ISO timestamp
-        saveResults({ deals: allTopDeals, pages: currentPage, timestamp: new Date().toISOString() });
-        updateProgress(`✅ ${allTopDeals.length} Deals gespeichert!`, 100);
+        await saveResults({ deals: allTopDeals, pages: currentPage, timestamp: new Date().toISOString() });
+        updateProgress(allTopDeals.length + ' Deals gespeichert!', 100, 'success');
 
-        // UX-05: Fire desktop notification
         if ('Notification' in window && Notification.permission === 'granted') {
             try {
                 new Notification('Deal Finder fertig', {
-                    body: `${allTopDeals.length} Deals auf ${currentPage} Seiten gefunden`
+                    body: allTopDeals.length + ' Deals auf ' + currentPage + ' Seiten gefunden'
                 });
             } catch (e) {}
         }
@@ -1992,36 +1837,40 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
         resetUI();
     }
 
+    // ==================== UI STATE ====================
+
     function resetUI() {
         isRunning = false;
         isPaused = false;
         shouldStop = false;
         captchaPaused = false;
-        // Unit 3: abort any remaining requests
-        activeRequests.forEach(req => { try { req.abort(); } catch (e) {} });
-        activeRequests = new Set();
-        descriptionCache.clear();
-        const startBtn = document.getElementById(`${P}-start-btn`);
-        const pauseBtn = document.getElementById(`${P}-pause-btn`);
-        const stopBtn = document.getElementById(`${P}-stop-btn`);
-        const apiKeyInput = document.getElementById(`${P}-api-key`);
-        const searchInput = document.getElementById(`${P}-search-context`);
-        const topXInput = document.getElementById(`${P}-top-x`);
+        descriptionCache = new Map();
+        var startBtn = document.getElementById(P + '-start-btn');
+        var pauseBtn = document.getElementById(P + '-pause-btn');
+        var stopBtn = document.getElementById(P + '-stop-btn');
+        var apiKeyInput = document.getElementById(P + '-api-key');
+        var searchInput = document.getElementById(P + '-search-context');
+        var topXInput = document.getElementById(P + '-top-x');
         if (startBtn) startBtn.style.display = 'block';
         if (pauseBtn) pauseBtn.style.display = 'none';
         if (stopBtn) stopBtn.style.display = 'none';
         if (apiKeyInput) apiKeyInput.disabled = false;
         if (searchInput) searchInput.disabled = false;
         if (topXInput) topXInput.disabled = false;
+        // Clean up status bar
+        if (statusBar) {
+            try { statusBar.remove(); } catch (e) {}
+            statusBar = null;
+        }
     }
 
     function setUIRunningState() {
-        const startBtn = document.getElementById(`${P}-start-btn`);
-        const pauseBtn = document.getElementById(`${P}-pause-btn`);
-        const stopBtn = document.getElementById(`${P}-stop-btn`);
-        const apiKeyInput = document.getElementById(`${P}-api-key`);
-        const searchInput = document.getElementById(`${P}-search-context`);
-        const topXInput = document.getElementById(`${P}-top-x`);
+        var startBtn = document.getElementById(P + '-start-btn');
+        var pauseBtn = document.getElementById(P + '-pause-btn');
+        var stopBtn = document.getElementById(P + '-stop-btn');
+        var apiKeyInput = document.getElementById(P + '-api-key');
+        var searchInput = document.getElementById(P + '-search-context');
+        var topXInput = document.getElementById(P + '-top-x');
         if (startBtn) startBtn.style.display = 'none';
         if (pauseBtn) pauseBtn.style.display = 'block';
         if (stopBtn) stopBtn.style.display = 'block';
@@ -2030,94 +1879,111 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
         if (topXInput) topXInput.disabled = true;
     }
 
-    // ==================== INITIALISIERUNG ====================
+    // ==================== INIT ====================
 
     function createDealFinderButton() {
-        const buttonId = `${P}-dealfinder-btn`;
+        var buttonId = P + '-dealfinder-btn';
         if (document.getElementById(buttonId)) return;
-        const button = document.createElement('button');
+        var button = document.createElement('button');
         button.id = buttonId;
-        button.innerHTML = '🔍 Deal Finder';
-        button.style.cssText = `
-            position: fixed; top: 140px; right: 0; z-index: 99999;
-            padding: 12px 16px; background: ${BTN_GRADIENT};
-            color: white; border: none; border-radius: 8px 0 0 8px; cursor: pointer;
-            box-shadow: -3px 3px 12px rgba(0,0,0,0.25); font-size: 15px; font-weight: bold;
-            transition: padding-right 0.2s ease, box-shadow 0.2s ease;
-        `;
+        button.textContent = 'Deal Finder';
+        button.style.cssText = [
+            'position: fixed; top: 140px; right: 0; z-index: 99999;',
+            'padding: 12px 16px; background: ' + BTN_GRADIENT + ';',
+            'color: white; border: none; border-radius: 8px 0 0 8px; cursor: pointer;',
+            'box-shadow: -3px 3px 12px rgba(0,0,0,0.25); font-size: 15px; font-weight: bold;',
+            'transition: padding-right 0.2s ease, box-shadow 0.2s ease;'
+        ].join(' ');
         button.addEventListener('click', openModal);
-        button.addEventListener('mouseenter', () => {
+        button.addEventListener('mouseenter', function () {
             button.style.paddingRight = '22px';
             button.style.boxShadow = '-5px 4px 18px rgba(0,0,0,0.35)';
         });
-        button.addEventListener('mouseleave', () => {
+        button.addEventListener('mouseleave', function () {
             button.style.paddingRight = '16px';
             button.style.boxShadow = '-3px 3px 12px rgba(0,0,0,0.25)';
         });
         document.body.appendChild(button);
-        console.log(`${SCRIPT_PREFIX} Deal Finder Button erstellt`);
+        Logger.log('Deal Finder button created');
     }
 
     async function resumeCrawlIfActive() {
-        const crawlState = loadCrawlState();
-        if (!crawlState) {
-            console.log(`${SCRIPT_PREFIX} Normale Session - Results bleiben erhalten`);
+        var rawState = GM_getValue(P + '_dealfinder_crawl_state', null);
+        if (!rawState) {
+            Logger.log('Normal session - results preserved');
             return;
         }
+        var crawlState;
+        try { crawlState = JSON.parse(rawState); } catch (e) { return; }
+        if (!crawlState) return;
 
-        // Unit 4 BUG-03: currentPage was saved as the completed page; resume from next
-        // Check if we're still on the same page (refresh) or navigated to new page
-        // Normalize URLs by removing hash fragments before comparison
-        const normalizedCurrentUrl = normalizeUrl(crawlState.currentUrl);
-        const normalizedWindowUrl = normalizeUrl(window.location.href);
-        const samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
-        const pageIncrement = samePage ? SAME_PAGE_INCREMENT : NEW_PAGE_INCREMENT;
-        console.log(`${SCRIPT_PREFIX} 🔄 Crawl-State gefunden - setze fort ab Seite ${crawlState.currentPage + pageIncrement} (${samePage ? 'Seite neu geladen' : 'Navigation erkannt'})`);
+        var normalizedCurrentUrl = normalizeUrl(crawlState.currentUrl);
+        var normalizedWindowUrl = normalizeUrl(window.location.href);
+        var samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
+        var pageIncrement = samePage ? SAME_PAGE_INCREMENT : NEW_PAGE_INCREMENT;
+        Logger.log('Crawl state found - resuming from page ' + (crawlState.currentPage + pageIncrement) + ' (' + (samePage ? 'page reloaded' : 'navigation detected') + ')');
+
         currentPage = crawlState.currentPage + pageIncrement;
         allTopDeals = crawlState.allTopDeals || [];
         isRunning = true;
 
         openModal();
-        // Unit 8: waitForElement instead of blind setTimeout
+
         try {
-            await waitForElement(`#${P}-progress-container`, 2000);
+            await TM.dom.waitForElement('#' + P + '-progress-container', 2000);
         } catch (e) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(function (r) { setTimeout(r, 500); });
         }
 
         setUIRunningState();
         updateLiveRanking();
 
-        // Unit 4: load credentials from settings, not crawl state (apiKey not stored there)
-        const settings = loadSettings();
-        const maxPages = crawlState.maxPages || settings.maxPages || 10;
+        var settings = cachedSettings || DEFAULT_SETTINGS;
+        var maxPages = crawlState.maxPages || settings.maxPages || 10;
 
         try {
             await processCurrentPage(settings.apiKey, settings.searchContext, settings.topX, settings.model || MODEL.FLASH, maxPages);
         } catch (error) {
-            console.error(`${SCRIPT_PREFIX} Fehler beim Fortsetzen:`, error);
-            updateProgress(`❌ Fehler: ${error.message}`, 0);
-            clearCrawlState();
+            Logger.error('Error resuming:', error);
+            updateProgress('Fehler: ' + error.message, 0, 'error');
+            GM_setValue(P + '_dealfinder_crawl_state', null);
             if (allTopDeals.length > 0) {
                 await finishDealFinder();
             } else {
                 resetUI();
-                alert(`Fehler beim Fortsetzen: ${error.message}`);
+                alert('Fehler beim Fortsetzen: ' + error.message);
             }
         }
     }
 
     async function init() {
         try {
-            console.log(`${SCRIPT_PREFIX} Script gestartet`);
+            Logger.log('Script started');
+
+            // Pre-populate settings cache
+            var rawSettings = GM_getValue(P + '_dealfinder_settings', null);
+            if (rawSettings) {
+                try {
+                    var loaded = JSON.parse(rawSettings);
+                    if (loaded.model && !GEMINI_MODELS[loaded.model]) loaded.model = MODEL.FLASH;
+                    cachedSettings = deepCopySettings(Object.assign({}, DEFAULT_SETTINGS, loaded));
+                } catch (e) {
+                    cachedSettings = deepCopySettings(DEFAULT_SETTINGS);
+                }
+            } else {
+                cachedSettings = deepCopySettings(DEFAULT_SETTINGS);
+            }
 
             if (IS_WH) {
-                const searchIndicators = ['[data-testid="result-list-title"]', '[data-testid*="search-result"]', 'a[href*="/iad/"]'];
-                if (!searchIndicators.some(s => document.querySelector(s))) {
-                    // Unit 7: initRetries counter
+                var searchIndicators = ['[data-testid="result-list-title"]', '[data-testid*="search-result"]', 'a[href*="/iad/"]'];
+                var hasIndicator = false;
+                for (var ssi = 0; ssi < searchIndicators.length; ssi++) {
+                    if (document.querySelector(searchIndicators[ssi])) { hasIndicator = true; break; }
+                }
+                if (!hasIndicator) {
                     if (++initRetries >= MAX_INIT_RETRIES) {
-                        console.warn(`${SCRIPT_PREFIX} Max init retries erreicht - zeige Button trotzdem`);
-                        createModal();
+                        Logger.warn('Max init retries reached - showing button anyway');
+                        await createModal();
                         createDealFinderButton();
                         return;
                     }
@@ -2126,12 +1992,12 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                 }
             } else {
                 try {
-                    await waitForElement('article[data-adid], #srchrslt-adtable', 10000);
+                    await TM.dom.waitForElement('article[data-adid], #srchrslt-adtable', 10000);
                 } catch (e) {
-                    console.log(`${SCRIPT_PREFIX} Keine Anzeigenliste gefunden, versuche später erneut.`);
+                    Logger.log('No ad list found, retrying later');
                     if (++initRetries >= MAX_INIT_RETRIES) {
-                        console.warn(`${SCRIPT_PREFIX} Max init retries erreicht - zeige Button trotzdem`);
-                        createModal();
+                        Logger.warn('Max init retries reached - showing button anyway');
+                        await createModal();
                         createDealFinderButton();
                         return;
                     }
@@ -2140,13 +2006,13 @@ Sortiere die Top ${topX} Deals nach Qualität (beste zuerst). Der score ist 0-10
                 }
             }
 
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            createModal();
+            await new Promise(function (r) { setTimeout(r, 1500); });
+            await createModal();
             createDealFinderButton();
             await resumeCrawlIfActive();
 
         } catch (error) {
-            console.error(`${SCRIPT_PREFIX} Initialisierungsfehler:`, error);
+            Logger.error('Initialization error:', error);
             setTimeout(init, 3000);
         }
     }
