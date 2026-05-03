@@ -1,24 +1,33 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
-// @namespace    http://tampermonkey.net/
-// @version      1.5
+// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
+// @version      1.6
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
-// @author       marmoris
+// @author       marmoris-x
 // @match        https://flamecomics.xyz/*
 // @match        https://www.flamecomics.xyz/*
 // @match        https://flamecomics.com/*
 // @match        https://www.flamecomics.com/*
+// @icon64       https://www.google.com/s2/favicons?sz=64&domain=flamecomics.com
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @sandbox      JavaScript
+// @inject-into  content
 // @grant        none
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=https://flamecomics.xyz
+// @noframes
+// @unwrap
 // @run-at       document-end
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js
+// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @license      MIT
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    console.log('[FlameComics Sort] Script loaded - v1.3');
+    const log = TM.createLogger('FlameComics Advanced Sort');
+    log.log('Script loaded');
 
     const styles = `
         .custom-sort-dropdown {
@@ -63,7 +72,7 @@
             opacity: 0.9;
         }
 
-        /* Wrapper muss Block sein und 100% Breite haben, da der Original-Button data-block="true" ist */
+        /* Wrapper must be block and 100% width because the original button has data-block="true" */
         .sort-button-wrapper {
             position: relative;
             display: block;
@@ -78,15 +87,15 @@
     let currentSort = 'default';
     let dropdownOpen = false;
 
-    // --- SORTIER LOGIK (Unverändert gut) ---
+    // --- SORT LOGIC ---
 
     function getSeriesWrappers() {
-        // Suche nach inneren Karten-Containern
+        // Find inner card containers
         const innerCards = document.querySelectorAll('[class*="DescSeriesCard_cardContainer"]');
         const wrappers = new Set();
 
         innerCards.forEach(card => {
-            // Gehe hoch zum Mantine Grid Column
+            // Go up to the Mantine Grid Column
             const wrapper = card.closest('[class*="mantine-Grid-col"]');
             if (wrapper) {
                 wrappers.add(wrapper);
@@ -148,7 +157,7 @@
         'hearts-asc': () => performSort((a, b) => a.hearts - b.hearts)
     };
 
-    // --- UI LOGIK ---
+    // --- UI LOGIC ---
 
     function createDropdown() {
         const dropdown = document.createElement('div');
@@ -195,13 +204,11 @@
         dropdownOpen = false;
     }
 
-    // Präzise Suche nach dem Button anhand der HTML Struktur
+    // Find the sort button by searching for a span with text "Sort Order"
     function findSortButton() {
-        // Suche nach dem Span mit dem Text "Sort Order"
         const labels = Array.from(document.querySelectorAll('.mantine-Button-label'));
         const label = labels.find(el => el.textContent.trim() === 'Sort Order');
 
-        // Wenn gefunden, gehe hoch zum Button-Element
         if (label) {
             return label.closest('button');
         }
@@ -211,23 +218,23 @@
     function setupSortButton(button) {
         if (!button || button.getAttribute('data-sort-enhanced') === 'true') return;
 
-        console.log('[FlameComics Sort] Hooking into button:', button);
+        log.log('Hooking into button:', button);
         button.setAttribute('data-sort-enhanced', 'true');
 
-        // Wrapper erstellen
+        // Create wrapper
         const wrapper = document.createElement('div');
         wrapper.className = 'sort-button-wrapper';
 
-        // Button in Wrapper verschieben
-        // WICHTIG: insertBefore sorgt dafür, dass der Wrapper an der exakt gleichen Stelle landet
+        // Move button into wrapper
+        // IMPORTANT: insertBefore ensures the wrapper lands at the exact same position
         button.parentNode.insertBefore(wrapper, button);
         wrapper.appendChild(button);
 
-        // Klonen um alte Event Listener der Seite zu entfernen
+        // Clone to strip the page's native event listeners
         const newButton = button.cloneNode(true);
         button.parentNode.replaceChild(newButton, button);
 
-        // Neuen Click Handler hinzufügen
+        // Attach new click handler
         newButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -252,17 +259,14 @@
     }
 
     function init() {
-        const observer = new MutationObserver(() => {
+        TM.dom.observeMutations(() => {
             const btn = findSortButton();
-            // Checken ob Button existiert und noch nicht bearbeitet wurde
             if (btn && !btn.hasAttribute('data-sort-enhanced')) {
                 setupSortButton(btn);
             }
-        });
+        }, document.body);
 
-        observer.observe(document.body, { childList: true, subtree: true });
-
-        // Initialer Versuch
+        // Initial attempt
         const btn = findSortButton();
         if (btn) setupSortButton(btn);
     }

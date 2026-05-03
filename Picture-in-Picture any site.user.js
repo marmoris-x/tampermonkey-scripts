@@ -1,18 +1,28 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
-// @namespace    http://tampermonkey.net/
-// @version      5.5
-// @description  Adds an entry in the Tampermonkey menu to force the tab into PiP.
-// @author       DeinName
+// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
+// @version      5.6
+// @description  Adds a Tampermonkey menu command to force the current tab into PiP mode.
+// @author       marmoris-x
 // @match        *://*/*
+// @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @sandbox      JavaScript
+// @inject-into  content
 // @grant        GM_registerMenuCommand
-// @icon         https://img.icons8.com/fluency/64/picture-in-picture.png
+// @noframes
+// @unwrap
+// @run-at       document-idle
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
+// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @license      MIT
 // ==/UserScript==
 
 (function() {
     'use strict';
+
+    const log = TM.createLogger('Picture-in-Picture');
 
     let isActivating = false;
 
@@ -21,13 +31,13 @@
             try {
                 await document.exitPictureInPicture();
             } catch (e) {
-                console.error("PiP beenden fehlgeschlagen:", e);
+                log.error('PiP exit failed:', e);
             }
             return;
         }
 
         if (!document.pictureInPictureEnabled) {
-            console.warn("PiP: auf dieser Seite deaktiviert.");
+            log.warn('PiP not available on this page.');
             return;
         }
 
@@ -46,7 +56,7 @@
             video.srcObject = stream;
             video.muted = true;
             video.autoplay = true;
-            // opacity:0 statt display:none — bleibt im Render-Tree, verhindert Black-Screen in Chromium
+            // opacity:0 instead of display:none — stays in render tree, prevents black screen in Chromium
             video.style.cssText = "position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;";
             document.body.appendChild(video);
 
@@ -60,7 +70,7 @@
                     await video.play();
                     await video.requestPictureInPicture();
                 } catch (e) {
-                    console.error("PiP Fehler:", e);
+                    log.error('PiP error:', e);
                     cleanup();
                 } finally {
                     isActivating = false;
@@ -71,7 +81,7 @@
             stream.getVideoTracks()[0].addEventListener("ended", cleanup, { once: true });
 
         } catch (err) {
-            console.log("PiP vom Benutzer abgebrochen.");
+            log.log('PiP cancelled by user.');
             isActivating = false;
         }
     }

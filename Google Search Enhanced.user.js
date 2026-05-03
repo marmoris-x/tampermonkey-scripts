@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Google Search Enhanced
-// @namespace    http://tampermonkey.net/
-// @version      1.0.3
+// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
+// @version      1.0.4
 // @description  Add Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner.
-// @author       marmoris
+// @author       marmoris-x
 // @match        *://www.google.com/search*
 // @match        *://www.google.de/search*
 // @match        *://www.google.at/search*
@@ -13,16 +13,25 @@
 // @match        *://www.google.ca/search*
 // @match        *://www.google.com.au/search*
 // @match        *://encrypted.google.com/search*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=google.com
+// @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
+// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
+// @sandbox      JavaScript
+// @inject-into  content
 // @grant        none
-// @run-at       document-end
 // @noframes
+// @unwrap
+// @run-at       document-end
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20Search%20Enhanced.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20Search%20Enhanced.user.js
+// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @license      MIT
 // ==/UserScript==
 
 (function () {
     'use strict';
+
+    const log = TM.createLogger('Google Search Enhanced');
 
     // Skip image search
     if (location.href.includes('tbm=isch')) return;
@@ -41,11 +50,6 @@
             document.querySelector('input[name="q"]')?.value || '',
 
         getMapsUrl: q => `https://maps.google.com/maps?q=${encodeURIComponent(q)}`,
-
-        debounce(fn, ms) {
-            let t;
-            return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-        }
     };
 
     // ==========================================
@@ -86,10 +90,10 @@
     //   div[role="list"]  (.beZ0tf.O1uzAe)
     //     div[role="listitem"]
     //       a.C6AK7c
-    //         div.mXwfNd [aria-current="page"] [selected]  ← active tab
-    //           span.R1QWuf  ← tab label
+    //         div.mXwfNd [aria-current="page"] [selected]  < active tab
+    //           span.R1QWuf  < tab label
     //     ...
-    //     div[role="listitem"] [jscontroller]  ← "Mehr" dropdown (last visible item)
+    //     div[role="listitem"] [jscontroller]  < "Mehr" dropdown (last visible item)
     // ==========================================
     const NavigationModule = {
         inject() {
@@ -205,8 +209,7 @@
         init() {
             addStyles();
             this.run();
-            new MutationObserver(Utils.debounce(() => this.run(), 200))
-                .observe(document.body, { childList: true, subtree: true });
+            TM.dom.observeMutations(TM.dom.debounce(() => this.run(), 200), document.body);
         },
         run() {
             NavigationModule.inject();
