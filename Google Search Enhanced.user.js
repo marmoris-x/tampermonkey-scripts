@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Search Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.0.5
+// @version      1.1.0
 // @description  Add Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner.
 // @author       marmoris-x
 // @match        *://www.google.com/search*
@@ -14,8 +14,6 @@
 // @match        *://www.google.com.au/search*
 // @match        *://encrypted.google.com/search*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @grant        none
 // @noframes
 // @run-at       document-idle
@@ -25,15 +23,15 @@
 // @license      MIT
 // ==/UserScript==
 
-(function () {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { observeMutations, debounce } from './src/shared/dom-utils.js';
 
-    const log = TM.createLogger('Google Search Enhanced');
+const log = createLogger('Google Search Enhanced');
 
-    // Skip image search
-    if (location.href.includes('tbm=isch')) return;
+  // Skip image search
+  if (!location.href.includes('tbm=isch')) {
 
-    const CONFIG = {
+  const CONFIG = {
         tabs:     { maps: true, youtube: true, reddit: true },
         features: { cleanLinks: true, mapShortcut: true }
     };
@@ -222,7 +220,7 @@
         init() {
             addStyles();
             this.run();
-            TM.dom.observeMutations(TM.dom.debounce(() => this.run(), 200), document.body);
+            observeMutations(debounce(() => this.run(), 200), document.body);
         },
         /**
          * Runs all enhancement modules: navigation tabs, Maps shortcut, and link cleaner.
@@ -234,5 +232,6 @@
         }
     };
 
-    Controller.init();
-})();
+Controller.init();
+
+}

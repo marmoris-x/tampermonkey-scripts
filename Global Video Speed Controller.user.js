@@ -2,7 +2,7 @@
 // @name         Global Video Speed Controller
 // @name:de      Globaler Video-Geschwindigkeitsregler
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.4
+// @version      2.5.0
 // @description  Sets a global playback speed for all HTML5 videos and audios.
 // @description:de Setzt eine globale Wiedergabegeschwindigkeit fur alle HTML5-Videos und -Audios.
 // @author       marmoris-x
@@ -19,12 +19,6 @@
 // @grant        GM_addValueChangeListener
 // @grant        unsafeWindow
 // @run-at       document-start
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/storage-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/global-speed-controller/page-script-builder.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/global-speed-controller/injection-strategies.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/global-speed-controller/ui-controller.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @noframes
@@ -53,90 +47,87 @@
  *   ui-controller.js         -- Menu commands, speed indicator, cross-tab sync
  */
 
-(function () {
-    'use strict';
+import { log, state, CONST } from './src/global-speed-controller/page-script-builder.js';
+import { injectPageScript, sendCmd, setupUnsafeWindowFallback, startDirectPolling, fallbackApply } from './src/global-speed-controller/injection-strategies.js';
+import { showIndicator, applyAll, setupMenuCommands, addStyles, updateSetSpeedLabel } from './src/global-speed-controller/ui-controller.js';
+import { loadSetting } from './src/shared/storage-utils.js';
 
-    var GSC = window.__GSC__;
-    var log = GSC.log;
+// =========================================================
+// INITIALIZATION
+// =========================================================
 
-    // =========================================================
-    // INITIALIZATION
-    // =========================================================
+/**
+ * Bootstraps all three injection strategies and the UI.
+ * Called once at document-start before page scripts create video elements.
+ */
+async function init() {
+  log.log('init() -- readyState:', document.readyState);
 
-    /**
-     * Bootstraps all three injection strategies and the UI.
-     * Called once at document-start before page scripts create video elements.
-     */
-    async function init() {
-        log.log('init() -- readyState:', document.readyState);
+  // STEP 1 -- Inject immediately with defaults (synchronous, before any await).
+  // Even if the page has not loaded yet, the prototype override
+  // must be active in page context before page scripts create videos.
+  var injected = injectPageScript(1.0, true);
 
-        // STEP 1 -- Inject immediately with defaults (synchronous, before any await).
-        // Even if the page has not loaded yet, the prototype override
-        // must be active in page context before page scripts create videos.
-        var injected = GSC.injectPageScript(1.0, true);
+  // STEP 2 -- Load saved values.
+  try {
+    state.speed   = await loadSetting(CONST.STORAGE_KEY_SPEED,   1.0);
+    state.enabled = await loadSetting(CONST.STORAGE_KEY_ENABLED, true);
+    log.log('Loaded from storage: speed=' + state.speed + ', enabled=' + state.enabled);
+  } catch (e) {
+    log.error('loadSetting error (using defaults):', e);
+  }
 
-        // STEP 2 -- Load saved values.
-        try {
-            GSC.state.speed   = await TM.storage.loadSetting(GSC.CONST.STORAGE_KEY_SPEED,   1.0);
-            GSC.state.enabled = await TM.storage.loadSetting(GSC.CONST.STORAGE_KEY_ENABLED, true);
-            log.log('Loaded from storage: speed=' + GSC.state.speed + ', enabled=' + GSC.state.enabled);
-        } catch (e) {
-            log.error('loadSetting error (using defaults):', e);
-        }
+  // STEP 3 -- Send correct values to injected script.
+  sendCmd(state.speed, state.enabled);
 
-        // STEP 3 -- Send correct values to injected script.
-        GSC.sendCmd(GSC.state.speed, GSC.state.enabled);
-
-        // STEP 4 -- If injection failed (CSP): unsafeWindow fallback.
-        if (!injected) {
-            log.warn('Primary injection failed -> fallback 2 (unsafeWindow)...');
-            var fallbackOk = GSC.setupUnsafeWindowFallback();
-            if (!fallbackOk) {
-                log.warn('Fallback 2 failed -> fallback 3 (polling)...');
-                GSC.startDirectPolling();
-            } else {
-                GSC.fallbackApply();
-            }
-        }
-
-        // STEP 5 -- Set up UI (wait for DOM).
-        var setupUI = function () {
-            // Only register menu and indicator in top frame.
-            // The script runs in every iframe -- without this check,
-            // GM_registerMenuCommand would be called multiple times
-            // and the prompt would appear multiple times.
-            if (window !== window.top) return;
-            GSC.addStyles();
-            GSC.setupMenuCommands();
-            log.log('UI ready.');
-        };
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', setupUI, { once: true });
-        } else {
-            setupUI();
-        }
-
-        // STEP 6 -- Cross-tab synchronization.
-        // When another tab calls GM_setValue, this callback fires immediately.
-        // "remote" is true when the change comes from another tab.
-        GM_addValueChangeListener(GSC.CONST.STORAGE_KEY_SPEED, function (_key, _old, newVal, remote) {
-            if (!remote) return;
-            GSC.state.speed = newVal;
-            GSC.sendCmd(GSC.state.speed, GSC.state.enabled);
-            GSC.fallbackApply();
-            log.log('Cross-tab: speed set to ' + newVal + 'x.');
-        });
-
-        GM_addValueChangeListener(GSC.CONST.STORAGE_KEY_ENABLED, function (_key, _old, newVal, remote) {
-            if (!remote) return;
-            GSC.state.enabled = newVal;
-            GSC.sendCmd(GSC.state.speed, GSC.state.enabled);
-            GSC.fallbackApply();
-            log.log('Cross-tab: enabled set to ' + newVal + '.');
-        });
+  // STEP 4 -- If injection failed (CSP): unsafeWindow fallback.
+  if (!injected) {
+    log.warn('Primary injection failed -> fallback 2 (unsafeWindow)...');
+    var fallbackOk = setupUnsafeWindowFallback();
+    if (!fallbackOk) {
+      log.warn('Fallback 2 failed -> fallback 3 (polling)...');
+      startDirectPolling();
+    } else {
+      fallbackApply();
     }
+  }
 
-    init().catch(function (e) { log.error('Critical error:', e); });
+  // STEP 5 -- Set up UI (wait for DOM).
+  var setupUI = function () {
+    // Only register menu and indicator in top frame.
+    // The script runs in every iframe -- without this check,
+    // GM_registerMenuCommand would be called multiple times
+    // and the prompt would appear multiple times.
+    if (window !== window.top) return;
+    addStyles();
+    setupMenuCommands();
+    log.log('UI ready.');
+  };
 
-})();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupUI, { once: true });
+  } else {
+    setupUI();
+  }
+
+  // STEP 6 -- Cross-tab synchronization.
+  // When another tab calls GM_setValue, this callback fires immediately.
+  // "remote" is true when the change comes from another tab.
+  GM_addValueChangeListener(CONST.STORAGE_KEY_SPEED, function (_key, _old, newVal, remote) {
+    if (!remote) return;
+    state.speed = newVal;
+    sendCmd(state.speed, state.enabled);
+    fallbackApply();
+    log.log('Cross-tab: speed set to ' + newVal + 'x.');
+  });
+
+  GM_addValueChangeListener(CONST.STORAGE_KEY_ENABLED, function (_key, _old, newVal, remote) {
+    if (!remote) return;
+    state.enabled = newVal;
+    sendCmd(state.speed, state.enabled);
+    fallbackApply();
+    log.log('Cross-tab: enabled set to ' + newVal + '.');
+  });
+}
+
+init().catch(function (e) { log.error('Critical error:', e); });

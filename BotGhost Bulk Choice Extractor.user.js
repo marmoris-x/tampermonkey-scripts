@@ -1,13 +1,11 @@
 // ==UserScript==
 // @name         BotGhost Bulk Choice Extractor
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.1
+// @version      1.8.0
 // @description  Adds a "Copy Bulk" button next to "Clear All Choices" to copy label/value pairs.
 // @author       marmoris-x
 // @match        https://dashboard.botghost.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=botghost.com
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @grant        GM_setClipboard
@@ -19,10 +17,10 @@
 // @license      MIT
 // ==/UserScript==
 
-(function() {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { observeMutations } from './src/shared/dom-utils.js';
 
-    const log = TM.createLogger('BotGhost Bulk Choice Extractor');
+const log = createLogger('BotGhost Bulk Choice Extractor');
 
     /**
      * Finds the "Clear All Choices" button and injects a "Copy Bulk" sibling button.
@@ -80,10 +78,9 @@
         }
     }
 
-    TM.dom.observeMutations(() => {
+    observeMutations(() => {
         createAndInjectButton();
     }, document.body);
 
     // Run an initial check on script load.
     createAndInjectButton();
-})();

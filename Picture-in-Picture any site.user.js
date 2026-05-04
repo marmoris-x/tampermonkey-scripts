@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.6.1
+// @version      5.7.0
 // @description  Adds a Tampermonkey menu command to force the current tab into PiP mode.
 // @author       marmoris-x
 // @match        *://*/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @grant        GM_registerMenuCommand
@@ -18,10 +17,9 @@
 // @license      MIT
 // ==/UserScript==
 
-(function() {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
 
-    const log = TM.createLogger('Picture-in-Picture');
+const log = createLogger('Picture-in-Picture');
 
     let isActivating = false;
 
@@ -92,4 +90,3 @@
     }
 
     GM_registerMenuCommand("Picture-in-Picture", togglePiP);
-})();

@@ -8,12 +8,10 @@
 // @grant        GM_getValue
 // @run-at       document-start
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=reddit.com
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @noframes
-// @version      2.5.4
+// @version      2.6.0
 // @author       marmoris-x
 // @description  Removes NSFW popup, un-blurs content, and makes website accessible
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Reddit%20Content%20Unlocker.user.js
@@ -22,10 +20,10 @@
 // @license      MIT
 // ==/UserScript==
 
-(function() {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { observeMutations, debounce } from './src/shared/dom-utils.js';
 
-    const log = TM.createLogger('Reddit Content Unlocker');
+const log = createLogger('Reddit Content Unlocker');
 
     // --- State ---
     let { state = true, nsfw = true, spoiler = false } = GM_getValue('states', false);
@@ -257,11 +255,9 @@
     }
 
     // --- Observer (debounced, childList only) ---
-    const observer = TM.dom.observeMutations(TM.dom.debounce(callback, 150), document);
+    const observer = observeMutations(debounce(callback, 150), document);
 
     // Disconnect if not shreddit after 8s
     setTimeout(() => {
         if (!document.querySelector('shreddit-app')) { observer.disconnect(); }
     }, 8000);
-
-})();

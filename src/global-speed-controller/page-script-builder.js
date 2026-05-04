@@ -1,48 +1,39 @@
-(function () {
-    'use strict';
+// src/global-speed-controller/page-script-builder.js — Page-context script generator
+// Generates the page-context script string that gets injected via <script> tag.
+// This code overrides HTMLMediaElement.prototype.playbackRate in the REAL page
+// context (not the Tampermonkey sandbox), using the same principle as the
+// Global Speed Chrome Extension.
+//
+// The injected script has NO access to GM APIs -- all values are interpolated
+// at build time. Communication back from TM context happens via CustomEvent.
 
-    /**
-     * Builds the page-context script string that gets injected via <script> tag.
-     * This code overrides HTMLMediaElement.prototype.playbackRate in the REAL page
-     * context (not the Tampermonkey sandbox), using the same principle as the
-     * Global Speed Chrome Extension.
-     *
-     * The injected script has NO access to GM APIs -- all values are interpolated
-     * at build time. Communication back from TM context happens via CustomEvent.
-     */
+import { createLogger } from '../shared/logging-utils.js';
 
-    var GSC = window.__GSC__ = window.__GSC__ || {};
+export var state = {
+  speed:   1.0,
+  enabled: true,
+};
 
-    // Initialize shared state/constants (runs once, idempotent on re-require)
-    if (!GSC.state) {
-        GSC.state = {
-            speed:   1.0,
-            enabled: true,
-        };
-    }
-    if (!GSC.CONST) {
-        GSC.CONST = {
-            PAGE_LOG:           '[GlobalSpeed-Page]',
-            CMD_EVENT:          '__GS_CMD__',
-            STORAGE_KEY_SPEED:   'global_video_speed',
-            STORAGE_KEY_ENABLED: 'global_video_speed_enabled',
-        };
-    }
-    if (!GSC.log) {
-        GSC.log = TM.createLogger('Global Video Speed Controller');
-    }
+export var CONST = {
+  PAGE_LOG:           '[GlobalSpeed-Page]',
+  CMD_EVENT:          '__GS_CMD__',
+  STORAGE_KEY_SPEED:   'global_video_speed',
+  STORAGE_KEY_ENABLED: 'global_video_speed_enabled',
+};
 
-    /**
-     * Generates the full page-context script as a string.
-     * @param {number} initialSpeed - Starting playback speed
-     * @param {boolean} initialEnabled - Whether speed control is active
-     * @returns {string} Page-context JavaScript code
-     */
-    GSC.buildPageScript = function (initialSpeed, initialEnabled) {
-        var PAGE_LOG  = GSC.CONST.PAGE_LOG;
-        var CMD_EVENT = GSC.CONST.CMD_EVENT;
+export var log = createLogger('Global Video Speed Controller');
 
-        return `
+/**
+ * Generates the full page-context script as a string.
+ * @param {number} initialSpeed - Starting playback speed
+ * @param {boolean} initialEnabled - Whether speed control is active
+ * @returns {string} Page-context JavaScript code
+ */
+export function buildPageScript(initialSpeed, initialEnabled) {
+  var PAGE_LOG  = CONST.PAGE_LOG;
+  var CMD_EVENT = CONST.CMD_EVENT;
+
+  return `
 (function () {
     'use strict';
     if (window.__GS_ACTIVE__) {
@@ -233,5 +224,4 @@
     console.log(LOG, 'Ready. Prototype override active in page context.');
 })();
 `;
-    };
-})();
+}

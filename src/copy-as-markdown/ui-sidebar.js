@@ -3,24 +3,22 @@
  *
  * Builds and manages the sidebar DOM (Shadow DOM), options panel, history panel,
  * theme toggling, clipboard helpers, and all sidebar event wiring.
- *
- * @namespace window.__CAM__
  */
 
-(function () {
-  'use strict';
+import { loadSetting, saveSetting } from '../shared/storage-utils.js';
+import { createToast, createSidebar } from '../shared/ui-components.js';
+import { convertPage, convertSelection, fetchUrlAsMarkdown } from './converter-integration.js';
+import { startClickMode, stopClickMode, activeClickMode } from './click-modes.js';
 
-  const CAM = (window.__CAM__ = window.__CAM__ || {});
+// ============================================================
+// Constants
+// ============================================================
 
-  // ============================================================
-  // Constants
-  // ============================================================
-
-  const STORAGE_KEY = 'mds_history';
-  const MAX_HISTORY = 10;
-  const SIDEBAR_WIDTH = 380;
-  const OPTS_KEY = 'mds_opts';
-  const DEFAULT_OPTS = { title: true, nolinks: false, clean: true };
+const STORAGE_KEY = 'mds_history';
+const MAX_HISTORY = 10;
+export const SIDEBAR_WIDTH = 380;
+const OPTS_KEY = 'mds_opts';
+const DEFAULT_OPTS = { title: true, nolinks: false, clean: true };
 
   // ============================================================
   // State
@@ -35,6 +33,9 @@
   /** @type {Object|null} */
   var sidebar = null;
 
+  /** @type {Element|null} */
+  export var _sidebarHost = null;
+
   // ============================================================
   // Options
   // ============================================================
@@ -43,8 +44,8 @@
    * Load saved options from storage.
    * @returns {Promise<{ title: boolean, nolinks: boolean, clean: boolean }>}
    */
-  async function loadOpts() {
-    var stored = await TM.storage.loadSetting(OPTS_KEY, null);
+  export async function loadOpts() {
+    var stored = await loadSetting(OPTS_KEY, null);
     if (!stored) return Object.assign({}, DEFAULT_OPTS);
     try {
       var parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
@@ -58,9 +59,9 @@
    * Save current options to storage.
    * @returns {Promise<{ title: boolean, nolinks: boolean, clean: boolean }>}
    */
-  async function saveOpts() {
+  export async function saveOpts() {
     var o = getOpts();
-    await TM.storage.saveSetting(OPTS_KEY, o);
+    await saveSetting(OPTS_KEY, o);
     return o;
   }
 
@@ -68,7 +69,7 @@
    * Read current option values from the sidebar DOM.
    * @returns {{ title: boolean, nolinks: boolean, clean: boolean }}
    */
-  function getOpts() {
+  export function getOpts() {
     var r = sidebar ? sidebar.root : null;
     if (!r) return { title: true, nolinks: false, clean: true };
     function cb(id, def) { var el = r.querySelector(id); return el ? el.checked : def; }
@@ -88,7 +89,7 @@
    * @param {string} text
    * @returns {Promise<boolean>}
    */
-  async function copyToClipboard(text) {
+  export async function copyToClipboard(text) {
     try { GM_setClipboard(text, 'text'); return true; } catch (e) {}
     try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
     try {
@@ -114,8 +115,8 @@
    * @param {string} [title]
    * @param {string} [url]
    */
-  async function saveToHistory(markdown, copyType, title, url) {
-    var stored = await TM.storage.loadSetting(STORAGE_KEY, []);
+  export async function saveToHistory(markdown, copyType, title, url) {
+    var stored = await loadSetting(STORAGE_KEY, []);
     var history = Array.isArray(stored) ? stored : [];
     history.unshift({
       id: Date.now().toString(),
@@ -126,15 +127,15 @@
       timestamp: Date.now()
     });
     if (history.length > MAX_HISTORY) history.splice(MAX_HISTORY);
-    await TM.storage.saveSetting(STORAGE_KEY, history);
+    await saveSetting(STORAGE_KEY, history);
   }
 
   /**
    * Load conversion history from storage.
    * @returns {Promise<Array>}
    */
-  async function getHistory() {
-    var stored = await TM.storage.loadSetting(STORAGE_KEY, []);
+  export async function getHistory() {
+    var stored = await loadSetting(STORAGE_KEY, []);
     return Array.isArray(stored) ? stored : [];
   }
 
@@ -142,9 +143,9 @@
    * Delete a single history item by ID.
    * @param {string} id
    */
-  async function deleteHistoryItem(id) {
+  export async function deleteHistoryItem(id) {
     var history = await getHistory();
-    await TM.storage.saveSetting(STORAGE_KEY, history.filter(function (item) { return item.id !== id; }));
+    await saveSetting(STORAGE_KEY, history.filter(function (item) { return item.id !== id; }));
   }
 
   // ============================================================
@@ -193,7 +194,7 @@
    * @param {string} md - Markdown text
    * @param {string} [sourceLabel] - Source label (e.g. hostname)
    */
-  function setPreview(md, sourceLabel) {
+  export function setPreview(md, sourceLabel) {
     currentMarkdown = md;
     var r = sidebar ? sidebar.root : null;
     if (!r) return;
@@ -206,7 +207,7 @@
   /**
    * Show a loading indicator in the preview panel.
    */
-  function setPreviewLoading() {
+  export function setPreviewLoading() {
     var r = sidebar ? sidebar.root : null;
     if (!r) return;
     var el = r.querySelector('#mds-preview');
@@ -217,7 +218,7 @@
    * Show an error message in the preview panel.
    * @param {string} msg
    */
-  function setPreviewError(msg) {
+  export function setPreviewError(msg) {
     var r = sidebar ? sidebar.root : null;
     if (!r) return;
     var el = r.querySelector('#mds-preview');
@@ -227,11 +228,11 @@
   /**
    * Generate a preview of the current page in the sidebar.
    */
-  function generatePagePreview() {
+  export function generatePagePreview() {
     setPreviewLoading();
     function run() {
       try {
-        var md = CAM.convertPage(getOpts());
+        var md = convertPage(getOpts());
         setPreview(md, location.hostname);
       } catch (e) {
         setPreviewError('Error: ' + e.message);
@@ -251,7 +252,7 @@
   /**
    * Render the history list panel.
    */
-  function renderHistory() {
+  export function renderHistory() {
     var r = sidebar ? sidebar.root : null;
     if (!r) return;
     var listEl = r.querySelector('#mds-history-list');
@@ -281,9 +282,9 @@
           var id = e.currentTarget.dataset.id;
           var items = await getHistory();
           var item = items.find(function (h) { return h.id === id; });
-          if (!item) { TM.ui.createToast('Not found', { type: 'error', duration: 2200 }); return; }
+          if (!item) { createToast('Not found', { type: 'error', duration: 2200 }); return; }
           var ok = await copyToClipboard(item.markdown);
-          TM.ui.createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
+          createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
         });
       });
       listEl.querySelectorAll('.mds-hist-btn.del').forEach(function (btn) {
@@ -303,9 +304,9 @@
    * Apply a theme ('dark' or 'light') to the sidebar.
    * @param {string} theme
    */
-  function applyTheme(theme) {
+  export function applyTheme(theme) {
     currentTheme = theme;
-    TM.storage.saveSetting('mds_theme', theme);
+    saveSetting('mds_theme', theme);
     if (sidebar) {
       sidebar.host.setAttribute('data-theme', theme);
       var btn = sidebar.root.querySelector('#mds-theme-btn');
@@ -320,7 +321,7 @@
   /**
    * Show the sidebar (build if needed).
    */
-  function showSidebar() {
+  export function showSidebar() {
     if (!sidebar) sidebar = buildSidebar();
     sidebar.open();
   }
@@ -328,7 +329,7 @@
   /**
    * Hide the sidebar.
    */
-  function hideSidebar() {
+  export function hideSidebar() {
     if (sidebar) sidebar.close();
   }
 
@@ -340,7 +341,7 @@
    * Switch between preview and history tabs.
    * @param {string} which - 'preview' or 'history'
    */
-  function switchTab(which) {
+  export function switchTab(which) {
     var r = sidebar ? sidebar.root : null;
     if (!r) return;
     r.querySelector('#mds-tab-preview').classList.toggle('active', which === 'preview');
@@ -961,10 +962,10 @@
    * Build the sidebar (once) with all event wiring.
    * @returns {Object} The sidebar object from TM.ui.createSidebar
    */
-  function buildSidebar() {
+  export function buildSidebar() {
     if (sidebar) return sidebar;
 
-    var sb = TM.ui.createSidebar({
+    var sb = createSidebar({
       width: SIDEBAR_WIDTH,
       title: 'Markdown',
       accentColor: '#f59e0b',
@@ -985,13 +986,13 @@
         generatePagePreview();
         setTimeout(function () { var inp = sb.root.querySelector('#mds-url-input'); if (inp) inp.focus(); }, 300);
       },
-      onClose: function () { CAM.stopClickMode(); }
+      onClose: function () { stopClickMode(); }
     });
 
     sidebar = sb;
 
     // Store sidebar host reference for cross-module use (convertSelection checks it)
-    CAM._sidebarHost = sb.host;
+    _sidebarHost = sb.host;
 
     // Inject full custom CSS into shadow root
     var style = document.createElement('style');
@@ -1018,28 +1019,28 @@
     // Copy page
     r.querySelector('#mds-act-page').addEventListener('click', async function () {
       try {
-        var md = CAM.convertPage(getOpts());
+        var md = convertPage(getOpts());
         var ok = await copyToClipboard(md);
         if (ok) saveToHistory(md, 'copyPage');
-        TM.ui.createToast(ok ? 'Page copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
+        createToast(ok ? 'Page copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
         setPreview(md, location.hostname);
-      } catch (e) { TM.ui.createToast(e.message, { type: 'error', duration: 2200 }); }
+      } catch (e) { createToast(e.message, { type: 'error', duration: 2200 }); }
     });
 
     // Copy selection
     r.querySelector('#mds-act-sel').addEventListener('click', async function () {
-      var md = CAM.convertSelection(getOpts());
-      if (!md) { TM.ui.createToast('No text selected', { type: 'error', duration: 2200 }); return; }
+      var md = convertSelection(getOpts());
+      if (!md) { createToast('No text selected', { type: 'error', duration: 2200 }); return; }
       var ok = await copyToClipboard(md);
       if (ok) saveToHistory(md, 'copySelection');
-      TM.ui.createToast(ok ? 'Selection copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
+      createToast(ok ? 'Selection copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
       setPreview(md, 'selection');
     });
 
     // Copy image — click mode
     r.querySelector('#mds-act-img').addEventListener('click', function () {
-      if (CAM.activeClickMode === 'img') { CAM.stopClickMode(); return; }
-      CAM.startClickMode({
+      if (activeClickMode === 'img') { stopClickMode(); return; }
+      startClickMode({
         mode: 'img',
         hint: 'Click any image to copy as Markdown',
         targetSelector: 'img',
@@ -1050,10 +1051,10 @@
         onResult: async function (md) {
           var ok = await copyToClipboard(md);
           if (ok) saveToHistory(md, 'copyImage');
-          TM.ui.createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
+          createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
           setPreview(md, 'image');
         },
-        onCancel: function () { TM.ui.createToast('Cancelled', { type: 'info', duration: 2000 }); },
+        onCancel: function () { createToast('Cancelled', { type: 'info', duration: 2000 }); },
         getSidebarHost: function () { return sb.host; },
         getModeButton: function () { return r.querySelector('#mds-act-img'); },
       });
@@ -1061,8 +1062,8 @@
 
     // Copy link — click mode
     r.querySelector('#mds-act-link').addEventListener('click', function () {
-      if (CAM.activeClickMode === 'link') { CAM.stopClickMode(); return; }
-      CAM.startClickMode({
+      if (activeClickMode === 'link') { stopClickMode(); return; }
+      startClickMode({
         mode: 'link',
         hint: 'Click any link to copy as Markdown',
         targetSelector: 'a[href]',
@@ -1073,10 +1074,10 @@
         onResult: async function (md) {
           var ok = await copyToClipboard(md);
           if (ok) saveToHistory(md, 'copyLink');
-          TM.ui.createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
+          createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
           setPreview(md, 'link');
         },
-        onCancel: function () { TM.ui.createToast('Cancelled', { type: 'info', duration: 2000 }); },
+        onCancel: function () { createToast('Cancelled', { type: 'info', duration: 2000 }); },
         getSidebarHost: function () { return sb.host; },
         getModeButton: function () { return r.querySelector('#mds-act-link'); },
       });
@@ -1106,15 +1107,15 @@
       fetchBtn.textContent = '…';
       setPreviewLoading();
       try {
-        var result = await CAM.fetchUrlAsMarkdown(url, getOpts());
+        var result = await fetchUrlAsMarkdown(url, getOpts());
         await saveToHistory(result.markdown, 'copyUrl', result.title, url);
         setPreview(result.markdown, new URL(url).hostname);
         switchTab('preview');
         var ok = await copyToClipboard(result.markdown);
-        TM.ui.createToast(ok ? 'Fetched & copied' : 'Fetched', { type: 'success', duration: 2200 });
+        createToast(ok ? 'Fetched & copied' : 'Fetched', { type: 'success', duration: 2200 });
       } catch (e) {
         setPreviewError('Fetch failed: ' + e.message);
-        TM.ui.createToast(e.message, { type: 'error', duration: 2200 });
+        createToast(e.message, { type: 'error', duration: 2200 });
       } finally {
         fetchBtn.disabled = false;
         fetchBtn.textContent = 'Fetch →';
@@ -1132,34 +1133,8 @@
       if (!currentMarkdown) return;
       var ok = await copyToClipboard(currentMarkdown);
       await saveToHistory(currentMarkdown, 'copyPage');
-      TM.ui.createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
+      createToast(ok ? 'Copied' : 'Failed', { type: ok ? 'success' : 'error', duration: 2200 });
     });
 
     return sb;
   }
-
-  // ============================================================
-  // Exports
-  // ============================================================
-
-  CAM.SIDEBAR_WIDTH = SIDEBAR_WIDTH;
-  CAM.buildSidebar = buildSidebar;
-  CAM.showSidebar = showSidebar;
-  CAM.hideSidebar = hideSidebar;
-  CAM.setPreview = setPreview;
-  CAM.setPreviewLoading = setPreviewLoading;
-  CAM.setPreviewError = setPreviewError;
-  CAM.generatePagePreview = generatePagePreview;
-  CAM.renderHistory = renderHistory;
-  CAM.switchTab = switchTab;
-  CAM.applyTheme = applyTheme;
-  CAM.loadOpts = loadOpts;
-  CAM.saveOpts = saveOpts;
-  CAM.getOpts = getOpts;
-  CAM.copyToClipboard = copyToClipboard;
-  CAM.saveToHistory = saveToHistory;
-  CAM.getHistory = getHistory;
-  CAM.deleteHistoryItem = deleteHistoryItem;
-  CAM.currentMarkdown = currentMarkdown;
-  CAM.currentTheme = currentTheme;
-})();

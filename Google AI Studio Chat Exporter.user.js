@@ -1,16 +1,12 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.2.2
+// @version      5.3.0
 // @description  Chat exporter in settings sidebar + native mic dialog repositioned & non-blocking
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @grant        none
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/ui-components.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/markdown-converter.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js
@@ -19,10 +15,12 @@
 // @license      MIT
 // ==/UserScript==
 
-(function () {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { createToast } from './src/shared/ui-components.js';
+import { htmlToMarkdown } from './src/shared/markdown-converter.js';
+import { waitForElement, observeMutations } from './src/shared/dom-utils.js';
 
-    var { log } = TM.createLogger('Google AI Studio Chat Exporter');
+var { log } = createLogger('Google AI Studio Chat Exporter');
 
     // ==================== STYLES ====================
 
@@ -201,7 +199,7 @@
         var panel = thoughtChunk.querySelector('mat-expansion-panel:not([disabled])');
         if (!panel) return '';
         var body = panel.querySelector('.mat-expansion-panel-body');
-        return body ? TM.markdown.htmlToMarkdown(body) : '';
+        return body ? htmlToMarkdown(body) : '';
     }
 
     /**
@@ -214,7 +212,7 @@
         var chunks = turnEl.querySelectorAll('ms-text-chunk');
         for (var i = 0; i < chunks.length; i++) {
             if (chunks[i].closest('ms-thought-chunk')) continue;
-            out += TM.markdown.htmlToMarkdown(chunks[i]);
+            out += htmlToMarkdown(chunks[i]);
         }
         return out.trim();
     }
@@ -389,7 +387,7 @@
     async function handleCopy(format, btn, origLabel) {
         var text = exportChat(format);
         if (!text) {
-            TM.ui.createToast('Kein Chat gefunden', { type: 'error' });
+            createToast('Kein Chat gefunden', { type: 'error' });
             return;
         }
 
@@ -406,7 +404,7 @@
         }
 
         var label = format === 'markdown' ? 'Markdown' : 'Text';
-        TM.ui.createToast(label + ' kopiert — ' + (text.length / 1000).toFixed(1) + 'k Zeichen', { type: 'success' });
+        createToast(label + ' kopiert — ' + (text.length / 1000).toFixed(1) + 'k Zeichen', { type: 'success' });
         btn.classList.add('done');
         btn.textContent = '✓';
         setTimeout(function () { btn.classList.remove('done'); btn.textContent = origLabel; }, 2000);
@@ -414,17 +412,15 @@
 
     // ==================== INJECTION ====================
 
-    TM.dom.waitForElement('.scrollable-area', 0).then(function (area) {
+    waitForElement('.scrollable-area', 0).then(function (area) {
         if (!area.querySelector('#ais-export-section')) {
             area.appendChild(buildSection());
             log('Export section injected');
         }
-        TM.dom.observeMutations(function () {
+        observeMutations(function () {
             if (!area.querySelector('#ais-export-section')) {
                 area.appendChild(buildSection());
                 log('Export section re-injected');
             }
         }, area);
     });
-
-})();

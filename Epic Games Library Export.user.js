@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         Epic Games Library Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      6.3.2
+// @version      6.4.0
 // @description  High-Performance Game Library Exporter. Start via Tampermonkey menu.
 // @author       marmoris-x
 // @match        https://www.epicgames.com/account/transactions*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=epicgames.com
 // @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/ui-components.js
 // @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
 // @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
@@ -20,10 +18,10 @@
 // @license      MIT
 // ==/UserScript==
 
-(function () {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { createSidebar } from './src/shared/ui-components.js';
 
-    var { log } = TM.createLogger('Epic Games Library Export');
+var { log } = createLogger('Epic Games Library Export');
 
     GM_registerMenuCommand('Epic Library Export', run);
 
@@ -38,7 +36,7 @@
             return;
         }
 
-        var sidebar = TM.ui.createSidebar({
+        var sidebar = createSidebar({
             title: 'Epic Turbo Export',
             width: 320,
             accentColor: '#f1c40f'
@@ -294,5 +292,3 @@
 
         log('Panel initialized');
     }
-
-})();

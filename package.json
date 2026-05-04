@@ -1,0 +1,14 @@
+{
+  "name": "tampermonkey-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "echo 'Use build script for now'"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-monkey": "^7.0.0"
+  }
+}

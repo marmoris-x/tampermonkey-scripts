@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.6.1
+// @version      1.7.0
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
 // @author       marmoris-x
 // @match        https://flamecomics.xyz/*
@@ -9,8 +9,6 @@
 // @match        https://flamecomics.com/*
 // @match        https://www.flamecomics.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=flamecomics.com
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/logging-utils.js
-// @require      https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/src/shared/dom-utils.js
 // @grant        none
 // @noframes
 // @run-at       document-idle
@@ -20,10 +18,10 @@
 // @license      MIT
 // ==/UserScript==
 
-(function() {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { observeMutations } from './src/shared/dom-utils.js';
 
-    const log = TM.createLogger('FlameComics Advanced Sort');
+const log = createLogger('FlameComics Advanced Sort');
     log.log('Script loaded');
 
     const styles = `
@@ -293,7 +291,7 @@
      * Entry point — sets up the MutationObserver and runs the initial sort button scan.
      */
     function init() {
-        TM.dom.observeMutations(() => {
+        observeMutations(() => {
             const btn = findSortButton();
             if (btn && !btn.hasAttribute('data-sort-enhanced')) {
                 setupSortButton(btn);
@@ -310,4 +308,3 @@
     } else {
         init();
     }
-})();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.6.0
+// @version      1.7.0
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @author       marmoris-x
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=youtube.com
@@ -11,13 +11,6 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @run-at       document-start
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/logging-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/dom-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/storage-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/shared/i18n-utils.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/youtube-enhanced/auto-hd.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/youtube-enhanced/channel-speed.js
-// @require      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/src/youtube-enhanced/auto-stop.js
 // @sandbox      JavaScript
 // @inject-into  content
 // @noframes
@@ -34,101 +27,48 @@
  *   channel-speed.js   -- Per-channel speed control with native-UI panel
  *   auto-stop.js       -- Pauses auto-play on video pages
  *
- * All modules are loaded via @require and extend window.__YTE__.
- * This entry file sets up shared config, language strings, and bootstraps.
+ * All modules use ES module imports/exports instead of window.__YTE__.
+ * This entry file imports from all three and bootstraps.
  */
 
-(function () {
-    'use strict';
+import { createLogger } from './src/shared/logging-utils.js';
+import { CFG, patchQuality, resetHDTrackers } from './src/youtube-enhanced/auto-hd.js';
+import { loadSpeedData, initSpeed, cleanupSpeed } from './src/youtube-enhanced/channel-speed.js';
+import { initAutoStop, cleanupAutoStop, resetStopTrackers } from './src/youtube-enhanced/auto-stop.js';
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // NAMESPACE SETUP (extends what sub-modules already registered)
-    // ─────────────────────────────────────────────────────────────────────────
+var log = createLogger('YouTube Enhanced', CFG.debug);
 
-    var YTE = window.__YTE__;
+// ─────────────────────────────────────────────────────────────────────────
+// BOOTSTRAP
+// ─────────────────────────────────────────────────────────────────────────
 
-    YTE.CFG = {
-        debug: false,
-        preferredQuality: 8,    // Fallback: 0=Auto  5=720p  6=1080p  7=1440p  8=2160p/4K
-        SPEED_KEY:    'yt_suite_channel_speeds',
-        MENU_DELAY:   50,
-        SPEED_RETRY:  1000,
-        INIT_TIMEOUT: 15000,
-    };
+patchQuality();
 
-    YTE.QUALITY_MAP = {
-        0: 'auto',
-        5: 'hd720',
-        6: 'hd1080',
-        7: 'hd1440',
-        8: 'hd2160'
-    };
+window.addEventListener('yt-navigate-finish', async function () {
+  resetHDTrackers(); // Mandatory for SPAs so auto-stop and HD apply to subsequent videos
+  resetStopTrackers();
+  await loadSpeedData();
+  patchQuality();
 
-    YTE.log = TM.createLogger('YouTube Enhanced', YTE.CFG.debug);
+  cleanupSpeed();
+  if (location.pathname.startsWith('/watch') || location.pathname.startsWith('/shorts')) {
+    initSpeed();
+  }
 
-    function getLanguage() {
-        var browserLang = navigator.language;
-        if (browserLang && browserLang.toLowerCase().startsWith('de')) {
-            return 'de';
-        }
-        return 'en';
-    }
+  cleanupAutoStop();
+  initAutoStop();
+});
 
-    YTE.LANG = (function () {
-        var isGerman = getLanguage() === 'de';
+async function boot() {
+  await loadSpeedData();
+  if (location.pathname.startsWith('/watch') || location.pathname.startsWith('/shorts')) {
+    initSpeed();
+  }
+  initAutoStop();
+}
 
-        return {
-            isGerman: isGerman,
-            backToPreviousMenu: isGerman ? 'Zuruck zum vorherigen Menu' : 'Back to previous menu',
-            channelSpeed: isGerman ? 'Kanalgeschwindigkeit' : 'Channel speed',
-            decreaseSpeed: isGerman ? 'Kanalgeschwindigkeit reduzieren 0.05' : 'Decrease speed 0.05',
-            increaseSpeed: isGerman ? 'Kanalgeschwindigkeit erhoben 0.05' : 'Increase speed 0.05',
-            standard: isGerman ? 'Standard' : 'Normal',
-            channelSpeedLabel: isGerman ? 'Kanalgeschwindigkeit' : 'Channel speed'
-        };
-    })();
-
-    // Trackers for SPAs (YouTube recycles the <video> tag)
-    YTE.handledVidsHD = new WeakSet();
-    YTE.handledVids   = new WeakSet();
-
-    YTE.resetVideoTrackers = function () {
-        YTE.handledVidsHD = new WeakSet();
-        YTE.handledVids   = new WeakSet();
-    };
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // BOOTSTRAP
-    // ─────────────────────────────────────────────────────────────────────────
-
-    YTE.patchQuality();
-
-    window.addEventListener('yt-navigate-finish', async function () {
-        YTE.resetVideoTrackers(); // Mandatory for SPAs so auto-stop and HD apply to subsequent videos
-        await YTE.loadSpeedData();
-        YTE.patchQuality();
-
-        YTE.cleanupSpeed();
-        if (location.pathname.startsWith('/watch') || location.pathname.startsWith('/shorts')) {
-            YTE.initSpeed();
-        }
-
-        YTE.cleanupAutoStop();
-        YTE.initAutoStop();
-    });
-
-    async function boot() {
-        await YTE.loadSpeedData();
-        if (location.pathname.startsWith('/watch') || location.pathname.startsWith('/shorts')) {
-            YTE.initSpeed();
-        }
-        YTE.initAutoStop();
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { boot(); });
-    } else {
-        boot();
-    }
-
-})();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () { boot(); });
+} else {
+  boot();
+}

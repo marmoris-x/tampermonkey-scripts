@@ -4,20 +4,16 @@
  * Wraps the embedded TurndownService library and provides all Markdown conversion
  * logic: page-to-Markdown, selection-to-Markdown, remote URL fetch, DOM cleanup,
  * URL resolution, and table extraction.
- *
- * @namespace window.__CAM__
  */
 
-(function () {
-  'use strict';
+import { fetchPage } from '../shared/network-utils.js';
+import { _sidebarHost } from './ui-sidebar.js';
 
-  const CAM = (window.__CAM__ = window.__CAM__ || {});
+// ============================================================
+// TurndownService (embedded library — MIT License)
+// ============================================================
 
-  // ============================================================
-  // TurndownService (embedded library — MIT License)
-  // ============================================================
-
-  const TurndownService = (function () {
+export const TurndownService = (function () {
     'use strict';
 
     function extend(destination) {
@@ -563,7 +559,7 @@
   // Language-hint recognition
   // ============================================================
 
-  const LANG_HINTS = new Set([
+export const LANG_HINTS = new Set([
     'bash', 'sh', 'shell', 'zsh', 'fish', 'cmd', 'bat', 'powershell', 'ps1',
     'javascript', 'js', 'jsx', 'typescript', 'ts', 'tsx',
     'python', 'py', 'ruby', 'rb', 'go', 'rust', 'java', 'c', 'cpp', 'c++', 'c#', 'cs',
@@ -583,7 +579,7 @@
    * @param {string} str
    * @returns {string}
    */
-  function decodeHTMLEntities(str) {
+export function decodeHTMLEntities(str) {
     return str
       .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
@@ -604,7 +600,7 @@
    * @param {string} md
    * @returns {string}
    */
-  function postProcessMarkdown(md) {
+export function postProcessMarkdown(md) {
     return md
       .replace(/\\\*\\\*([^\n]{1,80}?)\\\*\\\*/g, '**$1**')
       .replace(/\\\*([^\n*]{1,40}?)\\\*/g, '*$1*');
@@ -618,7 +614,7 @@
    * Remove noisy / non-content elements from a cloned DOM subtree.
    * @param {Element} root
    */
-  function cleanDOM(root) {
+export function cleanDOM(root) {
     root.querySelectorAll(
       'h1 [aria-label*="link to"],h1 [aria-label*="anchor"],h1 [aria-label*="permalink"],' +
       'h2 [aria-label*="link to"],h2 [aria-label*="anchor"],h2 [aria-label*="permalink"],' +
@@ -680,7 +676,7 @@
    * Merge adjacent table fragments split by platform CMS (thead orphaned from tbody).
    * @param {Element} root
    */
-  function mergeOrphanedTables(root) {
+export function mergeOrphanedTables(root) {
     var tables = Array.from(root.querySelectorAll('table'));
     var processed = new Set();
     for (var i = 0; i < tables.length; i++) {
@@ -719,7 +715,7 @@
    * @param {Document|Element} doc
    * @returns {Element}
    */
-  function getMainContent(doc) {
+export function getMainContent(doc) {
     var candidates = [
       '[itemprop="articleBody"]', 'main[role="main"]', '[role="main"]', 'main', 'article',
       '.post-content', '.article-content', '.entry-content', '.article-body',
@@ -746,7 +742,7 @@
    * @param {string} [lang]
    * @returns {string}
    */
-  function buildFrontmatter(url, title, lang) {
+export function buildFrontmatter(url, title, lang) {
     var safeTitle = (title || 'Untitled')
       .replace(/[\r\n\t]+/g, ' ')
       .replace(/\\/g, '\\\\')
@@ -765,7 +761,7 @@
    * Resolve relative URLs to absolute in a cloned DOM subtree.
    * @param {Element} root
    */
-  function resolveUrls(root) {
+export function resolveUrls(root) {
     root.querySelectorAll('a[href]').forEach(function (el) {
       try {
         var attr = el.getAttribute('href') || '';
@@ -807,7 +803,7 @@
    * @param {TurndownService} td
    * @returns {string}
    */
-  function getSafeCellText(cell, td) {
+export function getSafeCellText(cell, td) {
     var clone = cell.cloneNode(true);
     clone.querySelectorAll('br').forEach(function (br) { br.replaceWith(' '); });
     return td.turndown(clone.innerHTML)
@@ -822,7 +818,7 @@
    * @param {TurndownService} td
    * @returns {string}
    */
-  function tableNodeToMarkdown(node, td) {
+export function tableNodeToMarkdown(node, td) {
     var allRows = Array.from(node.rows);
     if (!allRows.length) return '';
     var grid = [];
@@ -872,7 +868,7 @@
    * @param {TurndownService} td
    * @returns {string}
    */
-  function ariaTableToMarkdown(node, td) {
+export function ariaTableToMarkdown(node, td) {
     function cellText(cell) { return getSafeCellText(cell, td); }
     function rowToMd(row) {
       var cells = Array.from(row.querySelectorAll('[role="cell"],[role="rowheader"],[role="gridcell"]'));
@@ -913,7 +909,7 @@
    * @param {{ nolinks?: boolean }} [opts]
    * @returns {TurndownService}
    */
-  function createTurndown(opts) {
+export function createTurndown(opts) {
     opts = opts || {};
     var td = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
@@ -1121,7 +1117,7 @@
    * @param {{ nolinks?: boolean, clean?: boolean, title?: boolean }} opts
    * @returns {TurndownService}
    */
-  function getTurndown(opts) {
+export function getTurndown(opts) {
     var key = JSON.stringify(opts);
     if (_cachedTurndown && _cachedOptsKey === key) return _cachedTurndown;
     _cachedTurndown = createTurndown(opts);
@@ -1138,7 +1134,7 @@
    * @param {{ clean?: boolean, title?: boolean, nolinks?: boolean }} opts
    * @returns {string}
    */
-  function convertPage(opts) {
+export function convertPage(opts) {
     var td = getTurndown(opts);
     var source = getMainContent(document);
     var hiddenEls = [];
@@ -1184,11 +1180,11 @@
    * @param {{ clean?: boolean, title?: boolean, nolinks?: boolean }} opts
    * @returns {string|null}
    */
-  function convertSelection(opts) {
+export function convertSelection(opts) {
     var sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
     if (!sel.toString().trim()) return null;
-    if (sel.anchorNode && window.__CAM__._sidebarHost && window.__CAM__._sidebarHost.contains(sel.anchorNode)) return null;
+    if (sel.anchorNode && _sidebarHost && _sidebarHost.contains(sel.anchorNode)) return null;
     var frag = sel.getRangeAt(0).cloneContents();
     var div = document.createElement('div');
     div.appendChild(frag);
@@ -1207,9 +1203,9 @@
    * @param {{ clean?: boolean, title?: boolean, nolinks?: boolean }} opts
    * @returns {Promise<{ markdown: string, title: string }>}
    */
-  async function fetchUrlAsMarkdown(url, opts) {
+export async function fetchUrlAsMarkdown(url, opts) {
     try {
-      var doc = await TM.network.fetchPage(url, { timeout: 15000 });
+      var doc = await fetchPage(url, { timeout: 15000 });
       var baseTag = doc.querySelector('base[href]');
       var baseUrl = baseTag ? new URL(baseTag.getAttribute('href'), url).href : url;
 
@@ -1235,25 +1231,3 @@
     }
   }
 
-  // ============================================================
-  // Exports
-  // ============================================================
-
-  CAM.TurndownService = TurndownService;
-  CAM.createTurndown = createTurndown;
-  CAM.getTurndown = getTurndown;
-  CAM.convertPage = convertPage;
-  CAM.convertSelection = convertSelection;
-  CAM.fetchUrlAsMarkdown = fetchUrlAsMarkdown;
-  CAM.cleanDOM = cleanDOM;
-  CAM.resolveUrls = resolveUrls;
-  CAM.getMainContent = getMainContent;
-  CAM.buildFrontmatter = buildFrontmatter;
-  CAM.postProcessMarkdown = postProcessMarkdown;
-  CAM.decodeHTMLEntities = decodeHTMLEntities;
-  CAM.tableNodeToMarkdown = tableNodeToMarkdown;
-  CAM.ariaTableToMarkdown = ariaTableToMarkdown;
-  CAM.getSafeCellText = getSafeCellText;
-  CAM.mergeOrphanedTables = mergeOrphanedTables;
-  CAM.LANG_HINTS = LANG_HINTS;
-})();
