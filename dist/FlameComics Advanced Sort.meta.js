@@ -15,4 +15,5 @@
 // @match        https://www.flamecomics.com/*
 // @grant        none
 // @run-at       document-idle
+// @noframes
 // ==/UserScript==

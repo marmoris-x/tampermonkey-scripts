@@ -20,4 +20,6 @@
 // @grant        GM_xmlhttpRequest
 // @inject-into  content
 // @run-at       document-idle
+// @noframes
+// @unwrap
 // ==/UserScript==

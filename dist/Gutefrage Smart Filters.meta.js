@@ -19,4 +19,6 @@
 // @grant        window.close
 // @inject-into  content
 // @run-at       document-idle
+// @noframes
+// @unwrap
 // ==/UserScript==

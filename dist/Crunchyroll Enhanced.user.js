@@ -17,6 +17,8 @@
 // @grant        GM_addStyle
 // @inject-into  content
 // @run-at       document-idle
+// @noframes
+// @unwrap
 // ==/UserScript==
 
 (function () {

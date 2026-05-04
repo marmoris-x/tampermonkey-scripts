@@ -14,4 +14,5 @@
 // @grant        GM_registerMenuCommand
 // @inject-into  content
 // @run-at       document-idle
+// @noframes
 // ==/UserScript==

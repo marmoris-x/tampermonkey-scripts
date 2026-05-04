@@ -20,6 +20,7 @@
 // @match        *://encrypted.google.com/search*
 // @grant        none
 // @run-at       document-idle
+// @noframes
 // ==/UserScript==
 
 (function () {

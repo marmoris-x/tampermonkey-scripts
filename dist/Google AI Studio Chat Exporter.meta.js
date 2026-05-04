@@ -12,4 +12,5 @@
 // @match        https://aistudio.google.com/*
 // @grant        none
 // @run-at       document-idle
+// @noframes
 // ==/UserScript==

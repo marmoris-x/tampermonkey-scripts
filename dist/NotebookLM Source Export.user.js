@@ -15,6 +15,8 @@
 // @grant        GM_unregisterMenuCommand
 // @inject-into  content
 // @run-at       document-idle
+// @noframes
+// @unwrap
 // ==/UserScript==
 
 (function () {

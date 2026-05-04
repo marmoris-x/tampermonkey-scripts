@@ -18,6 +18,8 @@
 // @grant        GM_setValue
 // @inject-into  content
 // @run-at       document-start
+// @noframes
+// @unwrap
 // ==/UserScript==
 
 (function () {

@@ -14,6 +14,7 @@
 // @grant        GM_setClipboard
 // @inject-into  content
 // @run-at       document-idle
+// @noframes
 // ==/UserScript==
 
 (function () {
