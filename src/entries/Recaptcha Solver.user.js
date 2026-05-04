@@ -13,7 +13,7 @@
 // @connect      engageub1.pythonanywhere.com
 // @grant        GM_xmlhttpRequest
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @run-at       document-idle
 // @sandbox      JavaScript

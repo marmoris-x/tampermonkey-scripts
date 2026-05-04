@@ -8,7 +8,7 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @grant        none
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @run-at       document-idle
 // @noframes

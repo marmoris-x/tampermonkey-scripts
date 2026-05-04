@@ -1,46 +1,33 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
-// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.7.0
-// @description  Adds a Tampermonkey menu command to force the current tab into PiP mode.
-// @author       marmoris-x
+// @namespace    http://tampermonkey.net/
+// @version      5.5
+// @description  Adds an entry in the Tampermonkey menu to force the tab into PiP.
+// @author       DeinName
 // @match        *://*/*
-// @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
-// @sandbox      JavaScript
-// @inject-into  content
 // @grant        GM_registerMenuCommand
-// @noframes
-// @run-at       document-idle
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js
-// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @license      MIT
+// @icon         https://img.icons8.com/fluency/64/picture-in-picture.png
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js
 // ==/UserScript==
 
-import { createLogger } from '../shared/logging-utils.js';
-
-const log = createLogger('Picture-in-Picture');
+(function() {
+    'use strict';
 
     let isActivating = false;
 
-    /**
-     * Toggles Picture-in-Picture mode for the current tab.
-     * If PiP is active, exits it. Otherwise, captures the tab via getDisplayMedia
-     * and requests PiP on a hidden video element.
-     * Cleans up the stream and video element on PiP exit or user cancellation.
-     */
     async function togglePiP() {
         if (document.pictureInPictureElement) {
             try {
                 await document.exitPictureInPicture();
             } catch (e) {
-                log.error('PiP exit failed:', e);
+                console.error("PiP beenden fehlgeschlagen:", e);
             }
             return;
         }
 
         if (!document.pictureInPictureEnabled) {
-            log.warn('PiP not available on this page.');
+            console.warn("PiP: auf dieser Seite deaktiviert.");
             return;
         }
 
@@ -59,7 +46,7 @@ const log = createLogger('Picture-in-Picture');
             video.srcObject = stream;
             video.muted = true;
             video.autoplay = true;
-            // opacity:0 instead of display:none — stays in render tree, prevents black screen in Chromium
+            // opacity:0 statt display:none — bleibt im Render-Tree, verhindert Black-Screen in Chromium
             video.style.cssText = "position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;";
             document.body.appendChild(video);
 
@@ -73,7 +60,7 @@ const log = createLogger('Picture-in-Picture');
                     await video.play();
                     await video.requestPictureInPicture();
                 } catch (e) {
-                    log.error('PiP error:', e);
+                    console.error("PiP Fehler:", e);
                     cleanup();
                 } finally {
                     isActivating = false;
@@ -84,9 +71,10 @@ const log = createLogger('Picture-in-Picture');
             stream.getVideoTracks()[0].addEventListener("ended", cleanup, { once: true });
 
         } catch (err) {
-            log.log('PiP cancelled by user.');
+            console.log("PiP vom Benutzer abgebrochen.");
             isActivating = false;
         }
     }
 
     GM_registerMenuCommand("Picture-in-Picture", togglePiP);
+})();

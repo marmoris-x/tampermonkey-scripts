@@ -8,7 +8,7 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js
 // @match        *://*/*
 // @sandbox      JavaScript
 // @grant        GM_registerMenuCommand

@@ -103,7 +103,7 @@ for (const entry of entryFiles) {
           userscript,
           build: {
             fileName: entry,
-            metaFileName: true,
+            metaFileName: false,
           },
         }),
       ],

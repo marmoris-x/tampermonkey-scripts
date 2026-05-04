@@ -1,46 +1,34 @@
 // ==UserScript==
 // @name         BotGhost Bulk Choice Extractor
-// @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.8.0
-// @description  Adds a "Copy Bulk" button next to "Clear All Choices" to copy label/value pairs.
-// @author       marmoris-x
+// @namespace    http://tampermonkey.net/
+// @version      1.6
+// @description  Fügt einen "Copy Bulk" Button nur neben dem "Clear All Choices" Button hinzu, um Label/Value-Paare zu kopieren.
+// @author       marmoris
 // @match        https://dashboard.botghost.com/*
-// @icon64       https://www.google.com/s2/favicons?sz=64&domain=botghost.com
-// @sandbox      JavaScript
-// @inject-into  content
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=botghost.com
 // @grant        GM_setClipboard
-// @noframes
-// @run-at       document-idle
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js
-// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @license      MIT
+// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/BotGhost%20Bulk%20Choice%20Extractor.user.js
+// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/BotGhost%20Bulk%20Choice%20Extractor.user.js
 // ==/UserScript==
 
-import { createLogger } from '../shared/logging-utils.js';
-import { observeMutations } from '../shared/dom-utils.js';
+(function() {
+    'use strict';
 
-const log = createLogger('BotGhost Bulk Choice Extractor');
-
-    /**
-     * Finds the "Clear All Choices" button and injects a "Copy Bulk" sibling button.
-     * Guarded — skips if the button already exists or the anchor is missing.
-     */
     function createAndInjectButton() {
-        // Find the "Clear All Choices" button as anchor point.
+        // 1. Finde den "Clear All Choices" Button als Ankerpunkt.
         const clearAllButton = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.trim() === 'Clear All Choices');
 
-        // Only proceed if the anchor button exists.
+        // 2. Fahre nur fort, wenn der Anker-Button existiert.
         if (clearAllButton) {
             const targetContainer = clearAllButton.parentElement;
 
-            // Check if container is valid and our button does not exist yet.
+            // 3. Prüfe, ob der Container gültig ist und unser Button noch nicht existiert.
             if (targetContainer && !document.getElementById('bulk-copy-button')) {
                 const copyButton = document.createElement('button');
                 copyButton.textContent = 'Copy Bulk';
                 copyButton.id = 'bulk-copy-button';
 
-                // Styling preserved from the previous version.
+                // Styling aus der vorherigen Version.
                 copyButton.className = 'ml-2 px-3 py-2 text-sm font-semibold rounded-md border border-[#ffb296] hover:bg-[#4d352a] transition-colors';
                 copyButton.style.color = '#ffb296';
 
@@ -72,15 +60,19 @@ const log = createLogger('BotGhost Bulk Choice Extractor');
                     }, 2500);
                 });
 
-                // Append the new button to the anchor button's container.
+                // Füge den neuen Button zum Container des Anker-Buttons hinzu.
                 targetContainer.appendChild(copyButton);
             }
         }
     }
 
-    observeMutations(() => {
+    const observer = new MutationObserver((mutationsList, observer) => {
+        // Die Funktion wird bei jeder DOM-Änderung aufgerufen, ist aber durch die internen Prüfungen sicher.
         createAndInjectButton();
-    }, document.body);
+    });
 
-    // Run an initial check on script load.
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Führe eine initiale Prüfung beim Laden des Skripts durch.
     createAndInjectButton();
+})();

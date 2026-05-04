@@ -8,7 +8,7 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20Search%20Enhanced.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20Search%20Enhanced.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20Search%20Enhanced.user.js
 // @match        *://www.google.com/search*
 // @match        *://www.google.de/search*
 // @match        *://www.google.at/search*

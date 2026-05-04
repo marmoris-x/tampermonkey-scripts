@@ -8,7 +8,7 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=flamecomics.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/FlameComics%20Advanced%20Sort.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/FlameComics%20Advanced%20Sort.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/FlameComics%20Advanced%20Sort.user.js
 // @match        https://flamecomics.xyz/*
 // @match        https://www.flamecomics.xyz/*
 // @match        https://flamecomics.com/*

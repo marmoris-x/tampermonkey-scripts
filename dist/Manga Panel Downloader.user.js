@@ -8,7 +8,7 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=tampermonkey.net
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.user.js
 // @match        *://*/*
 // @sandbox      JavaScript
 // @connect      *

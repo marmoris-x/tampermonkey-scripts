@@ -14,7 +14,7 @@
 // @version      2.6.0
 // @author       marmoris-x
 // @description  Removes NSFW popup, un-blurs content, and makes website accessible
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @license      MIT

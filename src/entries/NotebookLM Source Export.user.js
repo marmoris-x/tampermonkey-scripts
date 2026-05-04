@@ -13,7 +13,7 @@
 // @sandbox      JavaScript
 // @noframes
 // @unwrap
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @license      MIT

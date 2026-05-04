@@ -9,7 +9,7 @@
 // @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.meta.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @run-at       document-idle
 // @sandbox      JavaScript
