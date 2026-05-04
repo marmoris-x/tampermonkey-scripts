@@ -8,8 +8,8 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=epicgames.com
 // @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
-// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
-// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.meta.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @run-at       document-idle
 // @sandbox      JavaScript

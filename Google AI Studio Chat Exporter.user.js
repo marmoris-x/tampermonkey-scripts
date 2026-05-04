@@ -8,8 +8,8 @@
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @grant        none
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js
-// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.meta.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @run-at       document-idle
 // @noframes
 // @license      MIT

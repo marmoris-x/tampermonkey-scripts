@@ -7,8 +7,8 @@
 // @license      MIT
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Recaptcha%20Solver.user.js
-// @updateURL    https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Recaptcha%20Solver.user.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.meta.js
 // @match        https://www.google.com/recaptcha/*
 // @match        https://google.com/recaptcha/*
 // @match        https://www.recaptcha.net/recaptcha/*
