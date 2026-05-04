@@ -4,7 +4,8 @@ import { readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const ROOT = 'C:\\Dev\\Projects\\tampermonkey-scripts';
-const entryFiles = readdirSync(ROOT).filter(f => f.endsWith('.user.js'));
+const ENTRIES_DIR = 'C:\\Dev\\Projects\\tampermonkey-scripts\\src\\entries';
+const entryFiles = readdirSync(ENTRIES_DIR).filter(f => f.endsWith('.user.js'));
 
 /**
  * Parse the // ==UserScript== block from an entry file into the
@@ -59,7 +60,7 @@ let successCount = 0;
 let failCount = 0;
 
 for (const entry of entryFiles) {
-  const entryPath = resolve(ROOT, entry);
+  const entryPath = resolve(ENTRIES_DIR, entry);
   const userscript = parseUserscriptBlock(entryPath);
 
   if (!userscript.name) {
