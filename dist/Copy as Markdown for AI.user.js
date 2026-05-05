@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.3.1
+// @version      2.3.2
 // @author       marmoris-x
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @icon         https://lh3.googleusercontent.com/kOVdqiI3s3rT4RlNWeY-dZ61BIuZ63bT2Ou_4rGsk47FDpVxaudzPrdO-AfC6hTj3lqn7IefPYHIXDivJpuT1b8fPA=s60
@@ -16,6 +16,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
+// @inject-into  content
 // @run-at       document-idle
 // @noframes
 // @unwrap
@@ -2630,15 +2631,14 @@
   if (window.__mdsLoaded) throw new Error();
   window.__mdsLoaded = true;
   const log = createLogger("Copy as Markdown");
-  async function init() {
+  GM_registerMenuCommand("↓ Markdown Sidebar", function() {
+    showSidebar();
+  });
+  (async function init() {
     const savedTheme = await loadSetting("mds_theme", "dark");
     applyTheme(savedTheme || "dark");
-    GM_registerMenuCommand("↓ Markdown Sidebar", function() {
-      showSidebar();
-    });
     log.info("Initialized (v2.3.0)");
-  }
-  init().catch(function(err) {
+  })().catch(function(err) {
     console.error("[Copy as Markdown] Init failed:", err);
   });
 
