@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Copy as Markdown for AI
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.3.0
+// @version      2.3.1
 // @author       marmoris-x
 // @description  Convert web pages, selections, images, and links to Markdown for AI usage with sidebar preview and history
 // @icon         https://lh3.googleusercontent.com/kOVdqiI3s3rT4RlNWeY-dZ61BIuZ63bT2Ou_4rGsk47FDpVxaudzPrdO-AfC6hTj3lqn7IefPYHIXDivJpuT1b8fPA=s60
@@ -16,7 +16,6 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
-// @inject-into  content
 // @run-at       document-idle
 // @noframes
 // @unwrap
@@ -1602,14 +1601,14 @@
       throw e instanceof Error ? e : new Error(String(e));
     }
   }
-  var activeClickMode = null;
-  var _clickListener = null;
-  var _keyListener = null;
-  var _hoverStyle = null;
+  let activeClickMode = null;
+  let _clickListener = null;
+  let _keyListener = null;
+  let _hoverStyle = null;
   function startClickMode(config) {
     if (activeClickMode) stopClickMode();
     activeClickMode = config.mode;
-    var modeBtn = config.getModeButton ? config.getModeButton() : null;
+    const modeBtn = config.getModeButton ? config.getModeButton() : null;
     if (modeBtn) modeBtn.classList.add("mds-active-mode");
     createToast(config.hint + " (Esc to cancel)", { type: "info", duration: 3e3 });
     _hoverStyle = document.createElement("style");
@@ -1622,18 +1621,18 @@
       }
     };
     document.addEventListener("keydown", _keyListener, true);
-    var listener = async function(e) {
-      var host = config.getSidebarHost ? config.getSidebarHost() : null;
+    const listener = async function(e) {
+      const host = config.getSidebarHost ? config.getSidebarHost() : null;
       if (host && host.contains(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
-      var target = config.targetSelector === "img" ? e.target.tagName === "IMG" ? e.target : null : e.target.closest(config.targetSelector);
+      const target = config.targetSelector === "img" ? e.target.tagName === "IMG" ? e.target : null : e.target.closest(config.targetSelector);
       if (!target) {
         stopClickMode();
         if (config.onCancel) config.onCancel();
         return;
       }
-      var md = config.handler(target);
+      const md = config.handler(target);
       stopClickMode();
       await config.onResult(md);
     };
@@ -1660,30 +1659,30 @@
   const SIDEBAR_WIDTH = 380;
   const OPTS_KEY = "mds_opts";
   const DEFAULT_OPTS = { title: true, nolinks: false, clean: true };
-  var currentMarkdown = "";
-  var currentTheme = "dark";
-  var sidebar = null;
-  var _sidebarHost = null;
+  let currentMarkdown = "";
+  let currentTheme = "dark";
+  let sidebar = null;
+  let _sidebarHost = null;
   async function loadOpts() {
-    var stored = await loadSetting(OPTS_KEY, null);
+    const stored = await loadSetting(OPTS_KEY, null);
     if (!stored) return Object.assign({}, DEFAULT_OPTS);
     try {
-      var parsed = typeof stored === "string" ? JSON.parse(stored) : stored;
+      const parsed = typeof stored === "string" ? JSON.parse(stored) : stored;
       return Object.assign({}, DEFAULT_OPTS, parsed);
     } catch (e) {
       return Object.assign({}, DEFAULT_OPTS);
     }
   }
   async function saveOpts() {
-    var o = getOpts();
+    const o = getOpts();
     await saveSetting(OPTS_KEY, o);
     return o;
   }
   function getOpts() {
-    var r = sidebar ? sidebar.root : null;
+    const r = sidebar ? sidebar.root : null;
     if (!r) return { title: true, nolinks: false, clean: true };
     function cb(id, def) {
-      var el = r.querySelector(id);
+      const el = r.querySelector(id);
       return el ? el.checked : def;
     }
     return {
@@ -1704,12 +1703,12 @@
     } catch (e) {
     }
     try {
-      var ta = document.createElement("textarea");
+      const ta = document.createElement("textarea");
       ta.value = text;
       ta.style.cssText = "position:fixed;opacity:0;top:0;left:0";
       document.body.appendChild(ta);
       ta.select();
-      var ok = document.execCommand("copy");
+      const ok = document.execCommand("copy");
       ta.remove();
       return ok;
     } catch (e) {
@@ -1717,8 +1716,8 @@
     }
   }
   async function saveToHistory(markdown, copyType, title, url) {
-    var stored = await loadSetting(STORAGE_KEY, []);
-    var history = Array.isArray(stored) ? stored : [];
+    const stored = await loadSetting(STORAGE_KEY, []);
+    const history = Array.isArray(stored) ? stored : [];
     history.unshift({
       id: Date.now().toString(),
       markdown,
@@ -1731,11 +1730,11 @@
     await saveSetting(STORAGE_KEY, history);
   }
   async function getHistory() {
-    var stored = await loadSetting(STORAGE_KEY, []);
+    const stored = await loadSetting(STORAGE_KEY, []);
     return Array.isArray(stored) ? stored : [];
   }
   async function deleteHistoryItem(id) {
-    var history = await getHistory();
+    const history = await getHistory();
     await saveSetting(STORAGE_KEY, history.filter(function(item) {
       return item.id !== id;
     }));
@@ -1744,7 +1743,7 @@
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
   function formatTime(ts) {
-    var d = Date.now() - ts;
+    const d = Date.now() - ts;
     if (d < 6e4) return "just now";
     if (d < 36e5) return Math.floor(d / 6e4) + "m ago";
     if (d < 864e5) return Math.floor(d / 36e5) + "h ago";
@@ -1755,30 +1754,30 @@
   }
   function setPreview(md, sourceLabel) {
     currentMarkdown = md;
-    var r = sidebar ? sidebar.root : null;
+    const r = sidebar ? sidebar.root : null;
     if (!r) return;
-    var el = r.querySelector("#mds-preview");
-    var src = r.querySelector("#mds-preview-source");
+    const el = r.querySelector("#mds-preview");
+    const src = r.querySelector("#mds-preview-source");
     if (el) el.textContent = md;
     if (src) src.textContent = sourceLabel || "";
   }
   function setPreviewLoading() {
-    var r = sidebar ? sidebar.root : null;
+    const r = sidebar ? sidebar.root : null;
     if (!r) return;
-    var el = r.querySelector("#mds-preview");
+    const el = r.querySelector("#mds-preview");
     if (el) el.innerHTML = '<span class="mds-loading"></span>';
   }
   function setPreviewError(msg) {
-    var r = sidebar ? sidebar.root : null;
+    const r = sidebar ? sidebar.root : null;
     if (!r) return;
-    var el = r.querySelector("#mds-preview");
+    const el = r.querySelector("#mds-preview");
     if (el) el.innerHTML = '<span style="color:var(--red,#f87171)">' + esc(msg) + "</span>";
   }
   function generatePagePreview() {
     setPreviewLoading();
     function run() {
       try {
-        var md = convertPage(getOpts());
+        const md = convertPage(getOpts());
         setPreview(md, location.hostname);
       } catch (e) {
         setPreviewError("Error: " + e.message);
@@ -1791,9 +1790,9 @@
     }
   }
   function renderHistory() {
-    var r = sidebar ? sidebar.root : null;
+    const r = sidebar ? sidebar.root : null;
     if (!r) return;
-    var listEl = r.querySelector("#mds-history-list");
+    const listEl = r.querySelector("#mds-history-list");
     if (!listEl) return;
     getHistory().then(function(history) {
       if (!history.length) {
@@ -1805,16 +1804,16 @@
       }).join("");
       listEl.querySelectorAll(".mds-hist-btn:not(.del)").forEach(function(btn) {
         btn.addEventListener("click", async function(e) {
-          var id = e.currentTarget.dataset.id;
-          var items = await getHistory();
-          var item = items.find(function(h) {
+          const id = e.currentTarget.dataset.id;
+          const items = await getHistory();
+          const item = items.find(function(h) {
             return h.id === id;
           });
           if (!item) {
             createToast("Not found", { type: "error", duration: 2200 });
             return;
           }
-          var ok = await copyToClipboard(item.markdown);
+          const ok = await copyToClipboard(item.markdown);
           createToast(ok ? "Copied" : "Failed", { type: ok ? "success" : "error", duration: 2200 });
         });
       });
@@ -1831,7 +1830,7 @@
     saveSetting("mds_theme", theme);
     if (sidebar) {
       sidebar.host.setAttribute("data-theme", theme);
-      var btn = sidebar.root.querySelector("#mds-theme-btn");
+      const btn = sidebar.root.querySelector("#mds-theme-btn");
       if (btn) btn.textContent = theme === "dark" ? "☀" : "☾";
     }
   }
@@ -1840,7 +1839,7 @@
     sidebar.open();
   }
   function switchTab(which) {
-    var r = sidebar ? sidebar.root : null;
+    const r = sidebar ? sidebar.root : null;
     if (!r) return;
     r.querySelector("#mds-tab-preview").classList.toggle("active", which === "preview");
     r.querySelector("#mds-tab-history").classList.toggle("active", which === "history");
@@ -2443,7 +2442,7 @@
   ].join("\n");
   function buildSidebar() {
     if (sidebar) return sidebar;
-    var sb = createSidebar({
+    const sb = createSidebar({
       width: SIDEBAR_WIDTH,
       title: "Markdown",
       accentColor: "#f59e0b",
@@ -2454,9 +2453,9 @@
       ].join(" "),
       onOpen: function() {
         loadOpts().then(function(savedOpts) {
-          var r2 = sb.root;
-          var setCheck = function(id, val) {
-            var el = r2.querySelector(id);
+          const r2 = sb.root;
+          const setCheck = function(id, val) {
+            const el = r2.querySelector(id);
             if (el) el.checked = val;
           };
           setCheck("#mds-opt-title", savedOpts.title);
@@ -2466,7 +2465,7 @@
         sb.host.setAttribute("data-theme", currentTheme);
         generatePagePreview();
         setTimeout(function() {
-          var inp = sb.root.querySelector("#mds-url-input");
+          const inp = sb.root.querySelector("#mds-url-input");
           if (inp) inp.focus();
         }, 300);
       },
@@ -2476,15 +2475,15 @@
     });
     sidebar = sb;
     _sidebarHost = sb.host;
-    var style = document.createElement("style");
+    const style = document.createElement("style");
     style.textContent = ADAPTED_CSS;
     sb.root.appendChild(style);
     sb.bodyEl.innerHTML = SIDEBAR_HTML;
-    var r = sb.root;
+    const r = sb.root;
     r.querySelector("#mds-close").addEventListener("click", function() {
       sb.close();
     });
-    var themeBtn = r.querySelector("#mds-theme-btn");
+    const themeBtn = r.querySelector("#mds-theme-btn");
     if (themeBtn) {
       themeBtn.textContent = currentTheme === "dark" ? "☀" : "☾";
       themeBtn.addEventListener("click", function() {
@@ -2493,8 +2492,8 @@
     }
     r.querySelector("#mds-act-page").addEventListener("click", async function() {
       try {
-        var md = convertPage(getOpts());
-        var ok = await copyToClipboard(md);
+        const md = convertPage(getOpts());
+        const ok = await copyToClipboard(md);
         if (ok) saveToHistory(md, "copyPage");
         createToast(ok ? "Page copied" : "Failed", { type: ok ? "success" : "error", duration: 2200 });
         setPreview(md, location.hostname);
@@ -2503,12 +2502,12 @@
       }
     });
     r.querySelector("#mds-act-sel").addEventListener("click", async function() {
-      var md = convertSelection(getOpts());
+      const md = convertSelection(getOpts());
       if (!md) {
         createToast("No text selected", { type: "error", duration: 2200 });
         return;
       }
-      var ok = await copyToClipboard(md);
+      const ok = await copyToClipboard(md);
       if (ok) saveToHistory(md, "copySelection");
       createToast(ok ? "Selection copied" : "Failed", { type: ok ? "success" : "error", duration: 2200 });
       setPreview(md, "selection");
@@ -2524,11 +2523,11 @@
         targetSelector: "img",
         handler: function(imgEl) {
           var _a;
-          var alt = imgEl.alt || ((_a = imgEl.src.split("/").pop()) == null ? void 0 : _a.split("?")[0]) || "image";
+          const alt = imgEl.alt || ((_a = imgEl.src.split("/").pop()) == null ? void 0 : _a.split("?")[0]) || "image";
           return "![" + alt + "](" + imgEl.src + ")";
         },
         onResult: async function(md) {
-          var ok = await copyToClipboard(md);
+          const ok = await copyToClipboard(md);
           if (ok) saveToHistory(md, "copyImage");
           createToast(ok ? "Copied" : "Failed", { type: ok ? "success" : "error", duration: 2200 });
           setPreview(md, "image");
@@ -2554,11 +2553,11 @@
         hint: "Click any link to copy as Markdown",
         targetSelector: "a[href]",
         handler: function(aEl) {
-          var text = aEl.textContent.trim() || aEl.href;
+          const text = aEl.textContent.trim() || aEl.href;
           return "[" + text + "](" + aEl.href + ")";
         },
         onResult: async function(md) {
-          var ok = await copyToClipboard(md);
+          const ok = await copyToClipboard(md);
           if (ok) saveToHistory(md, "copyLink");
           createToast(ok ? "Copied" : "Failed", { type: ok ? "success" : "error", duration: 2200 });
           setPreview(md, "link");
@@ -2575,31 +2574,31 @@
       });
     });
     ["mds-opt-title", "mds-opt-nolinks", "mds-opt-clean"].forEach(function(id) {
-      var el = r.querySelector("#" + id);
+      const el = r.querySelector("#" + id);
       if (el) {
         el.addEventListener("change", function() {
           saveOpts();
-          var previewPanel = r.querySelector("#mds-panel-preview");
+          const previewPanel = r.querySelector("#mds-panel-preview");
           if (previewPanel && !previewPanel.classList.contains("hidden")) {
             generatePagePreview();
           }
         });
       }
     });
-    var urlInput = r.querySelector("#mds-url-input");
-    var fetchBtn = r.querySelector("#mds-url-fetch");
-    var doFetch = async function() {
-      var url = urlInput.value.trim();
+    const urlInput = r.querySelector("#mds-url-input");
+    const fetchBtn = r.querySelector("#mds-url-fetch");
+    const doFetch = async function() {
+      const url = urlInput.value.trim();
       if (!url) return;
       fetchBtn.disabled = true;
       fetchBtn.textContent = "…";
       setPreviewLoading();
       try {
-        var result = await fetchUrlAsMarkdown(url, getOpts());
+        const result = await fetchUrlAsMarkdown(url, getOpts());
         await saveToHistory(result.markdown, "copyUrl", result.title, url);
         setPreview(result.markdown, new URL(url).hostname);
         switchTab("preview");
-        var ok = await copyToClipboard(result.markdown);
+        const ok = await copyToClipboard(result.markdown);
         createToast(ok ? "Fetched & copied" : "Fetched", { type: "success", duration: 2200 });
       } catch (e) {
         setPreviewError("Fetch failed: " + e.message);
@@ -2621,7 +2620,7 @@
     });
     r.querySelector("#mds-copy-preview").addEventListener("click", async function() {
       if (!currentMarkdown) return;
-      var ok = await copyToClipboard(currentMarkdown);
+      const ok = await copyToClipboard(currentMarkdown);
       await saveToHistory(currentMarkdown, "copyPage");
       createToast(ok ? "Copied" : "Failed", { type: ok ? "success" : "error", duration: 2200 });
     });

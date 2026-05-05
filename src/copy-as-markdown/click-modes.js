@@ -8,16 +8,16 @@
 import { createToast } from '../shared/ui-components.js';
 
 /** @type {string|null} */
-export var activeClickMode = null;
+export let activeClickMode = null;
 
 /** @type {Function|null} */
-var _clickListener = null;
+let _clickListener = null;
 
 /** @type {Function|null} */
-var _keyListener = null;
+let _keyListener = null;
 
 /** @type {HTMLStyleElement|null} */
-var _hoverStyle = null;
+let _hoverStyle = null;
 
 /**
  * @typedef {Object} ClickModeConfig
@@ -39,7 +39,7 @@ export function startClickMode(config) {
   if (activeClickMode) stopClickMode();
   activeClickMode = config.mode;
 
-  var modeBtn = config.getModeButton ? config.getModeButton() : null;
+  const modeBtn = config.getModeButton ? config.getModeButton() : null;
   if (modeBtn) modeBtn.classList.add('mds-active-mode');
 
   createToast(config.hint + ' (Esc to cancel)', { type: 'info', duration: 3000 });
@@ -57,14 +57,14 @@ export function startClickMode(config) {
   };
   document.addEventListener('keydown', _keyListener, true);
 
-  var listener = async function (e) {
-    var host = config.getSidebarHost ? config.getSidebarHost() : null;
+  const listener = async function (e) {
+    const host = config.getSidebarHost ? config.getSidebarHost() : null;
     if (host && host.contains(e.target)) return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    var target = config.targetSelector === 'img'
+    const target = config.targetSelector === 'img'
       ? (e.target.tagName === 'IMG' ? e.target : null)
       : e.target.closest(config.targetSelector);
 
@@ -74,7 +74,7 @@ export function startClickMode(config) {
       return;
     }
 
-    var md = config.handler(target);
+    const md = config.handler(target);
     stopClickMode();
     await config.onResult(md);
   };
