@@ -60,7 +60,7 @@ export async function loadOpts() {
  * @returns {Promise<{ title: boolean, nolinks: boolean, clean: boolean }>}
  */
 export async function saveOpts() {
-  const o= getOpts();
+  const o = getOpts();
   await saveSetting(OPTS_KEY, o);
   return o;
 }
@@ -70,9 +70,9 @@ export async function saveOpts() {
  * @returns {{ title: boolean, nolinks: boolean, clean: boolean }}
  */
 export function getOpts() {
-  const r= sidebar ? sidebar.root : null;
+  const r = sidebar ? sidebar.root : null;
   if (!r) return { title: true, nolinks: false, clean: true };
-  function cb(id, def) { const el= r.querySelector(id); return el ? el.checked : def; }
+  function cb(id, def) { const el = r.querySelector(id); return el ? el.checked : def; }
   return {
     title:   cb('#mds-opt-title',   true),
     nolinks: cb('#mds-opt-nolinks', false),
@@ -169,7 +169,7 @@ function esc(text) {
  * @returns {string}
  */
 function formatTime(ts) {
-  const d= Date.now() - ts;
+  const d = Date.now() - ts;
   if (d < 60000) return 'just now';
   if (d < 3600000) return Math.floor(d / 60000) + 'm ago';
   if (d < 86400000) return Math.floor(d / 3600000) + 'h ago';
@@ -196,9 +196,9 @@ function typeLabel(t) {
  */
 export function setPreview(md, sourceLabel) {
   currentMarkdown = md;
-  const r= sidebar ? sidebar.root : null;
+  const r = sidebar ? sidebar.root : null;
   if (!r) return;
-  const el= r.querySelector('#mds-preview');
+  const el = r.querySelector('#mds-preview');
   const src = r.querySelector('#mds-preview-source');
   if (el) el.textContent = md;
   if (src) src.textContent = sourceLabel || '';
@@ -208,9 +208,9 @@ export function setPreview(md, sourceLabel) {
  * Show a loading indicator in the preview panel.
  */
 export function setPreviewLoading() {
-  const r= sidebar ? sidebar.root : null;
+  const r = sidebar ? sidebar.root : null;
   if (!r) return;
-  const el= r.querySelector('#mds-preview');
+  const el = r.querySelector('#mds-preview');
   if (el) el.innerHTML = '<span class="mds-loading"></span>';
 }
 
@@ -219,9 +219,9 @@ export function setPreviewLoading() {
  * @param {string} msg
  */
 export function setPreviewError(msg) {
-  const r= sidebar ? sidebar.root : null;
+  const r = sidebar ? sidebar.root : null;
   if (!r) return;
-  const el= r.querySelector('#mds-preview');
+  const el = r.querySelector('#mds-preview');
   if (el) el.innerHTML = '<span style="color:var(--red,#f87171)">' + esc(msg) + '</span>';
 }
 
@@ -253,7 +253,7 @@ export function generatePagePreview() {
  * Render the history list panel.
  */
 export function renderHistory() {
-  const r= sidebar ? sidebar.root : null;
+  const r = sidebar ? sidebar.root : null;
   if (!r) return;
   const listEl = r.querySelector('#mds-history-list');
   if (!listEl) return;
@@ -342,7 +342,7 @@ export function hideSidebar() {
  * @param {string} which - 'preview' or 'history'
  */
 export function switchTab(which) {
-  const r= sidebar ? sidebar.root : null;
+  const r = sidebar ? sidebar.root : null;
   if (!r) return;
   r.querySelector('#mds-tab-preview').classList.toggle('active', which === 'preview');
   r.querySelector('#mds-tab-history').classList.toggle('active', which === 'history');
@@ -976,8 +976,8 @@ export function buildSidebar() {
     ].join(' '),
     onOpen: function () {
       loadOpts().then(function (savedOpts) {
-        const r= sb.root;
-        const setCheck = function (id, val) { const el= r.querySelector(id); if (el) el.checked = val; };
+        const r = sb.root;
+        const setCheck = function (id, val) { const el = r.querySelector(id); if (el) el.checked = val; };
         setCheck('#mds-opt-title', savedOpts.title);
         setCheck('#mds-opt-nolinks', savedOpts.nolinks);
         setCheck('#mds-opt-clean', savedOpts.clean);
@@ -1002,7 +1002,7 @@ export function buildSidebar() {
   // Populate inner content
   sb.bodyEl.innerHTML = SIDEBAR_HTML;
 
-  const r= sb.root;
+  const r = sb.root;
 
   // Close button
   r.querySelector('#mds-close').addEventListener('click', function () { sb.close(); });
@@ -1085,7 +1085,7 @@ export function buildSidebar() {
 
   // Options changes
   ['mds-opt-title', 'mds-opt-nolinks', 'mds-opt-clean'].forEach(function (id) {
-    const el= r.querySelector('#' + id);
+    const el = r.querySelector('#' + id);
     if (el) {
       el.addEventListener('change', function () {
         saveOpts();
