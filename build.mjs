@@ -1,10 +1,10 @@
 import { build } from 'vite';
 import monkey from 'vite-plugin-monkey';
-import { readdirSync, readFileSync } from 'fs';
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 const ROOT = 'C:\\Dev\\Projects\\tampermonkey-scripts';
-const ENTRIES_DIR = 'C:\\Dev\\Projects\\tampermonkey-scripts\\src\\entries';
+const ENTRIES_DIR = 'C:\\Dev\\Projects\\tampermonkey-scripts\\entries';
 const entryFiles = readdirSync(ENTRIES_DIR).filter(f => f.endsWith('.user.js'));
 
 /**
@@ -70,8 +70,12 @@ function parseUserscriptBlock(filePath) {
     }
   }
 
-  // Filter out @require — all modules are inlined by the build, no external deps.
-  delete userscript.require;
+  // Filter out local @require — project modules are inlined by the build.
+  // Keep external CDN URLs (http/https) for runtime dependencies like marked.js.
+  if (userscript.require) {
+    userscript.require = userscript.require.filter(r => /^https?:\/\//.test(r));
+    if (userscript.require.length === 0) delete userscript.require;
+  }
 
   return userscript;
 }
@@ -116,6 +120,21 @@ for (const entry of entryFiles) {
     });
 
     console.log(`  -> dist/${entry}`);
+
+    // Strip stray @license comments from inside the IIFE body.
+    // vite-plugin-monkey preserves the @license line from the entry file's
+    // userscript block as a regular comment in the bundled output (non-minified).
+    // This removes any @license comment after the ==/UserScript== header boundary.
+    const distPath = resolve('dist', entry);
+    let distContent = readFileSync(distPath, 'utf-8');
+    const headerEnd = distContent.indexOf('\n// ==/UserScript==');
+    if (headerEnd !== -1) {
+      const header = distContent.slice(0, headerEnd + 21);
+      const body = distContent.slice(headerEnd + 21);
+      distContent = header + body.replace(/\/\/ @license\s+.*$/gm, '');
+      writeFileSync(distPath, distContent, 'utf-8');
+    }
+
     successCount++;
   } catch (err) {
     console.error(`  FAILED: ${entry}`);

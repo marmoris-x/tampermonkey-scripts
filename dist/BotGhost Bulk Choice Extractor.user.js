@@ -134,7 +134,7 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  // @license      MIT
+  
   createLogger("BotGhost Bulk Choice Extractor");
   function createAndInjectButton() {
     const clearAllButton = Array.from(document.querySelectorAll("button")).find((btn) => btn.textContent.trim() === "Clear All Choices");

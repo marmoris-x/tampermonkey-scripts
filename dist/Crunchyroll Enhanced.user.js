@@ -567,7 +567,7 @@
       ":host { position:fixed; top:50%; z-index:2147483644; background:" + accent + "; color:#fff;",
       "padding:10px 6px; border-radius:6px 0 0 6px; cursor:pointer; font:12px system-ui,sans-serif;",
       "writing-mode:vertical-rl; text-orientation:mixed; box-shadow:-2px 2px 8px rgba(0,0,0,0.3);",
-      "right:" + width + "px; transform:translateY(-50%) translateX(100%);",
+      "right:0; transform:translateY(-50%) translateX(100%);",
       "transition:right 0.3s ease, transform 0.3s ease; }",
       ":host(:hover) { filter:brightness(1.1); }",
       ":host(.open) { right:" + (width + 8) + "px; transform:translateY(-50%) translateX(0); }"
@@ -1138,7 +1138,7 @@
       ctx.log.warn("Failed to load saved filters", e);
     }
   }
-  // @license      MIT
+  
   var SW = 360;
   var log = createLogger("Crunchyroll Enhanced");
   GM_addStyle([

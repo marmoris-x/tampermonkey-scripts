@@ -709,7 +709,7 @@
       stopObs = null;
     }
   }
-  // @license      MIT
+  
   createLogger("YouTube Enhanced", CFG.debug);
   patchQuality();
   window.addEventListener("yt-navigate-finish", async function() {

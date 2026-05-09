@@ -489,7 +489,7 @@
   async function saveSettings(obj) {
     await GM.setValues(obj);
   }
-  // @license      MIT
+  
   async function init() {
     log.log("init() -- readyState:", document.readyState);
     var injected = injectPageScript(1, true);

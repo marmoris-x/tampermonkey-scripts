@@ -91,7 +91,7 @@ export function htmlToMarkdown(el) {
     for (var i = 0; i < items.length; i++) {
       var prefix = ordered ? (i + 1) + '. ' : '- ';
       out += '  '.repeat(depth - 1) + prefix;
-      walkInline(items[i]);
+      walk(items[i]);
       out += '\n';
     }
   }

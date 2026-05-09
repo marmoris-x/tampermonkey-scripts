@@ -39,61 +39,68 @@ This repository contains a personal collection of userscripts written for the Ta
 
 ## Architecture
 
-The repository was fully modularized in April 2026. Each `.user.js` entry file is now a thin orchestrator that wires together shared and script-specific modules via `@require` directives.
+The repository was fully modularized in April 2026. Entry files in `src/entries/` are thin orchestrators that import shared and script-specific modules via ES module `import` syntax. A Vite-based build step (`npm run build`) bundles everything into standalone `.user.js` files in `dist/` with all modules inlined.
 
 ### Structure
 
 ```
-├── *.user.js                    # 17 entry files (thin orchestrators)
 ├── src/
+│   ├── entries/                  # 17 entry files — metadata blocks + ES module imports
+│   │   ├── AniSearch Endless Scroll.user.js
+│   │   ├── ... (all 17 scripts)
+│   │   └── YouTube Enhanced.user.js
+│   │
 │   ├── shared/                  # 8 shared modules on the globalThis.TM namespace
-│   │   ├── dom-utils.js         #   DOM helpers (waitForElement, etc.)
+│   │   ├── dom-utils.js         #   DOM helpers (waitForElement, debounce, throttle, observeMutations)
 │   │   ├── i18n-utils.js        #   Internationalization utilities
 │   │   ├── logging-utils.js     #   Prefix-based logger factory
 │   │   ├── markdown-converter.js #   HTML-to-Markdown converter
-│   │   ├── network-utils.js     #   Network request helpers
-│   │   ├── storage-utils.js     #   GM_setValue/GM_getValue wrappers
-│   │   ├── ui-components.js     #   Reusable UI component factory
+│   │   ├── network-utils.js     #   Network request helpers (fetchPage, fetchJSON, fetchBlob)
+│   │   ├── storage-utils.js     #   Async GM.getValue/GM.setValue wrappers
+│   │   ├── ui-components.js     #   Reusable UI component factory (Shadow DOM)
 │   │   └── zip-builder.js       #   Zero-dependency ZIP builder (CRC-32 + DataView)
 │   │
-│   ├── anisearch-endless-scroll/  # 3 modules: endless-loop, rating-filter, ui-statusbar
-│   ├── copy-as-markdown/          # 3 modules: click-modes, converter-integration, ui-sidebar
-│   ├── crunchyroll-enhanced/      # 4 modules: scanner, filters, exporter, ui-panel
-│   ├── global-speed-controller/   # 3 modules: page-script-builder, injection-strategies, ui-controller
-│   ├── gutefrage-smart-filters/   # 4 modules: tag-remover, filter-engine, feed-navigation, ui-panel
-│   ├── manga-panel-downloader/    # 4 modules: image-finder, image-processor, page-navigator, ui-panel
-│   ├── marketplace-deal-finder/   # 5 modules: ranking-engine, api-gemini, scraper-* (2), ui-panel
-│   ├── notebooklm-source-export/  # 2 modules: extractor, ui-panel
-│   ├── recaptcha-solver/          # 3 modules: ui-button, audio-api, solver-engine
-│   └── youtube-enhanced/          # 3 modules: auto-hd, channel-speed, auto-stop
+│   ├── anisearch-endless-scroll/  # 3 modules
+│   ├── copy-as-markdown/          # 9 modules (largest script: content pipeline, filters, overlay, click modes)
+│   ├── crunchyroll-enhanced/      # 4 modules
+│   ├── global-speed-controller/   # 3 modules
+│   ├── gutefrage-smart-filters/   # 4 modules
+│   ├── manga-panel-downloader/    # 4 modules
+│   ├── marketplace-deal-finder/   # 5 modules
+│   ├── notebooklm-source-export/  # 2 modules
+│   ├── recaptcha-solver/          # 3 modules
+│   └── youtube-enhanced/          # 3 modules
+│
+├── dist/                        # Build output — 17 standalone .user.js files (all modules inlined)
+│   ├── AniSearch Endless Scroll.user.js
+│   ├── ... (all 17 scripts)
+│   └── YouTube Enhanced.user.js
+│
+├── build.mjs                    # Vite build orchestrator (parses entries, bundles with vite-plugin-monkey)
+├── package.json                 # Vite + vite-plugin-monkey only
+└── README.md
 ```
 
 ### Module System
 
-**Shared modules** (in `src/shared/`) expose APIs on the `globalThis.TM` namespace. All 17 scripts depend on `logging-utils.js`. Heavier scripts use additional shared modules for DOM, storage, networking, UI components, i18n, markdown conversion, and ZIP building. The dependency tree is flat -- shared modules never import each other.
+**Shared modules** (in `src/shared/`) expose APIs via ES module `export` and also register on the `globalThis.TM` namespace for backward compatibility. All 17 scripts depend on `logging-utils.js`. Heavier scripts use additional shared modules for DOM, storage, networking, UI components, i18n, markdown conversion, and ZIP building. The dependency tree is flat — shared modules never import each other.
 
-**Script-specific modules** (in `src/<slug>/`) expose constructors and utilities on `window.__XXXX__` namespaces (e.g., `window.__GSF__`, `window.__MDF__`). The entry file reads these globals to wire together the full script. Each folder contains 2-5 focused modules that split the original monolithic script into single-responsibility units.
+**Script-specific modules** (in `src/<slug>/`) export constructors, configuration objects, and utility functions via ES module `export`. The entry file imports from them and wires everything together. Each folder contains 2-7 focused modules that split the original monolithic script into single-responsibility units.
 
-**Entry files** (the `.user.js` files in the root) are kept minimal:
-1. Metadata header with `@require` directives for all module dependencies
-2. A brief IIFE that instantiates modules from the script-specific namespace and starts the application
-3. Site-specific configuration and orchestration glue
+**Entry files** (in `src/entries/`) are kept minimal:
+1. Full `==UserScript==` metadata block with `@grant`, `@match`, `@connect`, etc.
+2. ES module `import` statements from `../shared/` and `../<script-name>/` modules
+3. A thin orchestration block: double-init guard, menu command registration, async init IIFE
 
-### `@require` Dependency Chain
+### Build System
 
-Modules are loaded in strict order within each entry file's `@require` list:
+A custom build script (`build.mjs`) uses **Vite 6** + **vite-plugin-monkey 7** to bundle each entry file:
+1. Parses the `==UserScript==` metadata block from each entry file
+2. Resolves all ES module imports across `src/`
+3. Inlines all shared and script-specific modules into a single IIFE-wrapped `.user.js` file
+4. Outputs to `dist/` (non-minified, GreasyFork-compatible)
 
-1. Shared modules first (always `logging-utils.js` first, then alphabetically)
-2. Script-specific modules next (in dependency order)
-
-Installation via a userscript manager automatically fetches and caches all `@require` dependencies. There is no bundler or build step -- the browser's module cache handles resolution at runtime.
-
-### Counts
-
-- **17** entry files (`.user.js`)
-- **8** shared modules (`src/shared/`)
-- **32** script-specific modules across **10** folders
-- **57** total JavaScript files
+Run `npm run build` to regenerate all 17 `dist/` files after editing source files. There are no runtime `@require` dependencies — all code is self-contained in each output file.
 
 ## Installation
 
@@ -103,19 +110,19 @@ Installation via a userscript manager automatically fetches and caches all `@req
    - [Greasemonkey](https://www.greasespot.net/) (Firefox)
    - [Violentmonkey](https://violentmonkey.github.io/) (cross-platform)
 
-### Method 1: Install from GitHub (recommended)
-1. Navigate to the script you want in the [file list](https://github.com/marmoris-x/tampermonkey-scripts).
-2. Click the **Raw** button (top-right of the code view).
+### Method 1: Install from jsDelivr CDN (recommended)
+1. Navigate to the script you want in the [dist/ directory](https://github.com/marmoris-x/tampermonkey-scripts/tree/main/dist).
+2. Click the file, then click the **Raw** button — or use the direct jsDelivr CDN link from the table below.
 3. Your userscript manager will detect the script and offer to install it.
 4. Confirm the installation.
 
-*Note: All `@require` dependencies are fetched automatically from GitHub Raw during installation.*
+*The installed script is fully self-contained — no external dependencies are fetched at runtime.*
 
-### Method 2: Install locally
-1. Clone or download this repository.
-2. Open your userscript manager's dashboard.
-3. Choose **Import from file** or drag-and-drop the `.user.js` file.
-4. Save the script.
+### Method 2: Build and install locally
+1. Clone the repository: `git clone https://github.com/marmoris-x/tampermonkey-scripts.git`
+2. Install dependencies: `npm install`
+3. Build: `npm run build`
+4. Open your userscript manager's dashboard and import the `.user.js` files from the `dist/` directory.
 
 ### Updating
 Scripts with an `@updateURL` will be automatically updated by your userscript manager when new versions are released. You can also manually check for updates in the dashboard.
@@ -126,53 +133,53 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Global Video Speed Controller.user.js` | **Global Video Speed Controller**<br>*(Globaler Video-Geschwindigkeitsregler)* | Sets a global playback speed for all HTML5 videos and audios, with three-tier fallback injection. | 3 shared + 3 script | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_addStyle`, `GM_addValueChangeListener`, `unsafeWindow` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Global%20Video%20Speed%20Controller.user.js) |
-| `YouTube Enhanced.user.js` | **YouTube Enhanced** | Auto max video quality, per-channel playback speed control & auto-stop on page load. | 4 shared + 3 script | `GM_getValue`, `GM_setValue` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/YouTube%20Enhanced.user.js) |
-| `Picture-in-Picture any site.user.js` | **Picture-in-Picture any site** | Adds a Tampermonkey menu entry to force the current tab into Picture-in-Picture mode. | 1 shared | `GM_registerMenuCommand` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Picture-in-Picture%20any%20site.user.js) |
-| `Crunchyroll Enhanced.user.js` | **Crunchyroll Enhanced** | Sidebar with multi-filter & sort for Crunchyroll Browse -- auto-scan, retry, export/clipboard, data-only filter. | 5 shared + 4 script | `GM_addStyle`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Crunchyroll%20Enhanced.user.js) |
+| `Global Video Speed Controller.user.js` | **Global Video Speed Controller**<br>*(Globaler Video-Geschwindigkeitsregler)* | Sets a global playback speed for all HTML5 videos and audios, with three-tier fallback injection. | 3 shared + 3 script | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_addStyle`, `GM_addValueChangeListener`, `unsafeWindow` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Global%20Video%20Speed%20Controller.user.js) |
+| `YouTube Enhanced.user.js` | **YouTube Enhanced** | Auto max video quality, per-channel playback speed control & auto-stop on page load. | 4 shared + 3 script | `GM_getValue`, `GM_setValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/YouTube%20Enhanced.user.js) |
+| `Picture-in-Picture any site.user.js` | **Picture-in-Picture any site** | Adds a Tampermonkey menu entry to force the current tab into Picture-in-Picture mode. | 1 shared | `GM_registerMenuCommand` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js) |
+| `Crunchyroll Enhanced.user.js` | **Crunchyroll Enhanced** | Sidebar with multi-filter & sort for Crunchyroll Browse -- auto-scan, retry, export/clipboard, data-only filter. | 5 shared + 4 script | `GM_addStyle`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Crunchyroll%20Enhanced.user.js) |
 
 ### Marketplace & Shopping
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Marketplace Deal Finder.user.js` | **Marketplace Deal Finder** | Cross-platform AI-powered deal finder for Willhaben & Kleinanzeigen with live ranking and pause/resume. Multi-page crawling with Gemini AI analysis. | 6 shared + 5 script | `GM_xmlhttpRequest`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Marketplace%20Deal%20Finder.user.js) |
+| `Marketplace Deal Finder.user.js` | **Marketplace Deal Finder** | Cross-platform AI-powered deal finder for Willhaben & Kleinanzeigen with live ranking and pause/resume. Multi-page crawling with Gemini AI analysis. | 6 shared + 5 script | `GM_xmlhttpRequest`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Marketplace%20Deal%20Finder.user.js) |
 
 ### Search & Content Enhancement
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Google Search Enhanced.user.js` | **Google Search Enhanced** | Adds Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner. | 2 shared | `none` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20Search%20Enhanced.user.js) |
-| `AniSearch Endless Scroll.user.js` | **AniSearch Endless Scroll** | Loads ALL pages automatically and appends items seamlessly -- no limit, no scrape errors. Precise rating filter via title attribute. | 5 shared + 3 script | `GM_setValue`, `GM_getValue`, `GM_xmlhttpRequest` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/AniSearch%20Endless%20Scroll.user.js) |
-| `FlameComics Advanced Sort.user.js` | **FlameComics Advanced Sort** | Adds custom sorting options (alphabetical, hearts count) to FlameComics. | 2 shared | `none` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/FlameComics%20Advanced%20Sort.user.js) |
-| `Gutefrage Smart Filters.user.js` | **Gutefrage Smart Filters** | Enhanced filtering options and automatic tag management for gutefrage.net with a page-push sidebar. | 5 shared + 4 script | `GM_addStyle`, `GM_setValue`, `GM_getValue`, `GM_openInTab`, `window.close` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Gutefrage%20Smart%20Filters.user.js) |
+| `Google Search Enhanced.user.js` | **Google Search Enhanced** | Adds Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner. | 2 shared | `none` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20Search%20Enhanced.user.js) |
+| `AniSearch Endless Scroll.user.js` | **AniSearch Endless Scroll** | Loads ALL pages automatically and appends items seamlessly -- no limit, no scrape errors. Precise rating filter via title attribute. | 5 shared + 3 script | `GM_setValue`, `GM_getValue`, `GM_xmlhttpRequest` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/AniSearch%20Endless%20Scroll.user.js) |
+| `FlameComics Advanced Sort.user.js` | **FlameComics Advanced Sort** | Adds custom sorting options (alphabetical, hearts count) to FlameComics. | 2 shared | `none` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/FlameComics%20Advanced%20Sort.user.js) |
+| `Gutefrage Smart Filters.user.js` | **Gutefrage Smart Filters** | Enhanced filtering options and automatic tag management for gutefrage.net with a page-push sidebar. | 5 shared + 4 script | `GM_addStyle`, `GM_setValue`, `GM_getValue`, `GM_openInTab`, `window.close` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js) |
 
 ### Export & Data Tools
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Epic Games Library Export.user.js` | **Epic Games Library Export** | High-performance game library exporter. Start via Tampermonkey menu command. | 2 shared | `GM_setClipboard`, `GM_registerMenuCommand` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Epic%20Games%20Library%20Export.user.js) |
-| `NotebookLM Source Export.user.js` | **NotebookLM Source Export** | Automated extraction of source files from NotebookLM with ZIP export and markdown conversion. | 4 shared + 2 script | `GM_registerMenuCommand`, `GM_unregisterMenuCommand` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/NotebookLM%20Source%20Export.user.js) |
-| `Google AI Studio Chat Exporter.user.js` | **Google AI Studio Chat Exporter** | Chat exporter in settings sidebar with recursive HTML-to-Markdown conversion. | 4 shared | `none` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Google%20AI%20Studio%20Chat%20Exporter.user.js) |
-| `BotGhost Bulk Choice Extractor.user.js` | **BotGhost Bulk Choice Extractor** | Adds a "Copy Bulk" button next to "Clear All Choices" to copy label/value pairs. | 2 shared | `GM_setClipboard` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/BotGhost%20Bulk%20Choice%20Extractor.user.js) |
-| `Copy as Markdown for AI.user.js` | **Copy as Markdown for AI** | Converts web pages, selections, images, and links to Markdown for AI usage -- sidebar preview and history included. | 4 shared + 3 script | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_xmlhttpRequest`, `GM_setClipboard` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Copy%20as%20Markdown%20for%20AI.user.js) |
+| `Epic Games Library Export.user.js` | **Epic Games Library Export** | High-performance game library exporter. Start via Tampermonkey menu command. | 2 shared | `GM_setClipboard`, `GM_registerMenuCommand` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js) |
+| `NotebookLM Source Export.user.js` | **NotebookLM Source Export** | Automated extraction of source files from NotebookLM with ZIP export and markdown conversion. | 4 shared + 2 script | `GM_registerMenuCommand`, `GM_unregisterMenuCommand` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js) |
+| `Google AI Studio Chat Exporter.user.js` | **Google AI Studio Chat Exporter** | Chat exporter in settings sidebar with recursive HTML-to-Markdown conversion. | 4 shared | `none` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js) |
+| `BotGhost Bulk Choice Extractor.user.js` | **BotGhost Bulk Choice Extractor** | Adds a "Copy Bulk" button next to "Clear All Choices" to copy label/value pairs. | 2 shared | `GM_setClipboard` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js) |
+| `Copy as Markdown for AI.user.js` | **Copy as Markdown for AI** | Converts web pages, selections, images, and links to Markdown for AI usage. 6-stage content pipeline, BM25/density/pruning filters, interactive element picking, sidebar with preview and history. | 5 shared + 9 script | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_xmlhttpRequest`, `GM_setClipboard` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Copy%20as%20Markdown%20for%20AI.user.js) |
 
 ### Forum & Community Tools
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | 2 shared | `GM_addElement`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Reddit%20Content%20Unlocker.user.js) |
+| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | 2 shared | `GM_addElement`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js) |
 
 ### Manga & Comics Tools
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Manga Panel Downloader.user.js` | **Manga Panel Downloader** | Downloads manga/manhwa panels as ZIP -- pipeline download, retry, abort, fast scrolling, image splitting. | 4 shared + 4 script | `GM_addStyle`, `GM_xmlhttpRequest`, `GM_registerMenuCommand`, `GM_deleteValue` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Manga%20Panel%20Downloader.user.js) |
+| `Manga Panel Downloader.user.js` | **Manga Panel Downloader** | Downloads manga/manhwa panels as ZIP -- pipeline download, retry, abort, fast scrolling, image splitting. | 4 shared + 4 script | `GM_addStyle`, `GM_xmlhttpRequest`, `GM_registerMenuCommand`, `GM_deleteValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.user.js) |
 
 ### Security & CAPTCHA Tools
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Recaptcha Solver.user.js` | **Recaptcha Solver** | Automatically solves Recaptcha in browser with start button in challenge footer. Dual-server failover. | 3 shared + 3 script | `GM_xmlhttpRequest` | [GitHub Raw](https://github.com/marmoris-x/tampermonkey-scripts/raw/refs/heads/main/Recaptcha%20Solver.user.js) |
+| `Recaptcha Solver.user.js` | **Recaptcha Solver** | Automatically solves Recaptcha in browser with start button in challenge footer. Dual-server failover. | 3 shared + 3 script | `GM_xmlhttpRequest` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js) |
 
 ## Features Comparison
 
@@ -194,7 +201,7 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 | Markdown export | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | ✓ | ✓ | -- | -- | -- | ✓ | -- |
 | Cross-site support | ✓ | -- | ✓ | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | ✓ | ✓ | -- |
 | CAPTCHA solving | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | ✓ |
-| Modular architecture | 3 shared + 3 script | 4 shared + 3 script | 1 shared | 5 shared + 4 script | 6 shared + 5 script | 2 shared | 5 shared + 3 script | 2 shared | 5 shared + 4 script | 2 shared | 4 shared + 2 script | 4 shared | 2 shared | 2 shared | 4 shared + 4 script | 4 shared + 3 script | 3 shared + 3 script |
+| Modular architecture | 3 shared + 3 script | 4 shared + 3 script | 1 shared | 5 shared + 4 script | 6 shared + 5 script | 2 shared | 5 shared + 3 script | 2 shared | 5 shared + 4 script | 2 shared | 4 shared + 2 script | 4 shared | 2 shared | 2 shared | 4 shared + 4 script | 5 shared + 9 script | 3 shared + 3 script |
 
 ## Usage & Configuration
 
@@ -250,20 +257,22 @@ Contributions are welcome! If you have an idea for a new script or an improvemen
 2. **Submit a pull request** -- fork the repository, make your changes, and open a PR.
 
 ### Code Style
-- Use **IIFE** pattern to avoid polluting the global scope.
-- Prefix log messages with `[ScriptName]` for easy debugging.
-- Place configuration constants at the top of the file.
-- Use `'use strict';`.
-- Comment complex logic.
+- Use **ES module syntax** (`import`/`export`) for all source files in `src/`.
+- Entry files in `src/entries/` must NOT wrap themselves in an IIFE — the build system adds the IIFE wrapper.
+- Use `createLogger` from `src/shared/logging-utils.js` for all console output — never raw `console.log`.
+- Place configuration constants at the top of each module.
+- Use `'use strict';` — added automatically by the build system.
+- Comment complex logic briefly; avoid redundant comments on obvious code.
 
 ### Adding a new script
-1. Create a new `.user.js` entry file in the root directory with the standard metadata header template.
-2. If your script needs reusable utilities, `@require` the appropriate shared modules from `src/shared/`.
-3. For script-specific logic that warrants splitting, create a folder at `src/<slug>/` with focused sub-modules. Each sub-module should export onto a namespace object on `window.__SCREAMING_SNAKE__`.
-4. Add `@require` directives in the entry file: shared modules first, script-specific modules next, in dependency order.
-5. Follow the existing header format (`@name`, `@namespace`, `@version`, `@description`, `@match`, `@grant`, `@updateURL`, etc.).
-6. Test thoroughly on the target site(s).
-7. Update this README's catalog and feature table.
+1. **Read `docs/Userscripts_Gold_Standards_2026.md` first** — it defines all metadata, security, and performance standards.
+2. Create `src/<script-slug>/` with focused ES modules that `export` their public API.
+3. Create `src/entries/<Script Name>.user.js` with the canonical metadata block and ES module `import` statements.
+4. Reuse shared modules from `src/shared/` where possible — check existing utilities before writing new ones.
+5. Add a double-init guard: `if (window.__MYSCRIPT__) throw new Error(); window.__MYSCRIPT__ = true;`
+6. Run `npm run build` — verify the output in `dist/` builds cleanly.
+7. Update this README: add to the script catalog table, add a column to the feature comparison matrix.
+8. Increment `@version` before the first commit.
 
 ## License
 

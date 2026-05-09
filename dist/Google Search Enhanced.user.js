@@ -140,7 +140,7 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  // @license      MIT
+  
   createLogger("Google Search Enhanced");
   if (!location.href.includes("tbm=isch")) {
     let addStyles = function() {

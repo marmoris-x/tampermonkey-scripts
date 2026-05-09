@@ -137,7 +137,7 @@
     observer2.observe(root, { childList: true, subtree: true });
     return observer2;
   }
-  // @license      MIT
+  
   createLogger("Reddit Content Unlocker");
   let { state = true, nsfw = true, spoiler = false } = GM_getValue("states", false);
   let _menuDone = false;

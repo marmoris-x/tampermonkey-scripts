@@ -55,7 +55,7 @@
       }
     };
   }
-  // @license      MIT
+  
   const log = createLogger("Picture-in-Picture");
   let isActivating = false;
   async function togglePiP() {

@@ -135,7 +135,7 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  // @license      MIT
+  
   const log = createLogger("FlameComics Advanced Sort");
   log.log("Script loaded");
   const styles = `

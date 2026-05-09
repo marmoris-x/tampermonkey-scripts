@@ -238,7 +238,7 @@
       for (var i = 0; i < items.length; i++) {
         var prefix = ordered ? i + 1 + ". " : "- ";
         out += "  ".repeat(depth - 1) + prefix;
-        walkInline(items[i]);
+        walk(items[i]);
         out += "\n";
       }
     }
@@ -341,7 +341,7 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  // @license      MIT
+  
   var { log } = createLogger("Google AI Studio Chat Exporter");
   var style = document.createElement("style");
   style.textContent = [

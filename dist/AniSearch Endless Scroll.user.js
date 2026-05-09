@@ -593,7 +593,7 @@
       (cappedByLimit ? "⚠" : "✔") + " Fertig!\n  " + totalVisible + " Einträge sichtbar" + (totalHidden > 0 ? "\n  " + totalHidden + " via Rating-Filter entfernt" : "") + (ratingMin !== null ? "\n  Rating ≥ " + ratingMin : "") + "\n  " + (currentPage - 1) + " Seiten durchsucht" + (cappedByLimit ? "\n  ⚠ Seiten-Limit erreicht!" : "")
     );
   }
-  // @license      MIT
+  
   var log = createLogger("AniSearch Endless Scroll");
   async function main() {
     var runId = newRun();

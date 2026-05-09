@@ -1559,7 +1559,7 @@
       a.remove();
     }, 1e3);
   }
-  // @license      MIT
+  
   var IS_WH = window.location.hostname.includes("willhaben.at");
   var P = IS_WH ? "wh" : "ka";
   var SITE_NAME = IS_WH ? "WILLHABEN" : "KLEINANZEIGEN";

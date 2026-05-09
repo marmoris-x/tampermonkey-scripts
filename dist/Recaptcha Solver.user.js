@@ -618,7 +618,7 @@
     helpHolder.insertAdjacentElement("afterend", wrapper);
     log$1.log("Solve button injected");
   }
-  // @license      MIT
+  
   if (window.location.href.includes("bframe")) {
     var log = createLogger("Recaptcha Solver");
     injectStyles();
