@@ -345,7 +345,7 @@ test.describe('Userscript Bootstrap (via addInitScript)', () => {
 
 test.describe('Fallback Strategy', () => {
 
-  test('T15: unsafeWindow fallback apply function works', async ({ page }) => {
+  test('T13: unsafeWindow fallback apply function works', async ({ page }) => {
     await page.setContent(TEST_HTML);
 
     // Simulate the unsafeWindow fallback setup
