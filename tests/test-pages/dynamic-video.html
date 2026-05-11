@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dynamic Video Test</title>
+</head>
+<body>
+  <h1>Dynamic Video Test Page</h1>
+  <div id="container"></div>
+  <button id="add-video-btn" onclick="addVideo()">Add Video</button>
+  <button id="add-audio-btn" onclick="addAudio()">Add Audio</button>
+  <script>
+    function addVideo() {
+      var v = document.createElement('video');
+      v.id = 'dyn-video';
+      v.controls = true;
+      document.getElementById('container').appendChild(v);
+    }
+    function addAudio() {
+      var a = document.createElement('audio');
+      a.id = 'dyn-audio';
+      a.controls = true;
+      document.getElementById('container').appendChild(a);
+    }
+  </script>
+</body>
+</html>

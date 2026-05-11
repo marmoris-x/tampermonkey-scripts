@@ -2,10 +2,10 @@
 // @name            Global Video Speed Controller
 // @name:de         Globaler Video-Geschwindigkeitsregler
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         2.5.0
+// @version         2.6.0
 // @author          marmoris-x
 // @description     Sets a global playback speed for all HTML5 videos and audios.
-// @description:de  Setzt eine globale Wiedergabegeschwindigkeit fur alle HTML5-Videos und -Audios.
+// @description:de  Setzt eine globale Wiedergabegeschwindigkeit für alle HTML5-Videos und -Audios.
 // @license         MIT
 // @icon64          https://www.google.com/s2/favicons?sz=64&domain=example.com
 // @supportURL      https://github.com/marmoris-x/tampermonkey-scripts/issues
@@ -16,72 +16,95 @@
 // @sandbox         JavaScript
 // @grant           GM.getValue
 // @grant           GM.setValue
-// @grant           GM.setValues
+// @grant           GM_addElement
 // @grant           GM_addStyle
 // @grant           GM_addValueChangeListener
-// @grant           GM_getValue
 // @grant           GM_registerMenuCommand
-// @grant           GM_setValue
 // @grant           GM_unregisterMenuCommand
 // @grant           unsafeWindow
-// @inject-into     content
 // @run-at          document-start
 // @noframes
-// @unwrap
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
-  function createLogger(prefix, debugMode) {
-    debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+  function createLogger(prefix, debugMode = false) {
+    const isDebug = debugMode ?? false;
+    const tag = `[${prefix}]`;
     return {
-      log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.log.apply(console, args);
-      },
-      warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.warn.apply(console, args);
-      },
-      error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.error.apply(console, args);
-      },
-      info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.info.apply(console, args);
-      },
-      debug: function() {
-        if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-          console.debug.apply(console, args);
-        }
+      log: (...args) => console.log(tag, ...args),
+      warn: (...args) => console.warn(tag, ...args),
+      error: (...args) => console.error(tag, ...args),
+      info: (...args) => console.info(tag, ...args),
+      debug: (...args) => {
+        if (isDebug) console.debug(tag, ...args);
       }
     };
   }
-  var state = {
-    speed: 1,
-    enabled: true
+  const log$5 = createLogger("GlobalSpeed-State");
+  const state = {
+speed: 1,
+enabled: true,
+setSpeed(newSpeed) {
+      const clamped = Math.max(0.07, Math.min(16, newSpeed));
+      if (clamped !== this.speed) {
+        this.speed = clamped;
+        log$5.debug("Speed changed:", clamped);
+        return true;
+      }
+      return false;
+    },
+setEnabled(flag) {
+      const bool = Boolean(flag);
+      if (bool !== this.enabled) {
+        this.enabled = bool;
+        log$5.debug("Enabled changed:", bool);
+        return true;
+      }
+      return false;
+    }
   };
-  var CONST = {
+  const CONST = Object.freeze({
     PAGE_LOG: "[GlobalSpeed-Page]",
     CMD_EVENT: "__GS_CMD__",
     STORAGE_KEY_SPEED: "global_video_speed",
-    STORAGE_KEY_ENABLED: "global_video_speed_enabled"
-  };
-  var log = createLogger("Global Video Speed Controller");
+    STORAGE_KEY_ENABLED: "global_video_speed_enabled",
+    SPEED_MIN: 0.07,
+    SPEED_MAX: 16,
+    SPEED_DEFAULT: 1,
+    ENABLED_DEFAULT: true,
+    INDICATOR_ID: "gm-speed-indicator",
+    POLLING_INTERVAL_MS: 500,
+    POLLING_MAX_TICKS: 60,
+    PERIODIC_SCAN_MAX: 30,
+    INDICATOR_TIMEOUT_MS: 1500
+  });
+  async function loadSetting(key, defaultValue) {
+    try {
+      const raw = await GM.getValue(key);
+      return raw === void 0 || raw === null ? defaultValue : raw;
+    } catch (e) {
+      console.warn("[GlobalSpeed-Storage] loadSetting failed, using default:", e);
+      return defaultValue;
+    }
+  }
+  async function saveSetting(key, value) {
+    try {
+      await GM.setValue(key, value);
+    } catch (e) {
+      console.error("[GlobalSpeed-Storage] saveSetting failed:", e);
+    }
+  }
+  async function loadAllSettings() {
+    const [speed, enabled] = await Promise.all([
+      loadSetting(CONST.STORAGE_KEY_SPEED, CONST.SPEED_DEFAULT),
+      loadSetting(CONST.STORAGE_KEY_ENABLED, CONST.ENABLED_DEFAULT)
+    ]);
+    return { speed, enabled };
+  }
   function buildPageScript(initialSpeed, initialEnabled) {
-    var PAGE_LOG = CONST.PAGE_LOG;
-    var CMD_EVENT = CONST.CMD_EVENT;
+    const { PAGE_LOG, CMD_EVENT } = CONST;
     return `
 (function () {
     'use strict';
@@ -96,10 +119,10 @@
     window.__GS_SPEED__   = ${initialSpeed};
     window.__GS_ENABLED__ = ${initialEnabled};
 
-    var LOG = '${PAGE_LOG}';
+    const LOG = '${PAGE_LOG}';
 
-    // Save original descriptor BEFORE any page script can modify it.
-    var origDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate');
+    // Save original descriptor BEFORE any page script can modify it
+    const origDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate');
     if (!origDesc || !origDesc.get || !origDesc.set) {
         console.error(LOG, 'FATAL: playbackRate descriptor not found or no getter/setter.', origDesc);
         return;
@@ -107,8 +130,8 @@
 
     console.log(LOG, 'Initialization. speed=' + window.__GS_SPEED__ + ', enabled=' + window.__GS_ENABLED__);
 
-    var isApplying = false;
-    var seen = new WeakSet();
+    let isApplying = false;
+    const seen = new WeakSet();
 
     // --------------------------------------------------
     // Prototype override (runs in page context)
@@ -116,10 +139,10 @@
     Object.defineProperty(HTMLMediaElement.prototype, 'playbackRate', {
         configurable: true,
         enumerable:   true,
-        get: function () {
+        get() {
             return window.__GS_ENABLED__ ? window.__GS_SPEED__ : origDesc.get.call(this);
         },
-        set: function (rate) {
+        set(rate) {
             // Only let our values through; ignore page script values
             if (isApplying || !window.__GS_ENABLED__) {
                 origDesc.set.call(this, rate);
@@ -128,7 +151,7 @@
     });
 
     // --------------------------------------------------
-    // Apply to single element
+    // Apply speed to a single media element
     // --------------------------------------------------
     function applyTo(el) {
         if (!(el instanceof HTMLMediaElement) || !window.__GS_ENABLED__) return;
@@ -156,15 +179,15 @@
     }
 
     function applyToAll() {
-        document.querySelectorAll('video, audio').forEach(function (el) { applyTo(el); });
+        document.querySelectorAll('video, audio').forEach(el => applyTo(el));
     }
 
     function resetAll() {
-        document.querySelectorAll('video, audio').forEach(function (el) { resetTo(el, 1.0); });
+        document.querySelectorAll('video, audio').forEach(el => resetTo(el, 1.0));
     }
 
     // --------------------------------------------------
-    // Register element & attach events
+    // Register element & attach event listeners
     // --------------------------------------------------
     function register(el) {
         if (!(el instanceof HTMLMediaElement)) return;
@@ -176,7 +199,7 @@
         // If page changes rate -- correct immediately
         el.addEventListener('ratechange', function () {
             if (!isApplying && window.__GS_ENABLED__) {
-                var real = origDesc.get.call(el);
+                const real = origDesc.get.call(el);
                 if (real !== window.__GS_SPEED__) {
                     console.log(LOG, 'ratechange correction:', real, '->', window.__GS_SPEED__);
                     applyTo(el);
@@ -184,28 +207,24 @@
             }
         }, true);
 
-        // Ensure correct rate on these events
+        // Ensure correct rate on these lifecycle events
         ['play', 'playing', 'loadedmetadata', 'canplay', 'seeked'].forEach(function (evt) {
             el.addEventListener(evt, function () { if (window.__GS_ENABLED__) applyTo(el); }, true);
         });
     }
 
     // --------------------------------------------------
-    // MutationObserver for a root element
+    // MutationObserver for dynamic media elements
     // --------------------------------------------------
     function observeRoot(root) {
         new MutationObserver(function (mutations) {
-            for (var m = 0; m < mutations.length; m++) {
-                var nodes = mutations[m].addedNodes;
-                for (var i = 0; i < nodes.length; i++) {
-                    if (!nodes[i] || nodes[i].nodeType !== 1) continue;
-                    if (nodes[i] instanceof HTMLMediaElement) {
-                        register(nodes[i]);
-                    } else if (nodes[i].querySelectorAll) {
-                        var mediaEls = nodes[i].querySelectorAll('video, audio');
-                        for (var j = 0; j < mediaEls.length; j++) {
-                            register(mediaEls[j]);
-                        }
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (!node || node.nodeType !== 1) continue;
+                    if (node instanceof HTMLMediaElement) {
+                        register(node);
+                    } else if (node.querySelectorAll) {
+                        node.querySelectorAll('video, audio').forEach(el => register(el));
                     }
                 }
             }
@@ -215,34 +234,34 @@
     observeRoot(document.documentElement);
 
     // --------------------------------------------------
-    // Shadow DOM: same approach as Global Speed
+    // Shadow DOM interception
     // --------------------------------------------------
-    var origAttachShadow = Element.prototype.attachShadow;
+    const origAttachShadow = Element.prototype.attachShadow;
     Element.prototype.attachShadow = function (opts) {
-        var shadow = origAttachShadow.call(this, opts);
+        const shadow = origAttachShadow.call(this, opts);
         observeRoot(shadow);
-        setTimeout(function () { shadow.querySelectorAll('video, audio').forEach(function (el) { register(el); }); }, 0);
-        setTimeout(function () { shadow.querySelectorAll('video, audio').forEach(function (el) { register(el); }); }, 500);
+        setTimeout(() => { shadow.querySelectorAll('video, audio').forEach(el => register(el)); }, 0);
+        setTimeout(() => { shadow.querySelectorAll('video, audio').forEach(el => register(el)); }, 500);
         return shadow;
     };
 
     // --------------------------------------------------
-    // Immediate scan (elements already in DOM)
+    // Immediate scan for existing media elements
     // --------------------------------------------------
     applyToAll();
 
     // --------------------------------------------------
-    // Periodic correction scan (30 s)
+    // Periodic correction scan (30 seconds)
     // --------------------------------------------------
-    var ticks = 0;
-    var timer = setInterval(function () {
+    let ticks = 0;
+    const timer = setInterval(function () {
         if (window.__GS_ENABLED__) {
             document.querySelectorAll('video, audio').forEach(function (el) {
                 if (!seen.has(el)) {
                     console.log(LOG, 'Periodic scan: new element found.');
                     register(el);
                 } else {
-                    var real = origDesc.get.call(el);
+                    const real = origDesc.get.call(el);
                     if (real !== window.__GS_SPEED__) {
                         console.log(LOG, 'Periodic scan: rate deviation corrected:', real, '->', window.__GS_SPEED__);
                         applyTo(el);
@@ -254,12 +273,10 @@
     }, 1000);
 
     // --------------------------------------------------
-    // Receive commands from Tampermonkey context
+    // Receive commands from Tampermonkey sandbox
     // --------------------------------------------------
     window.addEventListener('${CMD_EVENT}', function (e) {
-        var detail = e.detail || {};
-        var speed = detail.speed;
-        var enabled = detail.enabled;
+        const { speed, enabled } = e.detail || {};
         console.log(LOG, 'Command received: speed=' + speed + ', enabled=' + enabled);
         window.__GS_SPEED__   = speed;
         window.__GS_ENABLED__ = enabled;
@@ -274,36 +291,37 @@
 })();
 `;
   }
-  function sendCmd(speed, enabled) {
-    try {
-      unsafeWindow.dispatchEvent(
-        new unsafeWindow.CustomEvent(CONST.CMD_EVENT, { detail: { speed, enabled } })
-      );
-      log.log("Command sent:", { speed, enabled });
-    } catch (e) {
-      log.error("sendCmd failed:", e);
-    }
-  }
+  const log$4 = createLogger("GlobalSpeed-Injector");
   function injectPageScript(speed, enabled) {
     try {
-      var script = document.createElement("script");
+      const scriptContent = buildPageScript(speed, enabled);
+      if (typeof GM_addElement !== "undefined") {
+        GM_addElement("script", {
+          type: "text/javascript",
+          textContent: scriptContent
+        });
+        log$4.log("Page script injected via GM_addElement.");
+        return true;
+      }
+      const script = document.createElement("script");
       script.setAttribute("type", "text/javascript");
-      script.textContent = buildPageScript(speed, enabled);
+      script.textContent = scriptContent;
       (document.head || document.documentElement).appendChild(script);
       script.remove();
-      log.log("<script>-tag injection successful.");
+      log$4.log("Page script injected via DOM (CSP may block this).");
       return true;
     } catch (e) {
-      log.error("<script>-tag injection failed (CSP?):", e);
+      log$4.error("Page script injection failed (CSP likely):", e);
       return false;
     }
   }
-  var fallbackOrigDesc = null;
+  const log$3 = createLogger("GlobalSpeed-Fallback");
+  let fallbackOrigDesc = null;
   function setupUnsafeWindowFallback() {
     try {
-      var uw = unsafeWindow;
+      const uw = unsafeWindow;
       if (!uw || !uw.HTMLMediaElement) {
-        log.warn("Fallback: unsafeWindow.HTMLMediaElement not available.");
+        log$3.warn("Fallback: unsafeWindow.HTMLMediaElement not available.");
         return false;
       }
       fallbackOrigDesc = Object.getOwnPropertyDescriptor(
@@ -311,36 +329,36 @@
         "playbackRate"
       );
       if (!fallbackOrigDesc || !fallbackOrigDesc.get || !fallbackOrigDesc.set) {
-        log.warn("Fallback: descriptor not usable.");
+        log$3.warn("Fallback: descriptor not usable.");
         return false;
       }
-      var fd = fallbackOrigDesc;
-      var fa = false;
+      const fd = fallbackOrigDesc;
+      let isApplying = false;
       Object.defineProperty(uw.HTMLMediaElement.prototype, "playbackRate", {
         configurable: true,
         enumerable: true,
-        get: function() {
+        get() {
           return state.enabled ? state.speed : fd.get.call(this);
         },
-        set: function(rate) {
-          if (fa || !state.enabled) fd.set.call(this, rate);
+        set(rate) {
+          if (isApplying || !state.enabled) fd.set.call(this, rate);
         }
       });
       unsafeWindow.__gsFallbackApply = function() {
-        var elements = uw.document.querySelectorAll("video, audio");
+        const elements = uw.document.querySelectorAll("video, audio");
         elements.forEach(function(el) {
           try {
-            fa = true;
+            isApplying = true;
             fd.set.call(el, state.enabled ? state.speed : 1);
           } finally {
-            fa = false;
+            isApplying = false;
           }
         });
       };
-      log.log("unsafeWindow fallback active.");
+      log$3.log("unsafeWindow fallback active.");
       return true;
     } catch (e) {
-      log.error("unsafeWindow fallback error:", e);
+      log$3.error("unsafeWindow fallback error:", e);
       return false;
     }
   }
@@ -350,41 +368,42 @@
         unsafeWindow.__gsFallbackApply();
       }
     } catch (e) {
-      log.error("fallbackApply error:", e);
+      log$3.error("fallbackApply error:", e);
     }
   }
-  var pollingActive = false;
+  const log$2 = createLogger("GlobalSpeed-Polling");
+  let pollingActive = false;
   function startDirectPolling() {
     if (pollingActive) return;
     pollingActive = true;
-    log.log("Direct polling started (last resort).");
-    var ticks = 0;
-    var id = setInterval(function() {
+    log$2.log("Direct polling started (last resort).");
+    let ticks = 0;
+    const id = setInterval(function() {
       if (!state.enabled) return;
       try {
-        var els = unsafeWindow.document.querySelectorAll("video, audio");
-        for (var i = 0; i < els.length; i++) {
-          var el = els[i];
+        const els = unsafeWindow.document.querySelectorAll("video, audio");
+        for (let i = 0; i < els.length; i++) {
+          const el = els[i];
           if (Math.abs(el.playbackRate - state.speed) > 1e-3) {
-            log.log("Polling: Set rate", state.speed, "on", el.tagName);
+            log$2.log("Polling: Set rate", state.speed, "on", el.tagName);
             el.playbackRate = state.speed;
           }
         }
       } catch (e) {
-        log.error("Polling error:", e);
+        log$2.error("Polling error:", e);
       }
-      if (++ticks >= 60) clearInterval(id);
-    }, 500);
+      if (++ticks >= CONST.POLLING_MAX_TICKS) clearInterval(id);
+    }, CONST.POLLING_INTERVAL_MS);
   }
-  var indicator = null;
+  let indicator = null;
   function showIndicator() {
     if (!state.enabled) return;
     try {
-      var doc = unsafeWindow.document;
+      const doc = unsafeWindow.document;
       if (!doc.body) return;
       if (!indicator) {
         indicator = doc.createElement("div");
-        indicator.id = "gm-speed-indicator";
+        indicator.id = CONST.INDICATOR_ID;
         doc.body.appendChild(indicator);
       }
       indicator.textContent = state.speed.toFixed(2) + "x";
@@ -392,30 +411,29 @@
       clearTimeout(indicator._timeout);
       indicator._timeout = setTimeout(function() {
         if (indicator) indicator.style.display = "none";
-      }, 1500);
+      }, CONST.INDICATOR_TIMEOUT_MS);
     } catch (e) {
     }
   }
-  function applyAll() {
-    sendCmd(state.speed, state.enabled);
-    fallbackApply();
-    updateSetSpeedLabel();
+  function hideIndicator() {
+    if (indicator) indicator.style.display = "none";
   }
-  function updateSetSpeedLabel() {
-    if (window.__gsUpdateSetSpeedLabel) window.__gsUpdateSetSpeedLabel();
-  }
-  function setupMenuCommands() {
-    var setSpeedHandler = async function() {
-      var input = prompt("Playback speed (0.07 - 16):", String(state.speed));
-      var val = parseFloat(input);
+  let _applyAllCallback = null;
+  function setupMenuCommands(applyAllFn, showIndicatorFn, hideIndicatorFn) {
+    _applyAllCallback = applyAllFn;
+    let setSpeedId = null;
+    let toggleId = null;
+    const setSpeedHandler = async function() {
+      const input = prompt("Playback speed (0.07 - 16):", String(state.speed));
+      const val = parseFloat(input);
       if (input !== null && !isNaN(val) && val > 0) {
-        state.speed = Math.max(0.07, Math.min(16, val));
-        await GM.setValue(CONST.STORAGE_KEY_SPEED, state.speed);
-        applyAll();
-        showIndicator();
+        state.setSpeed(val);
+        await saveSetting(CONST.STORAGE_KEY_SPEED, state.speed);
+        _applyAllCallback();
+        showIndicatorFn();
       }
     };
-    var setSpeedId = GM_registerMenuCommand(
+    setSpeedId = GM_registerMenuCommand(
       "Set speed (" + state.speed.toFixed(2) + "x)",
       setSpeedHandler
     );
@@ -430,91 +448,107 @@
         setSpeedHandler
       );
     };
-    updateSetSpeedLabel();
+    window.__gsUpdateSetSpeedLabel();
     GM_registerMenuCommand("Reset (1.0x)", async function() {
-      state.speed = 1;
-      await GM.setValue(CONST.STORAGE_KEY_SPEED, state.speed);
-      applyAll();
-      showIndicator();
+      state.setSpeed(1);
+      await saveSetting(CONST.STORAGE_KEY_SPEED, state.speed);
+      _applyAllCallback();
+      showIndicatorFn();
     });
-    var label = function() {
+    const label = function() {
       return state.enabled ? "Disable Global Speed" : "Enable Global Speed";
     };
-    var onToggle = async function() {
-      state.enabled = !state.enabled;
-      await GM.setValue(CONST.STORAGE_KEY_ENABLED, state.enabled);
-      applyAll();
+    const onToggle = async function() {
+      state.setEnabled(!state.enabled);
+      await saveSetting(CONST.STORAGE_KEY_ENABLED, state.enabled);
+      _applyAllCallback();
       try {
         GM_unregisterMenuCommand(toggleId);
         toggleId = GM_registerMenuCommand(label(), onToggle);
       } catch (_) {
       }
-      if (state.enabled) showIndicator();
-      else if (indicator) indicator.style.display = "none";
+      if (state.enabled) showIndicatorFn();
+      else hideIndicatorFn();
     };
-    var toggleId = GM_registerMenuCommand(label(), onToggle);
+    toggleId = GM_registerMenuCommand(label(), onToggle);
   }
-  function addStyles() {
-    GM_addStyle(
-      "#gm-speed-indicator{position:fixed;top:20px;right:20px;background:rgba(0,0,0,0.78);color:#fff;padding:7px 15px;border-radius:6px;font:bold 16px/1 sans-serif;z-index:2147483647;display:none;pointer-events:none;user-select:none}"
-    );
+  const log$1 = createLogger("GlobalSpeed-Sync");
+  function setupCrossTabSync(applyAllFn) {
+    GM_addValueChangeListener(CONST.STORAGE_KEY_SPEED, function(_key, _old, newVal, remote) {
+      if (!remote) return;
+      state.setSpeed(newVal);
+      applyAllFn();
+      log$1.log("Cross-tab: speed set to " + newVal + "x.");
+    });
+    GM_addValueChangeListener(CONST.STORAGE_KEY_ENABLED, function(_key, _old, newVal, remote) {
+      if (!remote) return;
+      state.setEnabled(newVal);
+      applyAllFn();
+      log$1.log("Cross-tab: enabled set to " + newVal + ".");
+    });
+    log$1.log("Cross-tab synchronization active.");
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.storage = {
-    loadSetting,
-    saveSetting,
-    loadSettings,
-    saveSettings
-  };
-  async function loadSetting(key, defaultValue) {
+  function injectStyles() {
+    GM_addStyle(`
+    #${CONST.INDICATOR_ID} {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.78);
+      color: #fff;
+      padding: 7px 15px;
+      border-radius: 6px;
+      font: bold 16px/1 sans-serif;
+      z-index: 2147483647;
+      display: none;
+      pointer-events: none;
+      user-select: none;
+    }
+  `);
+  }
+  const log = createLogger("GlobalSpeed-Boot");
+  function sendCommand(speed, enabled) {
     try {
-      var raw = await GM.getValue(key);
-      if (raw === void 0 || raw === null) return defaultValue;
-      return raw;
+      unsafeWindow.dispatchEvent(
+        new unsafeWindow.CustomEvent(CONST.CMD_EVENT, { detail: { speed, enabled } })
+      );
+      log.debug("Command sent:", { speed, enabled });
     } catch (e) {
-      return defaultValue;
+      log.error("sendCommand failed:", e);
     }
   }
-  async function saveSetting(key, value) {
-    await GM.setValue(key, value);
+  function applyAll() {
+    sendCommand(state.speed, state.enabled);
+    fallbackApply();
+    if (window.__gsUpdateSetSpeedLabel) window.__gsUpdateSetSpeedLabel();
   }
-  async function loadSettings(defaults) {
-    var keys = Object.keys(defaults);
-    var result = {};
-    for (var i = 0; i < keys.length; i++) {
-      result[keys[i]] = await loadSetting(keys[i], defaults[keys[i]]);
-    }
-    return result;
-  }
-  async function saveSettings(obj) {
-    await GM.setValues(obj);
-  }
-  
   async function init() {
-    log.log("init() -- readyState:", document.readyState);
-    var injected = injectPageScript(1, true);
+    log.log("init() — readyState:", document.readyState);
+    const injected = injectPageScript(CONST.SPEED_DEFAULT, CONST.ENABLED_DEFAULT);
     try {
-      state.speed = await loadSetting(CONST.STORAGE_KEY_SPEED, 1);
-      state.enabled = await loadSetting(CONST.STORAGE_KEY_ENABLED, true);
+      const { speed, enabled } = await loadAllSettings();
+      state.setSpeed(speed);
+      state.setEnabled(enabled);
       log.log("Loaded from storage: speed=" + state.speed + ", enabled=" + state.enabled);
     } catch (e) {
-      log.error("loadSetting error (using defaults):", e);
+      log.error("loadSettings error (using defaults):", e);
     }
-    sendCmd(state.speed, state.enabled);
+    sendCommand(state.speed, state.enabled);
     if (!injected) {
-      log.warn("Primary injection failed -> fallback 2 (unsafeWindow)...");
-      var fallbackOk = setupUnsafeWindowFallback();
+      log.warn("Primary injection failed → activating unsafeWindow fallback...");
+      const fallbackOk = setupUnsafeWindowFallback();
       if (!fallbackOk) {
-        log.warn("Fallback 2 failed -> fallback 3 (polling)...");
+        log.warn("unsafeWindow fallback failed → activating direct polling...");
         startDirectPolling();
       } else {
         fallbackApply();
       }
     }
-    var setupUI = function() {
+    const setupUI = function() {
       if (window !== window.top) return;
-      addStyles();
-      setupMenuCommands();
+      injectStyles();
+      setupMenuCommands(applyAll, showIndicator, hideIndicator);
+      setupCrossTabSync(applyAll);
       log.log("UI ready.");
     };
     if (document.readyState === "loading") {
@@ -522,23 +556,8 @@
     } else {
       setupUI();
     }
-    GM_addValueChangeListener(CONST.STORAGE_KEY_SPEED, function(_key, _old, newVal, remote) {
-      if (!remote) return;
-      state.speed = newVal;
-      sendCmd(state.speed, state.enabled);
-      fallbackApply();
-      log.log("Cross-tab: speed set to " + newVal + "x.");
-    });
-    GM_addValueChangeListener(CONST.STORAGE_KEY_ENABLED, function(_key, _old, newVal, remote) {
-      if (!remote) return;
-      state.enabled = newVal;
-      sendCmd(state.speed, state.enabled);
-      fallbackApply();
-      log.log("Cross-tab: enabled set to " + newVal + ".");
-    });
   }
-  init().catch(function(e) {
-    log.error("Critical error:", e);
-  });
+  
+  init().catch(console.error);
 
 })();

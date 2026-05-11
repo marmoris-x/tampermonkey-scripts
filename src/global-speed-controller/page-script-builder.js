@@ -1,37 +1,16 @@
-// src/global-speed-controller/page-script-builder.js — Page-context script generator
-// Generates the page-context script string that gets injected via <script> tag.
-// This code overrides HTMLMediaElement.prototype.playbackRate in the REAL page
-// context (not the Tampermonkey sandbox), using the same principle as the
-// Global Speed Chrome Extension.
-//
-// The injected script has NO access to GM APIs -- all values are interpolated
-// at build time. Communication back from TM context happens via CustomEvent.
-
-import { createLogger } from '../shared/logging-utils.js';
-
-export var state = {
-  speed:   1.0,
-  enabled: true,
-};
-
-export var CONST = {
-  PAGE_LOG:           '[GlobalSpeed-Page]',
-  CMD_EVENT:          '__GS_CMD__',
-  STORAGE_KEY_SPEED:   'global_video_speed',
-  STORAGE_KEY_ENABLED: 'global_video_speed_enabled',
-};
-
-export var log = createLogger('Global Video Speed Controller');
+import { CONST } from './_constants.js';
 
 /**
- * Generates the full page-context script as a string.
- * @param {number} initialSpeed - Starting playback speed
- * @param {boolean} initialEnabled - Whether speed control is active
- * @returns {string} Page-context JavaScript code
+ * Builds the page-context injection script as a string.
+ * This script runs in the MAIN_WORLD (page context) and overrides
+ * HTMLMediaElement.prototype.playbackRate to enforce global speed.
+ *
+ * @param {number} initialSpeed - Initial playback speed
+ * @param {boolean} initialEnabled - Initial enabled state
+ * @returns {string} Complete IIFE script string for injection
  */
 export function buildPageScript(initialSpeed, initialEnabled) {
-  var PAGE_LOG  = CONST.PAGE_LOG;
-  var CMD_EVENT = CONST.CMD_EVENT;
+  const { PAGE_LOG, CMD_EVENT } = CONST;
 
   return `
 (function () {
@@ -47,10 +26,10 @@ export function buildPageScript(initialSpeed, initialEnabled) {
     window.__GS_SPEED__   = ${initialSpeed};
     window.__GS_ENABLED__ = ${initialEnabled};
 
-    var LOG = '${PAGE_LOG}';
+    const LOG = '${PAGE_LOG}';
 
-    // Save original descriptor BEFORE any page script can modify it.
-    var origDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate');
+    // Save original descriptor BEFORE any page script can modify it
+    const origDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'playbackRate');
     if (!origDesc || !origDesc.get || !origDesc.set) {
         console.error(LOG, 'FATAL: playbackRate descriptor not found or no getter/setter.', origDesc);
         return;
@@ -58,8 +37,8 @@ export function buildPageScript(initialSpeed, initialEnabled) {
 
     console.log(LOG, 'Initialization. speed=' + window.__GS_SPEED__ + ', enabled=' + window.__GS_ENABLED__);
 
-    var isApplying = false;
-    var seen = new WeakSet();
+    let isApplying = false;
+    const seen = new WeakSet();
 
     // --------------------------------------------------
     // Prototype override (runs in page context)
@@ -67,10 +46,10 @@ export function buildPageScript(initialSpeed, initialEnabled) {
     Object.defineProperty(HTMLMediaElement.prototype, 'playbackRate', {
         configurable: true,
         enumerable:   true,
-        get: function () {
+        get() {
             return window.__GS_ENABLED__ ? window.__GS_SPEED__ : origDesc.get.call(this);
         },
-        set: function (rate) {
+        set(rate) {
             // Only let our values through; ignore page script values
             if (isApplying || !window.__GS_ENABLED__) {
                 origDesc.set.call(this, rate);
@@ -79,7 +58,7 @@ export function buildPageScript(initialSpeed, initialEnabled) {
     });
 
     // --------------------------------------------------
-    // Apply to single element
+    // Apply speed to a single media element
     // --------------------------------------------------
     function applyTo(el) {
         if (!(el instanceof HTMLMediaElement) || !window.__GS_ENABLED__) return;
@@ -107,15 +86,15 @@ export function buildPageScript(initialSpeed, initialEnabled) {
     }
 
     function applyToAll() {
-        document.querySelectorAll('video, audio').forEach(function (el) { applyTo(el); });
+        document.querySelectorAll('video, audio').forEach(el => applyTo(el));
     }
 
     function resetAll() {
-        document.querySelectorAll('video, audio').forEach(function (el) { resetTo(el, 1.0); });
+        document.querySelectorAll('video, audio').forEach(el => resetTo(el, 1.0));
     }
 
     // --------------------------------------------------
-    // Register element & attach events
+    // Register element & attach event listeners
     // --------------------------------------------------
     function register(el) {
         if (!(el instanceof HTMLMediaElement)) return;
@@ -127,7 +106,7 @@ export function buildPageScript(initialSpeed, initialEnabled) {
         // If page changes rate -- correct immediately
         el.addEventListener('ratechange', function () {
             if (!isApplying && window.__GS_ENABLED__) {
-                var real = origDesc.get.call(el);
+                const real = origDesc.get.call(el);
                 if (real !== window.__GS_SPEED__) {
                     console.log(LOG, 'ratechange correction:', real, '->', window.__GS_SPEED__);
                     applyTo(el);
@@ -135,28 +114,24 @@ export function buildPageScript(initialSpeed, initialEnabled) {
             }
         }, true);
 
-        // Ensure correct rate on these events
+        // Ensure correct rate on these lifecycle events
         ['play', 'playing', 'loadedmetadata', 'canplay', 'seeked'].forEach(function (evt) {
             el.addEventListener(evt, function () { if (window.__GS_ENABLED__) applyTo(el); }, true);
         });
     }
 
     // --------------------------------------------------
-    // MutationObserver for a root element
+    // MutationObserver for dynamic media elements
     // --------------------------------------------------
     function observeRoot(root) {
         new MutationObserver(function (mutations) {
-            for (var m = 0; m < mutations.length; m++) {
-                var nodes = mutations[m].addedNodes;
-                for (var i = 0; i < nodes.length; i++) {
-                    if (!nodes[i] || nodes[i].nodeType !== 1) continue;
-                    if (nodes[i] instanceof HTMLMediaElement) {
-                        register(nodes[i]);
-                    } else if (nodes[i].querySelectorAll) {
-                        var mediaEls = nodes[i].querySelectorAll('video, audio');
-                        for (var j = 0; j < mediaEls.length; j++) {
-                            register(mediaEls[j]);
-                        }
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (!node || node.nodeType !== 1) continue;
+                    if (node instanceof HTMLMediaElement) {
+                        register(node);
+                    } else if (node.querySelectorAll) {
+                        node.querySelectorAll('video, audio').forEach(el => register(el));
                     }
                 }
             }
@@ -166,34 +141,34 @@ export function buildPageScript(initialSpeed, initialEnabled) {
     observeRoot(document.documentElement);
 
     // --------------------------------------------------
-    // Shadow DOM: same approach as Global Speed
+    // Shadow DOM interception
     // --------------------------------------------------
-    var origAttachShadow = Element.prototype.attachShadow;
+    const origAttachShadow = Element.prototype.attachShadow;
     Element.prototype.attachShadow = function (opts) {
-        var shadow = origAttachShadow.call(this, opts);
+        const shadow = origAttachShadow.call(this, opts);
         observeRoot(shadow);
-        setTimeout(function () { shadow.querySelectorAll('video, audio').forEach(function (el) { register(el); }); }, 0);
-        setTimeout(function () { shadow.querySelectorAll('video, audio').forEach(function (el) { register(el); }); }, 500);
+        setTimeout(() => { shadow.querySelectorAll('video, audio').forEach(el => register(el)); }, 0);
+        setTimeout(() => { shadow.querySelectorAll('video, audio').forEach(el => register(el)); }, 500);
         return shadow;
     };
 
     // --------------------------------------------------
-    // Immediate scan (elements already in DOM)
+    // Immediate scan for existing media elements
     // --------------------------------------------------
     applyToAll();
 
     // --------------------------------------------------
-    // Periodic correction scan (30 s)
+    // Periodic correction scan (30 seconds)
     // --------------------------------------------------
-    var ticks = 0;
-    var timer = setInterval(function () {
+    let ticks = 0;
+    const timer = setInterval(function () {
         if (window.__GS_ENABLED__) {
             document.querySelectorAll('video, audio').forEach(function (el) {
                 if (!seen.has(el)) {
                     console.log(LOG, 'Periodic scan: new element found.');
                     register(el);
                 } else {
-                    var real = origDesc.get.call(el);
+                    const real = origDesc.get.call(el);
                     if (real !== window.__GS_SPEED__) {
                         console.log(LOG, 'Periodic scan: rate deviation corrected:', real, '->', window.__GS_SPEED__);
                         applyTo(el);
@@ -205,12 +180,10 @@ export function buildPageScript(initialSpeed, initialEnabled) {
     }, 1000);
 
     // --------------------------------------------------
-    // Receive commands from Tampermonkey context
+    // Receive commands from Tampermonkey sandbox
     // --------------------------------------------------
     window.addEventListener('${CMD_EVENT}', function (e) {
-        var detail = e.detail || {};
-        var speed = detail.speed;
-        var enabled = detail.enabled;
+        const { speed, enabled } = e.detail || {};
         console.log(LOG, 'Command received: speed=' + speed + ', enabled=' + enabled);
         window.__GS_SPEED__   = speed;
         window.__GS_ENABLED__ = enabled;
