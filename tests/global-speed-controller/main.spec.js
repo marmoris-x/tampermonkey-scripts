@@ -310,7 +310,7 @@ test.describe('Userscript Bootstrap (via addInitScript)', () => {
     expect(rate).toBe(1.0);
   });
 
-  test('T13: GM storage getValue/setValue works correctly', async ({ page }) => {
+  test('storage: GM getValue/setValue works correctly', async ({ page }) => {
     await page.addInitScript(gmMock);
     await page.goto('data:text/html,<h1>Storage Test</h1>');
 
