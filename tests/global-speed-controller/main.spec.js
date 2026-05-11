@@ -411,7 +411,7 @@ test.describe('UI Components', () => {
     expect(exists.text).toBe('1.50x');
   });
 
-  test('T17: menu commands can be registered programmatically', async ({ page }) => {
+  test('T15: menu commands can be registered programmatically', async ({ page }) => {
     await page.addInitScript(gmMock);
     await page.goto('data:text/html,<h1>Menu Test</h1>');
 

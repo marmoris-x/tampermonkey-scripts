@@ -5,7 +5,7 @@ let indicator = null;
 
 /**
  * Displays a temporary floating speed indicator in the top-right corner.
- * Uses Shadow DOM for isolation from page styles.
+ * Uses a fixed-position overlay with high z-index for visibility.
  * Auto-hides after INDICATOR_TIMEOUT_MS.
  */
 export function showIndicator() {
