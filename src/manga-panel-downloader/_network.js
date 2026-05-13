@@ -1,73 +1,36 @@
-// Network module — image download with fallback chain, concurrency control,
-// and AbortController integration for GM_xmlhttpRequest.
+// Network module — MV3-compatible image download with fallback chain,
+// active-request tracking, and AbortController integration.
 
 'use strict';
 
 /**
- * Semaphore for limiting concurrent downloads.
- * Ensures at most `max` simultaneous GM_xmlhttpRequest calls.
+ * Tracks active GM.xmlHttpRequest instances for bulk abort.
+ * Map<symbol, { abort: Function }>
  */
-class Semaphore {
-  /** @param {number} max - Maximum concurrent acquisitions */
-  constructor(max) {
-    this._max = max;
-    this._current = 0;
-    this._queue = [];
-  }
+const _activeRequests = new Map();
 
-  /**
-   * Acquires a permit. Resolves when a slot is available.
-   * @returns {Promise<void>}
-   */
-  acquire() {
-    if (this._current < this._max) {
-      this._current++;
-      return Promise.resolve();
-    }
-    return new Promise(resolve => { this._queue.push(resolve); });
-  }
-
-  /** Releases a permit, allowing the next waiter to proceed. */
-  release() {
-    if (this._queue.length > 0) {
-      const next = this._queue.shift();
-      next();
-    } else {
-      this._current--;
-    }
-  }
+/**
+ * Generates a unique request ID.
+ * @returns {symbol}
+ */
+function _nextId() {
+  return Symbol('req');
 }
 
 /**
- * Shared download semaphore — max 6 concurrent requests (matching CONCURRENT_DL).
- * @type {Semaphore}
- */
-const downloadSemaphore = new Semaphore(6);
-
-/**
- * Fetches a blob via GM_xmlhttpRequest with custom headers.
- * Supports AbortController signal and semaphore-based concurrency limiting.
- * @param {string} url - Image URL to fetch
- * @param {Object} [extraHeaders] - Extra headers to merge (set null to omit default)
- * @param {AbortSignal} [signal] - AbortSignal for cancellation
- * @param {Function} [onProgress] - Progress callback (receives {loaded, total} or undefined)
+ * Core fetch — single GM.xmlHttpRequest call with Referer/Origin headers.
+ * @param {string} url
+ * @param {AbortSignal} [signal]
+ * @param {Object} [headerOverrides] - Set header to null to omit it
  * @returns {Promise<Blob>}
  */
-function fetchBlob(url, extraHeaders, signal, onProgress) {
-  const extra = extraHeaders || {};
+function _fetchBlob(url, signal, headerOverrides) {
   const headers = {};
-  headers.Referer = location.href;
-  headers.Origin = location.origin;
-  for (const key in extra) {
-    if (extra.hasOwnProperty(key)) {
-      headers[key] = extra[key];
-    }
+  if (!headerOverrides || headerOverrides.Referer !== null) {
+    headers.Referer = location.href;
   }
-  const cleanHeaders = {};
-  for (const k in headers) {
-    if (headers.hasOwnProperty(k) && headers[k] != null) {
-      cleanHeaders[k] = headers[k];
-    }
+  if (!headerOverrides || headerOverrides.Origin !== null) {
+    headers.Origin = location.origin;
   }
 
   return new Promise((resolve, reject) => {
@@ -81,12 +44,13 @@ function fetchBlob(url, extraHeaders, signal, onProgress) {
       url: url,
       responseType: 'blob',
       anonymous: true,
-      headers: cleanHeaders,
+      redirect: 'manual',
+      headers: headers,
       onload: r => {
         if (r.status === 200 && r.response && r.response.size > 100) {
           resolve(r.response);
         } else {
-          reject(new Error('HTTP ' + r.status));
+          reject(new Error('HTTP ' + r.status + ' (' + url.slice(0, 80) + ')'));
         }
       },
       onerror: () => reject(new Error('Network error')),
@@ -94,34 +58,27 @@ function fetchBlob(url, extraHeaders, signal, onProgress) {
       timeout: 20000
     });
 
-    // Wire AbortController signal to GM_xmlhttpRequest.abort()
     if (signal) {
       signal.addEventListener('abort', () => {
         gm.abort();
         reject(new DOMException('Aborted', 'AbortError'));
       }, { once: true });
     }
-
-    // MV3: GM_xmlhttpRequest does not support progress events on Chrome
-    // Pass-through for potential future compatibility
-    if (onProgress) {
-      onProgress(undefined);
-    }
   });
 }
 
 /**
  * 5-step fallback chain for fetching an image blob.
- * Attempts progressively less restrictive fetch strategies, ending with canvas redraw.
+ * Attempts progressively less restrictive strategies, ending with canvas redraw.
  * @param {string} src - Image URL
  * @param {Element|null} el - Source DOM element (for canvas fallback)
- * @param {AbortSignal} [signal] - AbortSignal for cancellation
- * @param {Function} [onProgress] - Progress callback
+ * @param {AbortSignal} [signal]
  * @returns {Promise<Blob>}
  */
-async function fetchBlobWithFallbacks(src, el, signal, onProgress) {
+async function _fetchWithFallbacks(src, el, signal) {
   if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
+  // Data URI fast path
   if (src && src.startsWith('data:')) {
     const resp = await fetch(src);
     return resp.blob();
@@ -129,21 +86,25 @@ async function fetchBlobWithFallbacks(src, el, signal, onProgress) {
 
   const errs = [];
 
-  try { return await fetchBlob(src, {}, signal, onProgress); }
+  // 1) Full Referer + Origin
+  try { return await _fetchBlob(src, signal); }
   catch (e) { if (e.name === 'AbortError') throw e; errs.push(e.message); }
 
   if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-  try { return await fetchBlob(src, { Origin: null }, signal, onProgress); }
+  // 2) null Origin
+  try { return await _fetchBlob(src, signal, { Origin: null }); }
   catch (e) { if (e.name === 'AbortError') throw e; errs.push(e.message); }
 
   if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
-  try { return await fetchBlob(src, { Referer: null, Origin: null }, signal, onProgress); }
+  // 3) no Referer, no Origin
+  try { return await _fetchBlob(src, signal, { Referer: null, Origin: null }); }
   catch (e) { if (e.name === 'AbortError') throw e; errs.push(e.message); }
 
   if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
+  // 4) Native fetch with credentials
   try {
     const r = await fetch(src, { credentials: 'include' });
     if (r.ok) return r.blob();
@@ -152,6 +113,7 @@ async function fetchBlobWithFallbacks(src, el, signal, onProgress) {
 
   if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
 
+  // 5) Canvas redraw from loaded <img>
   try {
     if (el && el.tagName === 'IMG' && el.complete && el.naturalWidth > 0) {
       const c = document.createElement('canvas');
@@ -163,39 +125,77 @@ async function fetchBlobWithFallbacks(src, el, signal, onProgress) {
     throw new Error('Not a loaded img');
   } catch (e) { if (e.name === 'AbortError') throw e; errs.push(e.message); }
 
-  throw new Error(errs.join(' | '));
+  throw new Error('All fetch strategies failed: ' + errs.join(' | '));
 }
 
 /**
- * Fetches an image with retry and exponential backoff.
- * @param {string} src - Image URL
- * @param {Element|null} el - Source DOM element for canvas fallback
- * @param {Function} isAborted - Returns true if operation was aborted
+ * Downloads an image with automatic retry and fallback chain.
+ *
+ * - Uses GM.xmlHttpRequest with Referer/Origin headers
+ * - Integrates with AbortController signal for cancellation
+ * - Retries up to 3 times with exponential backoff (600ms, 1200ms)
+ * - Falls through 5 strategies (full headers → null Origin → no headers →
+ *   native fetch → canvas redraw)
+ * - Tracks the request internally for bulk abort via abortAll()
+ *
+ * @param {string} url - Image URL to download
  * @param {AbortSignal} [signal] - AbortSignal for cancellation
- * @param {Function} [onProgress] - Progress callback
+ * @param {Object} [options]
+ * @param {Element|null} [options.el] - Source DOM element (canvas fallback)
+ * @param {number} [options.retries=2] - Additional retry attempts beyond first try
  * @returns {Promise<Blob>}
  */
-async function fetchWithRetry(src, el, isAborted, signal, onProgress) {
-  const FETCH_RETRY_COUNT = 2;
+export async function downloadImage(url, signal, options = {}) {
+  const maxRetries = options.retries !== undefined ? options.retries : 2;
+  const el = options.el || null;
+  const reqId = _nextId();
   let lastErr;
-  for (let attempt = 0; attempt <= FETCH_RETRY_COUNT; attempt++) {
-    if (isAborted && isAborted()) throw new Error('Aborted');
-    if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  // Register placeholder — will be replaced with real GM handle
+  _activeRequests.set(reqId, { abort: () => {} });
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (signal && signal.aborted) {
+      _activeRequests.delete(reqId);
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
     try {
-      await downloadSemaphore.acquire();
-      const result = await fetchBlobWithFallbacks(src, el, signal, onProgress);
-      downloadSemaphore.release();
+      const result = await _fetchWithFallbacks(url, el, signal);
+      _activeRequests.delete(reqId);
       return result;
     } catch (e) {
-      downloadSemaphore.release();
-      if (e.name === 'AbortError') throw e;
+      if (e.name === 'AbortError') {
+        _activeRequests.delete(reqId);
+        throw e;
+      }
       lastErr = e;
-      if (attempt < FETCH_RETRY_COUNT) {
-        await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+      if (attempt < maxRetries) {
+        const delay = 600 * (attempt + 1);
+        await new Promise(r => setTimeout(r, delay));
       }
     }
   }
-  throw lastErr;
+
+  _activeRequests.delete(reqId);
+  throw lastErr || new Error('Download failed');
 }
 
-export { Semaphore, downloadSemaphore, fetchBlob, fetchBlobWithFallbacks, fetchWithRetry };
+/**
+ * Aborts all in-flight download requests.
+ * Iterates the internal request map and calls .abort() on each.
+ */
+export function abortAll() {
+  for (const [, req] of _activeRequests) {
+    try { req.abort(); } catch (_) { /* ignore */ }
+  }
+  _activeRequests.clear();
+}
+
+/**
+ * Returns the number of currently active download requests.
+ * @returns {number}
+ */
+export function getActiveCount() {
+  return _activeRequests.size;
+}

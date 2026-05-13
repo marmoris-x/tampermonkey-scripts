@@ -131,91 +131,77 @@
       }
     }
   }
-  class Semaphore {
-constructor(max) {
-      this._max = max;
-      this._current = 0;
-      this._queue = [];
-    }
-acquire() {
-      if (this._current < this._max) {
-        this._current++;
-        return Promise.resolve();
-      }
-      return new Promise((resolve) => {
-        this._queue.push(resolve);
-      });
-    }
-release() {
-      if (this._queue.length > 0) {
-        const next = this._queue.shift();
-        next();
-      } else {
-        this._current--;
-      }
-    }
+  const _activeRequests = new Map();
+  function _nextId() {
+    return Symbol("req");
   }
-  const downloadSemaphore = new Semaphore(6);
-  function fetchBlob(url, extraHeaders, signal, onProgress) {
-    const extra = extraHeaders || {};
+  function _fetchBlob(url, signal, headerOverrides) {
     const headers = {};
-    headers.Referer = location.href;
-    headers.Origin = location.origin;
-    for (const key in extra) {
-      if (extra.hasOwnProperty(key)) {
-        headers[key] = extra[key];
-      }
+    if (!headerOverrides || headerOverrides.Referer !== null) {
+      headers.Referer = location.href;
     }
-    const cleanHeaders = {};
-    for (const k in headers) {
-      if (headers.hasOwnProperty(k) && headers[k] != null) {
-        cleanHeaders[k] = headers[k];
-      }
+    if (!headerOverrides || headerOverrides.Origin !== null) {
+      headers.Origin = location.origin;
     }
     return new Promise((resolve, reject) => {
-      GM.xmlHttpRequest({
+      if (signal && signal.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      const gm = GM.xmlHttpRequest({
         method: "GET",
         url,
         responseType: "blob",
         anonymous: true,
-        headers: cleanHeaders,
+        redirect: "manual",
+        headers,
         onload: (r) => {
           if (r.status === 200 && r.response && r.response.size > 100) {
             resolve(r.response);
           } else {
-            reject(new Error("HTTP " + r.status));
+            reject(new Error("HTTP " + r.status + " (" + url.slice(0, 80) + ")"));
           }
         },
         onerror: () => reject(new Error("Network error")),
         ontimeout: () => reject(new Error("Timeout")),
         timeout: 2e4
       });
+      if (signal) {
+        signal.addEventListener("abort", () => {
+          gm.abort();
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      }
     });
   }
-  async function fetchBlobWithFallbacks(src, el, signal, onProgress) {
+  async function _fetchWithFallbacks(src, el, signal) {
+    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
     if (src && src.startsWith("data:")) {
       const resp = await fetch(src);
       return resp.blob();
     }
     const errs = [];
     try {
-      return await fetchBlob(src, {}, signal, onProgress);
+      return await _fetchBlob(src, signal);
     } catch (e) {
       if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
+    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
     try {
-      return await fetchBlob(src, { Origin: null }, signal, onProgress);
+      return await _fetchBlob(src, signal, { Origin: null });
     } catch (e) {
       if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
+    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
     try {
-      return await fetchBlob(src, { Referer: null, Origin: null }, signal, onProgress);
+      return await _fetchBlob(src, signal, { Referer: null, Origin: null });
     } catch (e) {
       if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
+    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
     try {
       const r = await fetch(src, { credentials: "include" });
       if (r.ok) return r.blob();
@@ -224,6 +210,7 @@ release() {
       if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
+    if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
     try {
       if (el && el.tagName === "IMG" && el.complete && el.naturalWidth > 0) {
         const c = document.createElement("canvas");
@@ -239,28 +226,38 @@ release() {
       if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
-    throw new Error(errs.join(" | "));
+    throw new Error("All fetch strategies failed: " + errs.join(" | "));
   }
-  async function fetchWithRetry(src, el, isAborted, signal, onProgress) {
-    const FETCH_RETRY_COUNT = 2;
+  async function downloadImage(url, signal, options = {}) {
+    const maxRetries = options.retries !== void 0 ? options.retries : 2;
+    const el = options.el || null;
+    const reqId = _nextId();
     let lastErr;
-    for (let attempt = 0; attempt <= FETCH_RETRY_COUNT; attempt++) {
-      if (isAborted && isAborted()) throw new Error("Aborted");
+    _activeRequests.set(reqId, { abort: () => {
+    } });
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (signal && signal.aborted) {
+        _activeRequests.delete(reqId);
+        throw new DOMException("Aborted", "AbortError");
+      }
       try {
-        await downloadSemaphore.acquire();
-        const result = await fetchBlobWithFallbacks(src, el, signal, onProgress);
-        downloadSemaphore.release();
+        const result = await _fetchWithFallbacks(url, el, signal);
+        _activeRequests.delete(reqId);
         return result;
       } catch (e) {
-        downloadSemaphore.release();
-        if (e.name === "AbortError") throw e;
+        if (e.name === "AbortError") {
+          _activeRequests.delete(reqId);
+          throw e;
+        }
         lastErr = e;
-        if (attempt < FETCH_RETRY_COUNT) {
-          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+        if (attempt < maxRetries) {
+          const delay = 600 * (attempt + 1);
+          await new Promise((r) => setTimeout(r, delay));
         }
       }
     }
-    throw lastErr;
+    _activeRequests.delete(reqId);
+    throw lastErr || new Error("Download failed");
   }
   const MAX_SEG_H = 3500;
   const MIN_SEG_H = 600;
@@ -274,8 +271,8 @@ release() {
     }
     return pts;
   }
-  async function processImage(url, pageNum, srcEl, isAborted) {
-    const blob = await fetchWithRetry(url, srcEl, isAborted);
+  async function processImage(url, pageNum, srcEl, signal) {
+    const blob = await downloadImage(url, signal, { el: srcEl });
     const ew = srcEl ? srcEl.naturalWidth : 0;
     const eh = srcEl ? srcEl.naturalHeight : 0;
     if (ew > 0 && eh > 0 && eh <= MAX_SEG_H && blob.type !== "image/webp") {
@@ -1167,7 +1164,7 @@ async _scan() {
                 candidate.src,
                 candidate.num,
                 candidate.el,
-                () => signal.aborted
+                signal
               );
               if (signal.aborted || !segs) return;
               segs.forEach((seg) => {

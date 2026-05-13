@@ -3,7 +3,7 @@
 
 'use strict';
 
-import { fetchWithRetry } from './_network.js';
+import { downloadImage } from './_network.js';
 
 const MAX_SEG_H = 3500;
 const MIN_SEG_H = 600;
@@ -30,11 +30,11 @@ export function findSplitPoints(h) {
  * @param {string} url - Image URL
  * @param {number} pageNum - Sequential page number (for filename)
  * @param {Element|null} srcEl - Source DOM element for canvas fallback
- * @param {Function} isAborted - Returns true if operation was aborted
+ * @param {AbortSignal} [signal] - AbortSignal for cancellation
  * @returns {Promise<Array<{filename: string, blob: Blob, previewUrl: string, w: number, h: number}>>}
  */
-export async function processImage(url, pageNum, srcEl, isAborted) {
-  const blob = await fetchWithRetry(url, srcEl, isAborted);
+export async function processImage(url, pageNum, srcEl, signal) {
+  const blob = await downloadImage(url, signal, { el: srcEl });
 
   // Fast path: known dimensions, no split needed, already JPEG/PNG
   const ew = srcEl ? srcEl.naturalWidth : 0;

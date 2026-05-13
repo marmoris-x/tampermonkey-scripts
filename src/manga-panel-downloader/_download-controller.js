@@ -373,7 +373,7 @@ export class MangaDownloader {
               candidate.src,
               candidate.num,
               candidate.el,
-              () => signal.aborted
+              signal
             );
             if (signal.aborted || !segs) return;
             segs.forEach(seg => { this.segments.push(seg); });
