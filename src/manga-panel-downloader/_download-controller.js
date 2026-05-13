@@ -311,23 +311,7 @@ export class MangaDownloader {
 
       if (this.mangaMode) {
         // Multi-page manga mode via harvestPages generator
-        const getPageImages = async () => {
-          const found = await this._collectPageUrls();
-          const fresh = [];
-          for (let i = 0; i < found.length; i++) {
-            const c = found[i];
-            if (signal.aborted) return fresh;
-            if (this.scannedUrls.has(c.src)) continue;
-            const srcs = allSrcsOf(c.el);
-            let seen = false;
-            srcs.forEach(v => { if (this.scannedUrls.has(v)) seen = true; });
-            if (seen) continue;
-            this.scannedUrls.add(c.src);
-            srcs.forEach(v => this.scannedUrls.add(v));
-            fresh.push(c);
-          }
-          return fresh;
-        };
+        const getPageImages = async () => this._collectPageUrls();
 
         const harvest = harvestPages({
           getPageImages,

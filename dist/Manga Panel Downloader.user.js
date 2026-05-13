@@ -321,7 +321,7 @@
     return results;
   }
   const SCROLL_TIMEOUT_MS = 3e3;
-  function sleep(ms) {
+  function sleep$1(ms) {
     return new Promise((r) => setTimeout(r, ms));
   }
   function getUnloaded() {
@@ -345,7 +345,7 @@
   }
   async function* scrollLoad(isAborted) {
     triggerLazy(document);
-    await sleep(150);
+    await sleep$1(150);
     yield { type: "pass", passNumber: 1, imagesFound: countLoadedImages() };
     if (isAborted && isAborted()) return;
     const unloaded = getUnloaded();
@@ -353,7 +353,7 @@
       if (isAborted && isAborted()) return;
       unloaded[u].scrollIntoView({ block: "center", behavior: "instant" });
       triggerLazy(document);
-      await sleep(60);
+      await sleep$1(60);
     }
     yield { type: "pass", passNumber: 2, imagesFound: countLoadedImages() };
     if (isAborted && isAborted()) return;
@@ -362,7 +362,7 @@
       if (isAborted && isAborted()) return;
       window.scrollTo(0, y);
       triggerLazy(document);
-      await sleep(40);
+      await sleep$1(40);
     }
     yield { type: "pass", passNumber: 3, imagesFound: countLoadedImages() };
     if (isAborted && isAborted()) return;
@@ -371,7 +371,7 @@
       if (isAborted && isAborted()) return;
       triggerLazy(document);
       if (getUnloaded().length === 0) break;
-      await sleep(150);
+      await sleep$1(150);
     }
     window.scrollTo(0, 0);
     const totalLoaded = countLoadedImages();
@@ -459,6 +459,11 @@
     });
   }
   const MAX_PAGES = 200;
+  const NAV_CLICK_WAIT_MS = 50;
+  const NAV_LOAD_WAIT_MS = 150;
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
   async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, externalAbort }) {
     let page = 1;
     let currentUrl = location.href;
@@ -476,11 +481,13 @@
       }
       yield { page, images };
       navigateNext();
+      await sleep(NAV_CLICK_WAIT_MS);
       const changed = await waitForUrlChange(currentUrl);
       if (!changed) {
         yield { page, status: "nav-timeout", stop: true };
         return;
       }
+      await sleep(NAV_LOAD_WAIT_MS);
       currentUrl = location.href;
       page++;
     }
@@ -1090,25 +1097,7 @@ async _scan() {
       const producer = async () => {
         let seqNum = 0;
         if (this.mangaMode) {
-          const getPageImages = async () => {
-            const found = await this._collectPageUrls();
-            const fresh = [];
-            for (let i = 0; i < found.length; i++) {
-              const c = found[i];
-              if (signal.aborted) return fresh;
-              if (this.scannedUrls.has(c.src)) continue;
-              const srcs = allSrcsOf(c.el);
-              let seen = false;
-              srcs.forEach((v) => {
-                if (this.scannedUrls.has(v)) seen = true;
-              });
-              if (seen) continue;
-              this.scannedUrls.add(c.src);
-              srcs.forEach((v) => this.scannedUrls.add(v));
-              fresh.push(c);
-            }
-            return fresh;
-          };
+          const getPageImages = async () => this._collectPageUrls();
           const harvest = harvestPages({
             getPageImages,
             externalAbort: () => signal.aborted

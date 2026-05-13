@@ -18,6 +18,10 @@ export const MAX_PAGES = 200;
 /** Maximum concurrent downloads (informational — used by controller) */
 export const CONCURRENT_DL = 6;
 
+/** Navigation timing constants (ms) — matching _download-controller */
+const NAV_CLICK_WAIT_MS = 50;
+const NAV_LOAD_WAIT_MS = 150;
+
 /* --- Abort Control --- */
 
 let aborted = false;
@@ -44,6 +48,15 @@ export function abort() {
  */
 function isAborted() {
   return aborted;
+}
+
+/**
+ * Promise-based sleep.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 /* --- Harvest Generator --- */
@@ -106,6 +119,7 @@ export async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, exter
 
     // Step 4: Navigate to the next page
     navigateNext();
+    await sleep(NAV_CLICK_WAIT_MS);
 
     // Step 5: Wait for URL change (with timeout)
     const changed = await waitForUrlChange(currentUrl);
@@ -114,6 +128,9 @@ export async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, exter
       yield { page, status: 'nav-timeout', stop: true };
       return;
     }
+
+    // Brief pause for the new page to render images
+    await sleep(NAV_LOAD_WAIT_MS);
 
     currentUrl = location.href;
     page++;
