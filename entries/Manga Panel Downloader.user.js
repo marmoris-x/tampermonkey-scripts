@@ -6,7 +6,6 @@
 // @author       marmoris-x
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=tampermonkey.net
 // @match        *://*/*
-// @grant        GM.addStyle
 // @grant        GM.xmlHttpRequest
 // @grant        GM.registerMenuCommand
 // @grant        GM.deleteValue

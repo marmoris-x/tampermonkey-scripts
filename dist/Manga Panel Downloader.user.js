@@ -13,7 +13,6 @@
 // @require      https://raw.githubusercontent.com/Tampermonkey/utils/refs/heads/main/requires/gh_2215_make_GM_xhr_more_parallel_again.js
 // @sandbox      raw
 // @connect      *
-// @grant        GM.addStyle
 // @grant        GM.deleteValue
 // @grant        GM.registerMenuCommand
 // @grant        GM.setValue

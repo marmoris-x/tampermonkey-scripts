@@ -1,5 +1,6 @@
 // Local copy of createLogger from src/shared/logging-utils.js
 // Side-effect-free extraction for Manga Panel Downloader. No globalThis.TM registration.
+'use strict';
 
 /**
  * Creates a prefixed logger instance. All methods prepend `[prefix]` to messages.
