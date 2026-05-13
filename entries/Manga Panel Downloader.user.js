@@ -11,8 +11,9 @@
 // @grant        GM.registerMenuCommand
 // @grant        GM.deleteValue
 // @grant        GM.setValue
-// @connect      self
-// (was @connect * — broad connectivity needed for diverse manga sites; restricted to self for MV3)
+// @connect      *
+// Required: manga images served from arbitrary CDNs (cloudfront, img-*.cdn, etc.)
+// Cannot enumerate — @connect * is the pragmatic choice for this downloader.
 // @run-at       document-idle
 // @sandbox      raw
 // @noframes
