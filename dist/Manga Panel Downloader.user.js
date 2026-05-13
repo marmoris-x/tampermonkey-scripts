@@ -469,10 +469,6 @@
     let currentUrl = location.href;
     while (page <= maxPages) {
       if (externalAbort && externalAbort()) return;
-      const scrollGen = scrollLoad(() => externalAbort ? externalAbort() : false);
-      for await (const _ of scrollGen) {
-        if (externalAbort && externalAbort()) return;
-      }
       const images = await getPageImages();
       if (externalAbort && externalAbort()) return;
       if (!images || images.length === 0) {

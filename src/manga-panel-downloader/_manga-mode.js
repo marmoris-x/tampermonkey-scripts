@@ -7,7 +7,6 @@
  * @module _manga-mode
  */
 
-import { scrollLoad } from './_scroll-loader.js';
 import { navigateNext, waitForUrlChange } from './_navigation.js';
 
 /* --- Constants --- */
@@ -96,14 +95,11 @@ export async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, exter
     if (externalAbort && externalAbort()) return;
     if (aborted) return;
 
-    // Step 1: Scroll to trigger lazy image loading on the current page
-    // Consume the scrollLoad generator fully before proceeding
-    const scrollGen = scrollLoad(() => aborted || (externalAbort ? externalAbort() : false));
-    for await (const _ of scrollGen) { // eslint-disable-line no-unused-vars
-      if (aborted || (externalAbort && externalAbort())) return;
-    }
-
-    // Step 2: Extract images from the current page (now fully scrolled)
+    // Step 1: Extract images from the current page.
+    // scrollLoad is intentionally NOT called here — in manga mode the
+    // aggressive scrolling interferes with SPA readers (triggers unintended
+    // page navigation). The getPageImages callback's internal poll loop
+    // waits for images to appear without touching scroll position.
     const images = await getPageImages();
 
     // Check abort after potentially long-running getPageImages
