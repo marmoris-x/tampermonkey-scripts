@@ -52,17 +52,19 @@ export class MangaDownloader {
     /** @private */
     this._menuId = null;
 
-    // Build UI (closed Shadow DOM sidebar)
+    // Build UI (closed Shadow DOM sidebar) + register menu command (synchronous)
     this.ui = buildUI(this.mangaMode);
     this._initUI();
     this._watchUrlChanges();
+    this._registerMenuCommand();
   }
 
   // ── Public API ───────────────────────────────────────────────────────
 
   /**
    * Initializes the downloader: restores saved manga-mode, cleans legacy storage.
-   * Called once from the entry bootstrap.
+   * Called once from the entry bootstrap. Menu command is already registered
+   * in the constructor — this only handles async init tasks.
    */
   async init() {
     // Restore persisted manga-mode state
@@ -76,8 +78,6 @@ export class MangaDownloader {
 
     // Clean up legacy storage key (best-effort, ignore failures)
     GM.deleteValue('mpd-allowed-sites').catch(() => {});
-
-    this._registerMenuCommand();
   }
 
   // ── Menu command ────────────────────────────────────────────────────

@@ -948,6 +948,7 @@ constructor(logger2) {
       this.ui = buildUI(this.mangaMode);
       this._initUI();
       this._watchUrlChanges();
+      this._registerMenuCommand();
     }
 
 async init() {
@@ -960,7 +961,6 @@ async init() {
       }
       GM.deleteValue("mpd-allowed-sites").catch(() => {
       });
-      this._registerMenuCommand();
     }
 
 _registerMenuCommand() {
