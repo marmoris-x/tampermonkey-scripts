@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.10
+// @version      4.0
 // @description  Enhanced filtering options and automatic tag management for gutefrage.net
 // @author       marmoris
 // @match        https://www.gutefrage.net/*
@@ -11,24 +11,21 @@
 // @grant        GM.setValue
 // @grant        GM.setValues
 // @grant        GM_openInTab
-// @grant        window.close
 // @run-at       document-idle
-// @inject-into  content
-// @sandbox      JavaScript
+// @sandbox      raw
 // @noframes
-// @unwrap
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
+import { createLogger } from '../src/gutefrage-smart-filters/_logger.js';
 import { TagRemover } from '../src/gutefrage-smart-filters/tag-remover.js';
 import { EnhancedFilterIntegration } from '../src/gutefrage-smart-filters/filter-engine.js';
 import { SidebarPanel } from '../src/gutefrage-smart-filters/ui-panel.js';
 
-var log = createLogger('Gutefrage Smart Filters');
+const log = createLogger('Gutefrage Smart Filters');
 
 // ---- Native FilterMenu improvements ----
 GM_addStyle([
@@ -45,7 +42,7 @@ log.log('Initializing...');
 
 new TagRemover();
 
-var filterIntegration = new EnhancedFilterIntegration();
+const filterIntegration = new EnhancedFilterIntegration();
 filterIntegration.init().then(function () {
   new SidebarPanel(filterIntegration);
 });

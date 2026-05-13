@@ -8,12 +8,12 @@
  */
 export function toSpringeZu(datetimeLocalValue) {
   if (!datetimeLocalValue) return null;
-  var d = new Date(datetimeLocalValue);
-  var offset = -d.getTimezoneOffset();
-  var sign = offset >= 0 ? '+' : '-';
-  var hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
-  var mm = String(Math.abs(offset) % 60).padStart(2, '0');
-  var local = datetimeLocalValue.length === 16 ? datetimeLocalValue + ':00' : datetimeLocalValue;
+  const d = new Date(datetimeLocalValue);
+  const offset = -d.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, '0');
+  const mm = String(Math.abs(offset) % 60).padStart(2, '0');
+  const local = datetimeLocalValue.length === 16 ? datetimeLocalValue + ':00' : datetimeLocalValue;
   return local + sign + hh + ':' + mm;
 }
 
@@ -22,10 +22,10 @@ export function toSpringeZu(datetimeLocalValue) {
  * @param {string} section - Feed section: 'alle' or 'unbeantwortet'
  */
 export async function navigateToDate(section) {
-  var navDate = await GM.getValue('navDate', '');
-  var tz = toSpringeZu(navDate);
-  var base = section === 'unbeantwortet' ? '/home/meine/unbeantwortet' : '/home/meine/alle';
-  var url = tz ? base + '?springe-zu=' + encodeURIComponent(tz) : base;
+  const navDate = await GM.getValue('navDate', '');
+  const tz = toSpringeZu(navDate);
+  const base = section === 'unbeantwortet' ? '/home/meine/unbeantwortet' : '/home/meine/alle';
+  const url = tz ? base + '?springe-zu=' + encodeURIComponent(tz) : base;
   window.location.href = url;
 }
 

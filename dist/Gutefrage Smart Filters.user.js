@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.10
+// @version      4.0
 // @author       marmoris
 // @description  Enhanced filtering options and automatic tag management for gutefrage.net
 // @license      MIT
@@ -10,81 +10,70 @@
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js
 // @match        https://www.gutefrage.net/*
-// @sandbox      JavaScript
+// @sandbox      raw
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.setValues
 // @grant        GM_addStyle
 // @grant        GM_openInTab
 // @grant        window.close
-// @inject-into  content
 // @run-at       document-idle
 // @noframes
-// @unwrap
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
   function createLogger(prefix, debugMode) {
     debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+    const tag = "[" + prefix + "]";
     return {
       log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
       },
       warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.warn.apply(console, args);
       },
       error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.error.apply(console, args);
       },
       info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.info.apply(console, args);
       },
       debug: function() {
         if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
           console.debug.apply(console, args);
         }
       }
     };
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.dom = {
-    waitForElement,
-    debounce,
-    throttle,
-    observeMutations
-  };
   function waitForElement(selector, timeout, root) {
     timeout = timeout || 1e4;
     root = root || document.body;
     return new Promise(function(resolve, reject) {
-      var existing = root.querySelector(selector);
+      const existing = root.querySelector(selector);
       if (existing) return resolve(existing);
-      var timer;
-      var observer = new MutationObserver(function(mutations) {
-        for (var m = 0; m < mutations.length; m++) {
-          var nodes = mutations[m].addedNodes;
-          for (var i = 0; i < nodes.length; i++) {
+      let timer;
+      const observer = new MutationObserver(function(mutations) {
+        for (let m = 0; m < mutations.length; m++) {
+          const nodes = mutations[m].addedNodes;
+          for (let i = 0; i < nodes.length; i++) {
             if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
             if (nodes[i].matches && nodes[i].matches(selector)) {
               cleanup();
               return resolve(nodes[i]);
             }
-            var child = nodes[i].querySelector && nodes[i].querySelector(selector);
+            const child = nodes[i].querySelector && nodes[i].querySelector(selector);
             if (child) {
               cleanup();
               return resolve(child);
@@ -107,32 +96,21 @@
   }
   function debounce(fn, ms) {
     ms = ms || 200;
-    var timer = 0;
+    let timer = 0;
     return function() {
-      var ctx = this, args = arguments;
+      const ctx = this, args = arguments;
       clearTimeout(timer);
       timer = setTimeout(function() {
         fn.apply(ctx, args);
       }, ms);
     };
   }
-  function throttle(fn, ms) {
-    ms = ms || 200;
-    var last = 0;
-    return function() {
-      var now = Date.now();
-      if (now - last >= ms) {
-        last = now;
-        fn.apply(this, arguments);
-      }
-    };
-  }
   function observeMutations(callback, root) {
     root = root || document.body;
-    var observer = new MutationObserver(function(mutations) {
-      for (var m = 0; m < mutations.length; m++) {
-        var nodes = mutations[m].addedNodes;
-        for (var i = 0; i < nodes.length; i++) {
+    const observer = new MutationObserver(function(mutations) {
+      for (let m = 0; m < mutations.length; m++) {
+        const nodes = mutations[m].addedNodes;
+        for (let i = 0; i < nodes.length; i++) {
           if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
         }
       }
@@ -140,8 +118,16 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  var tagLog = createLogger("Gutefrage Tag Remover");
-  var DEFAULT_TAGS = ["islam", "allah", "muslime", "koran", "mohammed"];
+  const tagLog = createLogger("Gutefrage Tag Remover");
+  const DEFAULT_TAGS = ["islam", "allah", "muslime", "koran", "mohammed"];
+  const TAG_REMOVER_CSS = [
+    ".gf-tr-btn { color:white; border:none; padding:4px 12px; margin-left:8px; border-radius:12px; font-size:13px; font-weight:500; cursor:pointer; transition:background-color 0.2s; display:inline-flex; align-items:center; height:24px; white-space:nowrap; }",
+    ".gf-tr-btn-remove { background-color:#dc3545; }",
+    ".gf-tr-btn-remove:hover { background-color:#c82333; }",
+    ".gf-tr-btn-block { background-color:#6c757d; }",
+    ".gf-tr-btn-block:hover { background-color:#545b62; }",
+    ".gf-tr-notification { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#ffc107; color:#000; padding:15px 20px; border-radius:8px; z-index:10000; box-shadow:0 4px 12px rgba(0,0,0,0.15); font-size:14px; font-weight:500; }"
+  ].join("\n");
   async function waitForTagPageReady() {
     if (document.readyState !== "complete") await new Promise(function(r) {
       window.addEventListener("load", r);
@@ -150,7 +136,7 @@
       await waitForElement(".Tag-container, .Tag, article, main", 8e3);
     } catch (e) {
     }
-    var delay = Math.min(3e3, Math.max(500, document.querySelectorAll("*").length / 100));
+    const delay = Math.min(3e3, Math.max(500, document.querySelectorAll("*").length / 100));
     await new Promise(function(r) {
       setTimeout(r, delay);
     });
@@ -161,12 +147,13 @@
       this.init();
     }
 init() {
+      GM_addStyle(TAG_REMOVER_CSS);
       this.addRemoveButtons();
       this.autoRemoveAndClose();
       this.observeNewContent();
     }
 removeTag(tagElement) {
-      var hideButton = tagElement.querySelector(".Tag-action");
+      const hideButton = tagElement.querySelector(".Tag-action");
       if (hideButton) {
         hideButton.click();
         tagLog.log("Tag removed:", tagElement.getAttribute("aria-label"));
@@ -178,9 +165,10 @@ async removeUnwantedTags() {
       tagLog.log("Starting tag removal process...");
       await waitForTagPageReady();
       this.tagsToRemove = await GM.getValue("customTagsToRemove", DEFAULT_TAGS);
-      var tagsRemoved = 0, maxAttempts = 3;
-      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-        var tagContainers = document.querySelectorAll(".Tag-container");
+      let tagsRemoved = 0;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const tagContainers = document.querySelectorAll(".Tag-container");
         tagLog.log("Attempt " + attempt + "/" + maxAttempts + ", found " + tagContainers.length + " containers");
         if (tagContainers.length === 0 && attempt < maxAttempts) {
           await new Promise(function(r) {
@@ -188,8 +176,8 @@ async removeUnwantedTags() {
           });
           continue;
         }
-        for (var i = 0; i < tagContainers.length; i++) {
-          var tagSlug = tagContainers[i].querySelector(".Tag");
+        for (let i = 0; i < tagContainers.length; i++) {
+          let tagSlug = tagContainers[i].querySelector(".Tag");
           tagSlug = tagSlug ? tagSlug.getAttribute("data-tag-slug") : null;
           if (tagSlug && this.tagsToRemove.indexOf(tagSlug.toLowerCase()) !== -1) {
             if (this.removeTag(tagContainers[i])) {
@@ -206,39 +194,29 @@ async removeUnwantedTags() {
       return tagsRemoved;
     }
 addRemoveButtons() {
-      var btnStyle = [
-        "color:white; border:none; padding:4px 12px; margin-left:8px; border-radius:12px;",
-        "font-size:13px; font-weight:500; cursor:pointer; transition:background-color 0.2s;",
-        "display:inline-flex; align-items:center; height:24px; white-space:nowrap;"
-      ].join(" ");
       Array.prototype.forEach.call(document.querySelectorAll("article.ListingElement, .ContentCard"), function(article) {
         if (article.querySelector(".custom-remove-tags-button")) return;
-        var buttonContainer = article.querySelector(".ListingElement-bottomBar--withItemActions .u-flex:last-child");
+        let buttonContainer = article.querySelector(".ListingElement-bottomBar--withItemActions .u-flex:last-child");
         if (!buttonContainer) buttonContainer = article.querySelector(".ContentCard-action, .ContentCard-actions");
         if (!buttonContainer) {
-          var tagSection = article.querySelector(".Tag");
+          const tagSection = article.querySelector(".Tag");
           if (tagSection) buttonContainer = tagSection.parentElement;
         }
         if (!buttonContainer) return;
-        var removeBtn = document.createElement("button");
-        removeBtn.className = "Tag custom-remove-tags-button";
-        removeBtn.style.cssText = "background-color:#dc3545; " + btnStyle;
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "Tag custom-remove-tags-button gf-tr-btn gf-tr-btn-remove";
         removeBtn.textContent = "Tags entfernen";
         removeBtn.title = "Removes unwanted tags from this post";
-        removeBtn.addEventListener("mouseenter", function() {
-          this.style.backgroundColor = "#c82333";
-        });
-        removeBtn.addEventListener("mouseleave", function() {
-          this.style.backgroundColor = "#dc3545";
-        });
         removeBtn.addEventListener("click", function(e) {
           e.preventDefault();
           e.stopPropagation();
-          var ql = article.querySelector('a[href*="/frage/"], .ContentCard-link, .ListingElement-questionLink');
+          const ql = article.querySelector('a[href*="/frage/"], .ContentCard-link, .ListingElement-questionLink');
           if (ql) {
-            var url = new URL(ql.href);
+            const url = new URL(ql.href);
             url.searchParams.set("removeTagsAuto", "true");
             removeBtn.textContent = "Wird bearbeitet...";
+            removeBtn.classList.remove("gf-tr-btn-remove");
+            removeBtn.classList.add("gf-tr-btn-done");
             removeBtn.style.backgroundColor = "#28a745";
             if (typeof GM_openInTab !== "undefined") {
               GM_openInTab(url.href, { active: false, insert: true, setParent: true });
@@ -248,33 +226,28 @@ addRemoveButtons() {
             setTimeout(function() {
               removeBtn.textContent = "Tags entfernen";
               removeBtn.style.backgroundColor = "#dc3545";
+              removeBtn.classList.remove("gf-tr-btn-done");
+              removeBtn.classList.add("gf-tr-btn-remove");
             }, 2e3);
           }
         });
         buttonContainer.appendChild(removeBtn);
-        var authorEl = article.querySelector(".ContentMeta-author a");
+        const authorEl = article.querySelector(".ContentMeta-author a");
         if (authorEl) {
-          var blockBtn = document.createElement("button");
-          blockBtn.className = "Tag custom-block-author-button";
-          blockBtn.style.cssText = "background-color:#6c757d; " + btnStyle;
+          const blockBtn = document.createElement("button");
+          blockBtn.className = "Tag custom-block-author-button gf-tr-btn gf-tr-btn-block";
           blockBtn.textContent = "Autor sperren";
           blockBtn.title = "Hides all posts from this author";
-          blockBtn.addEventListener("mouseenter", function() {
-            this.style.backgroundColor = "#545b62";
-          });
-          blockBtn.addEventListener("mouseleave", function() {
-            this.style.backgroundColor = "#6c757d";
-          });
           blockBtn.addEventListener("click", async function(e) {
             e.preventDefault();
             e.stopPropagation();
-            var name = authorEl.textContent.trim();
-            var blocked = await GM.getValue("blockedAuthors", []);
+            const name = authorEl.textContent.trim();
+            const blocked = await GM.getValue("blockedAuthors", []);
             if (blocked.indexOf(name) === -1) {
               blocked.push(name);
               await GM.setValue("blockedAuthors", blocked);
             }
-            var container = article.closest(".Plate.ListingElement") || article;
+            const container = article.closest(".Plate.ListingElement") || article;
             container.style.display = "none";
           });
           buttonContainer.appendChild(blockBtn);
@@ -282,23 +255,19 @@ addRemoveButtons() {
       });
     }
 async autoRemoveAndClose() {
-      var urlParams = new URLSearchParams(window.location.search);
+      const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get("removeTagsAuto") !== "true") return;
       tagLog.log("Auto-remove mode activated");
-      var notification = document.createElement("div");
-      notification.style.cssText = [
-        "position:fixed; top:20px; left:50%; transform:translateX(-50%);",
-        "background:#ffc107; color:#000; padding:15px 20px; border-radius:8px;",
-        "z-index:10000; box-shadow:0 4px 12px rgba(0,0,0,0.15); font-size:14px; font-weight:500;"
-      ].join(" ");
+      const notification = document.createElement("div");
+      notification.className = "gf-tr-notification";
       notification.textContent = "Warte auf vollstandiges Laden der Seite...";
       document.body.appendChild(notification);
-      var progressInterval = setInterval(function() {
-        var containers = document.querySelectorAll(".Tag-container");
+      const progressInterval = setInterval(function() {
+        const containers = document.querySelectorAll(".Tag-container");
         notification.textContent = "Seite wird geladen... (" + containers.length + " Tags gefunden)";
       }, 1e3);
       try {
-        var tagsRemoved = await this.removeUnwantedTags();
+        const tagsRemoved = await this.removeUnwantedTags();
         clearInterval(progressInterval);
         notification.style.background = "#4CAF50";
         notification.style.color = "#fff";
@@ -319,7 +288,7 @@ async autoRemoveAndClose() {
       }
     }
 observeNewContent() {
-      var self = this;
+      const self = this;
       observeMutations(function(node) {
         if (node.matches && (node.matches("article.ListingElement, .ContentCard") || node.querySelector("article.ListingElement, .ContentCard"))) {
           self.addRemoveButtons();
@@ -327,16 +296,9 @@ observeNewContent() {
       });
     }
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.storage = {
-    loadSetting,
-    saveSetting,
-    loadSettings,
-    saveSettings
-  };
   async function loadSetting(key, defaultValue) {
     try {
-      var raw = await GM.getValue(key);
+      const raw = await GM.getValue(key);
       if (raw === void 0 || raw === null) return defaultValue;
       return raw;
     } catch (e) {
@@ -346,49 +308,16 @@ observeNewContent() {
   async function saveSetting(key, value) {
     await GM.setValue(key, value);
   }
-  async function loadSettings(defaults) {
-    var keys = Object.keys(defaults);
-    var result = {};
-    for (var i = 0; i < keys.length; i++) {
-      result[keys[i]] = await loadSetting(keys[i], defaults[keys[i]]);
-    }
-    return result;
-  }
-  async function saveSettings(obj) {
-    await GM.setValues(obj);
-  }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.i18n = {
-    normalizeText,
-    matchAnyTerm,
-    matchTerm
-  };
   function normalizeText(str) {
     if (!str) return "";
     return str.toLowerCase().replace(/[äæ]/g, "ae").replace(/[öœ]/g, "oe").replace(/[ü]/g, "ue").replace(/ß/g, "ss").replace(/[àáâãå]/g, "a").replace(/[èéêë]/g, "e").replace(/[ìíîï]/g, "i").replace(/[òóôõ]/g, "o").replace(/[ùúû]/g, "u").replace(/[ñ]/g, "n").replace(/[ç]/g, "c").replace(/[-_.:]+/g, " ").replace(/\s+/g, " ").trim();
   }
   function matchAnyTerm(text, terms) {
-    var n = normalizeText(text);
-    for (var i = 0; i < terms.length; i++) {
+    const n = normalizeText(text);
+    for (let i = 0; i < terms.length; i++) {
       if (n.indexOf(normalizeText(terms[i])) !== -1) return true;
     }
     return false;
-  }
-  function matchTerm(text, term) {
-    return normalizeText(text) === normalizeText(term);
-  }
-  var log$1 = createLogger("Gutefrage Smart Filters");
-  var DEFAULT_FILTERS = {
-    afterDate: "",
-    contentFilters: { onlyBookmarked: false, hideBookmarked: false, onlyWithImages: false, hideWithImages: false, hidePostTypes: [] },
-    interactionFilters: { minAnswers: "", maxAnswers: "", minLikes: "" },
-    textFilters: { keywords: "", excludeKeywords: "" },
-    topicFilters: { excludeTopics: "", includeTopics: "" }
-  };
-  function hashString(str) {
-    var hash = 5381, i;
-    for (i = 0; i < str.length; i++) hash = (hash << 5) + hash + str.charCodeAt(i);
-    return (hash & 2147483647).toString(36).substring(0, 8);
   }
   function parseCSV(text, lowercase) {
     if (!text || typeof text !== "string") return [];
@@ -400,30 +329,30 @@ observeNewContent() {
     return matchAnyTerm(t1, [t2]) || matchAnyTerm(t2, [t1]);
   }
   function getPostTitle(post) {
-    var el = post.querySelector(".Question-title");
+    const el = post.querySelector(".Question-title");
     return el ? el.textContent.trim() : "";
   }
   function getPostAuthor(post) {
-    var el = post.querySelector(".ContentMeta-author a");
+    const el = post.querySelector(".ContentMeta-author a");
     return el ? el.textContent.trim() : "";
   }
   function getPostDateTime(post) {
-    var el = post.querySelector("time[datetime]");
+    const el = post.querySelector("time[datetime]");
     return el ? el.getAttribute("datetime") : "";
   }
   function getPostImagesStatus(post) {
     return !!post.querySelector('button[aria-label="Mit Bildern"]') || !!post.querySelector(".ListingElement-image");
   }
   function getAnswerCount(post) {
-    var selectors = ['a[href*="/frage/"]', 'a[href*="/diskussion/"]', 'a[href*="/umfrage/"]', ".ListingElement-bottomBar a"];
-    for (var s = 0; s < selectors.length; s++) {
-      var links = post.querySelectorAll(selectors[s]);
-      for (var i = 0; i < links.length; i++) {
-        var text = links[i].textContent.trim();
+    const selectors = ['a[href*="/frage/"]', 'a[href*="/diskussion/"]', 'a[href*="/umfrage/"]', ".ListingElement-bottomBar a"];
+    for (let s = 0; s < selectors.length; s++) {
+      const links = post.querySelectorAll(selectors[s]);
+      for (let i = 0; i < links.length; i++) {
+        const text = links[i].textContent.trim();
         if (text.toLowerCase().indexOf("keine antwort") !== -1) return 0;
-        var match = text.match(/(\d+)\s+Antwort/i);
+        let match = text.match(/(\d+)\s+Antwort/i);
         if (!match && text.toLowerCase().indexOf("antwort") !== -1) {
-          var nm = text.match(/(\d+)/);
+          const nm = text.match(/(\d+)/);
           if (nm) match = [null, nm[1]];
         }
         if (match) return parseInt(match[1], 10);
@@ -431,9 +360,139 @@ observeNewContent() {
     }
     return 0;
   }
+  function applyDateFilter(post, afterDate) {
+    if (!afterDate) return true;
+    const timeEl = post.querySelector("time[datetime]");
+    if (!timeEl) return true;
+    const postDate = new Date(timeEl.getAttribute("datetime"));
+    return postDate >= new Date(afterDate);
+  }
+  function applyPostTypeFilter(post, hideTypes) {
+    if (!hideTypes || hideTypes.length === 0) return true;
+    const link = post.querySelector("a.ListingElement-questionLink[href]");
+    if (!link) return true;
+    const href = link.getAttribute("href");
+    const type = href.indexOf("/frage/") !== -1 ? "frage" : href.indexOf("/diskussion/") !== -1 ? "diskussion" : href.indexOf("/umfrage/") !== -1 ? "umfrage" : null;
+    if (type && hideTypes.indexOf(type) !== -1) return false;
+    return true;
+  }
+  function applyBookmarkFilter(post, onlyBookmarked, hideBookmarked) {
+    if (!onlyBookmarked && !hideBookmarked) return true;
+    const isBookmarked = !!post.querySelector(".Icon--bookmark-filled-large");
+    if (onlyBookmarked && !isBookmarked) return false;
+    if (hideBookmarked && isBookmarked) return false;
+    return true;
+  }
+  function applyImagesFilter(post, onlyWithImages, hideWithImages) {
+    if (!onlyWithImages && !hideWithImages) return true;
+    const hasImages = getPostImagesStatus(post);
+    if (onlyWithImages && !hasImages) return false;
+    if (hideWithImages && hasImages) return false;
+    return true;
+  }
+  function applyAuthorFilter(post, blockedAuthors) {
+    if (!blockedAuthors || blockedAuthors.length === 0) return true;
+    const authorName = getPostAuthor(post).toLowerCase();
+    if (authorName && blockedAuthors.indexOf(authorName) !== -1) return false;
+    return true;
+  }
+  function applyTopicFilter(post, excludeTopics, includeTopics) {
+    if ((!excludeTopics || excludeTopics.length === 0) && (!includeTopics || includeTopics.length === 0)) return true;
+    const topicEls = post.querySelectorAll('a[href*="/thema/"], a:has(.BrandAvatar), [data-topic-slug], .ContentMeta-topic, .ContentMeta-category, a.u-strongLight:has(.BrandAvatar--small)');
+    const topicStrings = [];
+    for (let t = 0; t < topicEls.length; t++) {
+      const el = topicEls[t];
+      const text = (el.textContent || "").trim().toLowerCase();
+      if (text) topicStrings.push(text);
+      const href = el.getAttribute("href");
+      if (href) {
+        const clean = href.replace(/^https?:\/\/[^\/]+/, "").split("?")[0].split("#")[0].replace(/^\/|\/$/g, "");
+        if (clean && !clean.match(/^(frage|diskussion|umfrage|home|meine|suche|nutzer)\//)) {
+          topicStrings.push(clean);
+          if (clean.indexOf("/") !== -1) {
+            const parts = clean.split("/");
+            for (let pt = 0; pt < parts.length; pt++) {
+              if (parts[pt]) topicStrings.push(parts[pt]);
+            }
+          }
+        }
+      }
+      const dataSlug = el.getAttribute("data-topic-slug");
+      if (dataSlug) topicStrings.push(dataSlug.toLowerCase());
+    }
+    const uniqueTopics = [...new Set(topicStrings)];
+    if (excludeTopics && excludeTopics.length > 0 && uniqueTopics.length > 0) {
+      for (let ex = 0; ex < uniqueTopics.length; ex++) {
+        for (let ec = 0; ec < excludeTopics.length; ec++) {
+          if (topicsMatch(uniqueTopics[ex], excludeTopics[ec])) return false;
+        }
+      }
+    }
+    if (includeTopics && includeTopics.length > 0 && uniqueTopics.length > 0) {
+      for (let ic = 0; ic < uniqueTopics.length; ic++) {
+        for (let ic2 = 0; ic2 < includeTopics.length; ic2++) {
+          if (topicsMatch(uniqueTopics[ic], includeTopics[ic2])) return true;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+  function applyTextFilter(post, keywords, excludeKeywords) {
+    if ((!keywords || keywords.length === 0) && (!excludeKeywords || excludeKeywords.length === 0)) return true;
+    const titleText = getPostTitle(post).toLowerCase();
+    const bodyEl = post.querySelector(".ContentBody");
+    const bodyText = bodyEl ? (bodyEl.textContent || "").toLowerCase() : "";
+    const authorText = getPostAuthor(post).toLowerCase();
+    const searchable = titleText + " " + bodyText + " " + authorText;
+    if (keywords && keywords.length > 0) {
+      let kwMatch = false;
+      for (let kw = 0; kw < keywords.length; kw++) {
+        if (searchable.indexOf(keywords[kw]) !== -1) {
+          kwMatch = true;
+          break;
+        }
+      }
+      if (!kwMatch) return false;
+    }
+    if (excludeKeywords && excludeKeywords.length > 0) {
+      for (let ek = 0; ek < excludeKeywords.length; ek++) {
+        if (searchable.indexOf(excludeKeywords[ek]) !== -1) return false;
+      }
+    }
+    return true;
+  }
+  function applyInteractionFilter(post, minAnswers, maxAnswers, minLikes) {
+    if (minAnswers !== "" || maxAnswers !== "") {
+      const answerCount = getAnswerCount(post);
+      const minA = parseInt(minAnswers, 10);
+      const maxA = parseInt(maxAnswers, 10);
+      if (!isNaN(minA) && answerCount < minA) return false;
+      if (!isNaN(maxA) && answerCount > maxA) return false;
+    }
+    if (minLikes) {
+      const likeBtn = post.querySelector('.ActionBarIcon button[aria-label*="Daumen"]');
+      const likes = likeBtn ? parseInt((likeBtn.getAttribute("aria-label").match(/(\d+)/) || [])[1], 10) || 0 : parseInt((post.querySelector(".ActionBarIcon-count") || {}).textContent, 10) || 0;
+      if (likes < parseInt(minLikes, 10)) return false;
+    }
+    return true;
+  }
+  function hashString(str) {
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) hash = (hash << 5) + hash + str.charCodeAt(i);
+    return (hash & 2147483647).toString(36).substring(0, 8);
+  }
   function getPostFingerprint(post) {
     return hashString(getPostTitle(post)) + "|" + getPostAuthor(post) + "|" + getPostDateTime(post) + "|" + getPostImagesStatus(post) + "|" + getAnswerCount(post);
   }
+  const log$1 = createLogger("Gutefrage Smart Filters");
+  const DEFAULT_FILTERS = {
+    afterDate: "",
+    contentFilters: { onlyBookmarked: false, hideBookmarked: false, onlyWithImages: false, hideWithImages: false, hidePostTypes: [] },
+    interactionFilters: { minAnswers: "", maxAnswers: "", minLikes: "" },
+    textFilters: { keywords: "", excludeKeywords: "" },
+    topicFilters: { excludeTopics: "", includeTopics: "" }
+  };
   class EnhancedFilterIntegration {
     constructor() {
       if (!window.location.pathname.startsWith("/home/")) return;
@@ -458,7 +517,7 @@ async init() {
       this.filters = await this.loadFilters();
     }
 async loadFilters() {
-      var saved = await loadSetting("enhancedFilters", {});
+      const saved = await loadSetting("enhancedFilters", {});
       return {
         afterDate: saved.afterDate !== void 0 ? saved.afterDate : DEFAULT_FILTERS.afterDate,
         contentFilters: this._mergeShallow(DEFAULT_FILTERS.contentFilters, saved.contentFilters),
@@ -472,7 +531,7 @@ async saveFilters() {
     }
 _mergeShallow(defaults, overrides) {
       if (!overrides || typeof overrides !== "object") return Object.assign({}, defaults);
-      var result = Object.assign({}, defaults);
+      const result = Object.assign({}, defaults);
       Object.keys(overrides).forEach(function(k) {
         if (overrides[k] !== void 0) result[k] = overrides[k];
       });
@@ -487,7 +546,7 @@ enableFilters() {
     }
 observeNewPosts() {
       if (this.postObserver) return;
-      var self = this;
+      const self = this;
       this.postObserver = observeMutations(function(node) {
         if (!self.filtersEnabled) return;
         if (node.matches && (node.matches(".Plate.ListingElement") || node.querySelector(".Plate.ListingElement"))) {
@@ -496,29 +555,29 @@ observeNewPosts() {
       });
     }
 async updateFilterValue(filterPath, value) {
-      var paths = filterPath.split(".");
-      var current = this.filters;
-      for (var i = 0; i < paths.length - 1; i++) current = current[paths[i]];
+      const paths = filterPath.split(".");
+      let current = this.filters;
+      for (let i = 0; i < paths.length - 1; i++) current = current[paths[i]];
       current[paths[paths.length - 1]] = value;
       await this.saveFilters();
       this.updateFilterIndicator();
     }
 updateFilterIndicator() {
-      var countSpan = document.querySelector(".Filter-buttonActiveFiltersCount");
+      const countSpan = document.querySelector(".Filter-buttonActiveFiltersCount");
       if (!countSpan) return;
-      var activeCount = 0;
+      let activeCount = 0;
       if (this.filters.afterDate) activeCount++;
-      var cf = this.filters.contentFilters;
+      const cf = this.filters.contentFilters;
       if (cf.onlyBookmarked) activeCount++;
       if (cf.hideBookmarked) activeCount++;
       if (cf.onlyWithImages) activeCount++;
       if (cf.hideWithImages) activeCount++;
       if (cf.hidePostTypes && cf.hidePostTypes.length > 0) activeCount++;
-      var inf = this.filters.interactionFilters;
+      const inf = this.filters.interactionFilters;
       if (inf.minAnswers || inf.maxAnswers || inf.minLikes) activeCount++;
-      var tf = this.filters.textFilters;
+      const tf = this.filters.textFilters;
       if (tf.keywords || tf.excludeKeywords) activeCount++;
-      var topf = this.filters.topicFilters;
+      const topf = this.filters.topicFilters;
       if (topf.excludeTopics || topf.includeTopics) activeCount++;
       countSpan.textContent = activeCount > 0 ? String(activeCount) : "";
       countSpan.style.display = activeCount > 0 ? "inline-block" : "none";
@@ -531,7 +590,7 @@ async getFilterHash() {
       });
     }
 async updateParsedFilters() {
-      var blockedAuthors = await GM.getValue("blockedAuthors", []);
+      const blockedAuthors = await GM.getValue("blockedAuthors", []);
       this.parsedFilterData = {
         excludeTopics: parseCSV(this.filters.topicFilters.excludeTopics),
         includeTopics: parseCSV(this.filters.topicFilters.includeTopics),
@@ -544,10 +603,10 @@ async updateParsedFilters() {
     }
 async applyFilters() {
       if (!this.filtersEnabled) return;
-      var posts = document.querySelectorAll(".Plate.ListingElement");
-      var visibleCount = 0;
-      var currentHash = await this.getFilterHash();
-      var shortHash = hashString(currentHash);
+      const posts = document.querySelectorAll(".Plate.ListingElement");
+      let visibleCount = 0;
+      const currentHash = await this.getFilterHash();
+      const shortHash = hashString(currentHash);
       if (currentHash !== this.lastFilterHash) {
         this.filterCache = {};
         this.lastFilterHash = currentHash;
@@ -555,145 +614,42 @@ async applyFilters() {
       }
       if (Object.keys(this.filterCache).length > 1e3) this.filterCache = {};
       if (!this.parsedFilterData || this.parsedFilterData.excludeTopics === null) await this.updateParsedFilters();
-      for (var p = 0; p < posts.length; p++) {
-        var post = posts[p];
-        var fingerprint = getPostFingerprint(post);
-        var cacheKey = currentHash + "|" + fingerprint;
+      const {
+        afterDate,
+        contentFilters: { onlyBookmarked, hideBookmarked, onlyWithImages, hideWithImages, hidePostTypes },
+        interactionFilters: { minAnswers, maxAnswers, minLikes }
+      } = this.filters;
+      const { excludeTopics: parsedExcludeTopics, includeTopics: parsedIncludeTopics, keywords: parsedKeywords, excludeKeywords: parsedExcludeKeywords, blockedAuthors } = this.parsedFilterData;
+      for (let p = 0; p < posts.length; p++) {
+        const post = posts[p];
+        const fingerprint = getPostFingerprint(post);
+        const cacheKey = currentHash + "|" + fingerprint;
         if (this.filterCache[cacheKey] !== void 0) {
-          var cached = this.filterCache[cacheKey];
+          const cached = this.filterCache[cacheKey];
           post.style.display = cached ? "" : "none";
           post.dataset.filterHash = shortHash;
           post.dataset.lastFilterResult = cached ? "visible" : "hidden";
           if (cached) visibleCount++;
           continue;
         }
-        var postHash = post.dataset.filterHash;
-        var lastResult = post.dataset.lastFilterResult;
+        const postHash = post.dataset.filterHash;
+        const lastResult = post.dataset.lastFilterResult;
         if (postHash === shortHash && lastResult) {
-          var domCached = lastResult === "visible";
+          const domCached = lastResult === "visible";
           this.filterCache[cacheKey] = domCached;
           post.style.display = domCached ? "" : "none";
           if (domCached) visibleCount++;
           continue;
         }
-        var shouldShow = true;
-        if (shouldShow && this.filters.afterDate) {
-          var timeEl = post.querySelector("time[datetime]");
-          if (timeEl) {
-            var postDate = new Date(timeEl.getAttribute("datetime"));
-            if (postDate < new Date(this.filters.afterDate)) shouldShow = false;
-          }
-        }
-        if (shouldShow && this.filters.contentFilters.hidePostTypes && this.filters.contentFilters.hidePostTypes.length > 0) {
-          var link = post.querySelector("a.ListingElement-questionLink[href]");
-          if (link) {
-            var href = link.getAttribute("href");
-            var type = href.indexOf("/frage/") !== -1 ? "frage" : href.indexOf("/diskussion/") !== -1 ? "diskussion" : href.indexOf("/umfrage/") !== -1 ? "umfrage" : null;
-            if (type && this.filters.contentFilters.hidePostTypes.indexOf(type) !== -1) shouldShow = false;
-          }
-        }
-        if (shouldShow && (this.filters.contentFilters.onlyBookmarked || this.filters.contentFilters.hideBookmarked)) {
-          var isBookmarked = !!post.querySelector(".Icon--bookmark-filled-large");
-          if (this.filters.contentFilters.onlyBookmarked && !isBookmarked) shouldShow = false;
-          if (shouldShow && this.filters.contentFilters.hideBookmarked && isBookmarked) shouldShow = false;
-        }
-        if (shouldShow && (this.filters.contentFilters.onlyWithImages || this.filters.contentFilters.hideWithImages)) {
-          var hasImages = getPostImagesStatus(post);
-          if (this.filters.contentFilters.onlyWithImages && !hasImages) shouldShow = false;
-          if (shouldShow && this.filters.contentFilters.hideWithImages && hasImages) shouldShow = false;
-        }
-        if (shouldShow && this.parsedFilterData.blockedAuthors.length > 0) {
-          var authorName = getPostAuthor(post).toLowerCase();
-          if (authorName && this.parsedFilterData.blockedAuthors.indexOf(authorName) !== -1) shouldShow = false;
-        }
-        if (shouldShow && (this.parsedFilterData.excludeTopics.length > 0 || this.parsedFilterData.includeTopics.length > 0)) {
-          var topicEls = post.querySelectorAll('a[href*="/thema/"], a:has(.BrandAvatar), [data-topic-slug], .ContentMeta-topic, .ContentMeta-category, a.u-strongLight:has(.BrandAvatar--small)');
-          var topicStrings = [];
-          for (var t = 0; t < topicEls.length; t++) {
-            var el = topicEls[t];
-            var text = (el.textContent || "").trim().toLowerCase();
-            if (text) topicStrings.push(text);
-            var href = el.getAttribute("href");
-            if (href) {
-              var clean = href.replace(/^https?:\/\/[^\/]+/, "").split("?")[0].split("#")[0].replace(/^\/|\/$/g, "");
-              if (clean && !clean.match(/^(frage|diskussion|umfrage|home|meine|suche|nutzer)\//)) {
-                topicStrings.push(clean);
-                if (clean.indexOf("/") !== -1) {
-                  var parts = clean.split("/");
-                  for (var pt = 0; pt < parts.length; pt++) {
-                    if (parts[pt]) topicStrings.push(parts[pt]);
-                  }
-                }
-              }
-            }
-            var dataSlug = el.getAttribute("data-topic-slug");
-            if (dataSlug) topicStrings.push(dataSlug.toLowerCase());
-          }
-          var uniqueTopics = [];
-          for (var u = 0; u < topicStrings.length; u++) {
-            if (uniqueTopics.indexOf(topicStrings[u]) === -1) uniqueTopics.push(topicStrings[u]);
-          }
-          if (shouldShow && this.parsedFilterData.excludeTopics.length > 0 && uniqueTopics.length > 0) {
-            for (var ex = 0; ex < uniqueTopics.length; ex++) {
-              for (var ec = 0; ec < this.parsedFilterData.excludeTopics.length; ec++) {
-                if (topicsMatch(uniqueTopics[ex], this.parsedFilterData.excludeTopics[ec])) {
-                  shouldShow = false;
-                  break;
-                }
-              }
-              if (!shouldShow) break;
-            }
-          }
-          if (shouldShow && this.parsedFilterData.includeTopics.length > 0 && uniqueTopics.length > 0) {
-            var hasMatch = false;
-            for (var ic = 0; ic < uniqueTopics.length; ic++) {
-              for (var ic2 = 0; ic2 < this.parsedFilterData.includeTopics.length; ic2++) {
-                if (topicsMatch(uniqueTopics[ic], this.parsedFilterData.includeTopics[ic2])) {
-                  hasMatch = true;
-                  break;
-                }
-              }
-              if (hasMatch) break;
-            }
-            if (!hasMatch) shouldShow = false;
-          }
-        }
-        if (shouldShow && (this.parsedFilterData.keywords.length > 0 || this.parsedFilterData.excludeKeywords.length > 0)) {
-          var titleText = getPostTitle(post).toLowerCase();
-          var bodyText = post.querySelector(".ContentBody") ? (post.querySelector(".ContentBody").textContent || "").toLowerCase() : "";
-          var authorText = getPostAuthor(post).toLowerCase();
-          var searchable = titleText + " " + bodyText + " " + authorText;
-          if (this.parsedFilterData.keywords.length > 0) {
-            var kwMatch = false;
-            for (var kw = 0; kw < this.parsedFilterData.keywords.length; kw++) {
-              if (searchable.indexOf(this.parsedFilterData.keywords[kw]) !== -1) {
-                kwMatch = true;
-                break;
-              }
-            }
-            if (!kwMatch) shouldShow = false;
-          }
-          if (shouldShow && this.parsedFilterData.excludeKeywords.length > 0) {
-            for (var ek = 0; ek < this.parsedFilterData.excludeKeywords.length; ek++) {
-              if (searchable.indexOf(this.parsedFilterData.excludeKeywords[ek]) !== -1) {
-                shouldShow = false;
-                break;
-              }
-            }
-          }
-        }
-        if (shouldShow && (this.filters.interactionFilters.minAnswers !== "" || this.filters.interactionFilters.maxAnswers !== "")) {
-          var answerCount = getAnswerCount(post);
-          var minA = parseInt(this.filters.interactionFilters.minAnswers, 10);
-          var maxA = parseInt(this.filters.interactionFilters.maxAnswers, 10);
-          if (!isNaN(minA) && answerCount < minA) shouldShow = false;
-          if (shouldShow && !isNaN(maxA) && answerCount > maxA) shouldShow = false;
-        }
-        if (shouldShow && this.filters.interactionFilters.minLikes) {
-          var likeBtn = post.querySelector('.ActionBarIcon button[aria-label*="Daumen"]');
-          var likes = likeBtn ? parseInt((likeBtn.getAttribute("aria-label").match(/(\d+)/) || [])[1], 10) || 0 : parseInt((post.querySelector(".ActionBarIcon-count") || {}).textContent, 10) || 0;
-          if (likes < parseInt(this.filters.interactionFilters.minLikes, 10)) shouldShow = false;
-        }
+        let shouldShow = true;
+        if (shouldShow) shouldShow = applyDateFilter(post, afterDate);
+        if (shouldShow) shouldShow = applyPostTypeFilter(post, hidePostTypes);
+        if (shouldShow) shouldShow = applyBookmarkFilter(post, onlyBookmarked, hideBookmarked);
+        if (shouldShow) shouldShow = applyImagesFilter(post, onlyWithImages, hideWithImages);
+        if (shouldShow) shouldShow = applyAuthorFilter(post, blockedAuthors);
+        if (shouldShow) shouldShow = applyTopicFilter(post, parsedExcludeTopics, parsedIncludeTopics);
+        if (shouldShow) shouldShow = applyTextFilter(post, parsedKeywords, parsedExcludeKeywords);
+        if (shouldShow) shouldShow = applyInteractionFilter(post, minAnswers, maxAnswers, minLikes);
         this.filterCache[cacheKey] = shouldShow;
         post.dataset.filterHash = shortHash;
         post.dataset.lastFilterResult = shouldShow ? "visible" : "hidden";
@@ -708,12 +664,12 @@ updateStats(visible, total) {
   }
   function createShadowContainer(opts) {
     opts = opts || {};
-    var host = document.createElement(opts.tag || "div");
+    const host = document.createElement(opts.tag || "div");
     if (opts.id) host.id = opts.id;
     if (opts.className) host.className = opts.className;
-    var root = host.attachShadow({ mode: "closed" });
+    const root = host.attachShadow({ mode: "closed" });
     if (opts.styles) {
-      var style = document.createElement("style");
+      const style = document.createElement("style");
       style.textContent = opts.styles;
       root.appendChild(style);
     }
@@ -722,11 +678,11 @@ updateStats(visible, total) {
   }
   function createSidebar(opts) {
     opts = opts || {};
-    var width = opts.width || 340;
-    var accent = opts.accentColor || "#2196F3";
-    var title = opts.title || "";
-    var isOpen = false;
-    var baseCSS = [
+    const width = opts.width || 340;
+    const accent = opts.accentColor || "#2196F3";
+    const title = opts.title || "";
+    let isOpen = false;
+    const baseCSS = [
       ":host { position:fixed; top:0; right:0; width:" + width + "px; height:100vh; z-index:2147483645;",
       "background:#1a1a2e; color:#e0e0e0; font:13px/1.5 system-ui,sans-serif;",
       "transform:translateX(" + width + "px); transition:transform 0.3s ease;",
@@ -744,24 +700,24 @@ updateStats(visible, total) {
       ".body::-webkit-scrollbar-thumb { background:#0f3460; border-radius:3px; }",
       opts.cssOverrides || ""
     ].join("");
-    var container = createShadowContainer({ styles: baseCSS });
-    var root = container.root;
-    var header = document.createElement("div");
+    const container = createShadowContainer({ styles: baseCSS });
+    const root = container.root;
+    const header = document.createElement("div");
     header.className = "header";
-    var h2 = document.createElement("h2");
+    const h2 = document.createElement("h2");
     h2.textContent = title;
-    var closeBtn = document.createElement("button");
+    const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
     closeBtn.setAttribute("aria-label", "Close sidebar");
     header.appendChild(h2);
     header.appendChild(closeBtn);
     root.appendChild(header);
-    var body = document.createElement("div");
+    const body = document.createElement("div");
     body.className = "body";
     root.appendChild(body);
-    var tab = document.createElement("div");
-    var tabRoot = tab.attachShadow({ mode: "closed" });
-    var tabStyle = document.createElement("style");
+    const tab = document.createElement("div");
+    const tabRoot = tab.attachShadow({ mode: "closed" });
+    const tabStyle = document.createElement("style");
     tabStyle.textContent = [
       ":host { position:fixed; top:50%; z-index:2147483644; background:" + accent + "; color:#fff;",
       "padding:10px 6px; border-radius:6px 0 0 6px; cursor:pointer; font:12px system-ui,sans-serif;",
@@ -771,7 +727,7 @@ updateStats(visible, total) {
       ":host(:hover) { filter:brightness(1.1); }",
       ":host(.open) { right:" + (width + 8) + "px; transform:translateY(-50%) translateX(0); }"
     ].join("");
-    var tabSpan = document.createElement("span");
+    const tabSpan = document.createElement("span");
     tabSpan.textContent = title;
     tabRoot.appendChild(tabStyle);
     tabRoot.appendChild(tabSpan);
@@ -796,7 +752,7 @@ updateStats(visible, total) {
       if (isOpen) close();
       else open();
     }
-    var dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
+    let dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
     header.addEventListener("mousedown", function(e) {
       if (e.target === closeBtn) return;
       dragging = true;
@@ -835,57 +791,66 @@ updateStats(visible, total) {
   }
   function toSpringeZu(datetimeLocalValue) {
     if (!datetimeLocalValue) return null;
-    var d = new Date(datetimeLocalValue);
-    var offset = -d.getTimezoneOffset();
-    var sign = offset >= 0 ? "+" : "-";
-    var hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
-    var mm = String(Math.abs(offset) % 60).padStart(2, "0");
-    var local = datetimeLocalValue.length === 16 ? datetimeLocalValue + ":00" : datetimeLocalValue;
+    const d = new Date(datetimeLocalValue);
+    const offset = -d.getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
+    const mm = String(Math.abs(offset) % 60).padStart(2, "0");
+    const local = datetimeLocalValue.length === 16 ? datetimeLocalValue + ":00" : datetimeLocalValue;
     return local + sign + hh + ":" + mm;
   }
   async function navigateToDate(section) {
-    var navDate = await GM.getValue("navDate", "");
-    var tz = toSpringeZu(navDate);
-    var base = section === "unbeantwortet" ? "/home/meine/unbeantwortet" : "/home/meine/alle";
-    var url = tz ? base + "?springe-zu=" + encodeURIComponent(tz) : base;
+    const navDate = await GM.getValue("navDate", "");
+    const tz = toSpringeZu(navDate);
+    const base = section === "unbeantwortet" ? "/home/meine/unbeantwortet" : "/home/meine/alle";
+    const url = tz ? base + "?springe-zu=" + encodeURIComponent(tz) : base;
     window.location.href = url;
   }
   async function resetNavigation() {
     await GM.setValue("navDate", "");
   }
-  var SIDEBAR_CSS = [
-    ".gf-stats-bar { margin:8px 0; padding:8px 13px; background:rgba(76,175,80,0.1); border:1px solid rgba(76,175,80,0.25); border-radius:7px; font-size:12px; color:#81c784; text-align:center; display:none; font-weight:500; }",
+  const panelLog = createLogger("Gutefrage UI Panel");
+  const SIDEBAR_CSS = [
+    '@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz@9..40&family=IBM+Plex+Serif:wght@600&display=swap");',
+    ".body { background:#0f1117; }",
+    ".gf-stats-bar { margin:8px 0; padding:10px 16px; background:linear-gradient(135deg,#171923,#1a1c2e); border:1px solid rgba(212,163,115,0.2); border-radius:10px; font-size:13px; color:#d4a373; text-align:center; display:none; font-weight:500; box-shadow:0 4px 12px rgba(0,0,0,0.2); }",
     ".gf-stats-bar.active { display:block; }",
-    ".gf-section { margin-top:10px; background:#262a3c; border-radius:9px; padding:9px 11px 11px; border:1px solid rgba(255,255,255,0.07); }",
-    ".gf-section-title { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.9px; color:#8890a4; margin:0 0 9px; display:flex; align-items:center; gap:6px; }",
-    '.gf-section-title::before { content:""; flex-shrink:0; display:inline-block; width:3px; height:11px; background:#4CAF50; border-radius:2px; }',
-    ".gf-input { width:100%; padding:6px 9px; border:1px solid rgba(255,255,255,0.13); border-radius:6px; font-size:12px; background:#2d3248; color:#dde3ec; box-sizing:border-box; transition:border-color 0.15s; font-family:inherit; }",
-    ".gf-input + .gf-input { margin-top:4px; }",
-    ".gf-input:focus { outline:none; border-color:#4CAF50; box-shadow:0 0 0 3px rgba(76,175,80,0.15); }",
-    ".gf-label { font-size:10px; color:#8890a4; display:block; margin:6px 0 3px; font-weight:500; }",
+    ".gf-section { margin-top:10px; background:#171923; border-radius:9px; padding:12px 14px 14px; border:1px solid rgba(255,255,255,0.06); box-shadow:inset 0 1px 0 rgba(255,255,255,0.04); }",
+    ".gf-section-title { font-size:13px; font-weight:600; color:#e8e6e3; margin:0 0 10px; letter-spacing:0.3px; }",
+    ".gf-input { width:100%; padding:7px 10px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; font-size:12px; background:#1e2030; color:#e8e6e3; box-sizing:border-box; transition:border-color 0.2s,box-shadow 0.2s; }",
+    ".gf-input + .gf-input { margin-top:5px; }",
+    ".gf-input:focus { outline:none; border-color:#d4a373; box-shadow:0 0 0 3px rgba(212,163,115,0.15); }",
+    ".gf-input::placeholder { color:#4a5568; }",
+    ".gf-label { font-size:10px; color:#8890a4; display:block; margin:7px 0 3px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }",
     ".gf-label:first-child { margin-top:0; }",
-    ".gf-hint { font-size:10px; color:#4e5a72; margin-top:3px; line-height:1.4; }",
+    ".gf-hint { font-size:10px; color:#5a6785; margin-top:4px; line-height:1.5; }",
     ".gf-pill-row { display:flex; gap:6px; flex-wrap:wrap; }",
-    ".gf-pill-label { display:flex; align-items:center; gap:4px; font-size:12px; font-weight:500; cursor:pointer; padding:5px 12px; border:1.5px solid rgba(255,255,255,0.13); border-radius:20px; user-select:none; transition:all 0.15s; color:#8890a4; background:#2d3248; }",
-    ".gf-pill-label:has(input:checked) { background:#4CAF50; color:#fff; border-color:#4CAF50; box-shadow:0 2px 6px rgba(76,175,80,0.28); }",
+    ".gf-pill-label { display:flex; align-items:center; gap:4px; font-size:12px; font-weight:500; cursor:pointer; padding:5px 14px; border:1.5px solid rgba(255,255,255,0.1); border-radius:20px; user-select:none; transition:all 0.2s; color:#8890a4; background:#1e2030; }",
+    ".gf-pill-label:hover { border-color:rgba(212,163,115,0.3); color:#e8e6e3; }",
+    ".gf-pill-label:has(input:checked) { background:#d4a373; color:#0f1117; border-color:#d4a373; box-shadow:0 2px 8px rgba(212,163,115,0.25); }",
     ".gf-pill-label input { display:none; }",
-    ".gf-toggle-row { display:flex; justify-content:space-between; align-items:center; padding:3px 0; }",
-    ".gf-toggle-row + .gf-toggle-row { margin-top:1px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.07); }",
-    ".gf-toggle-label { font-size:12px; color:#dde3ec; }",
+    '.gf-switch { display:flex; align-items:center; gap:10px; cursor:pointer; width:100%; padding:3px 0; font-family:"DM Sans",system-ui,sans-serif; }',
+    ".gf-switch + .gf-switch { margin-top:1px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); }",
+    ".gf-switch input { display:none; }",
+    ".gf-switch-track { width:36px; height:20px; background:#2d3142; border-radius:10px; position:relative; transition:background 0.2s; flex-shrink:0; }",
+    ".gf-switch-thumb { width:16px; height:16px; background:#e8e6e3; border-radius:50%; position:absolute; top:2px; left:2px; transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1); }",
+    ".gf-switch input:checked + .gf-switch-track { background:#d4a373; }",
+    ".gf-switch input:checked + .gf-switch-track .gf-switch-thumb { transform:translateX(16px); }",
+    ".gf-switch-label { font-size:12px; color:#e8e6e3; }",
     ".gf-number-row { display:flex; align-items:center; gap:8px; }",
-    ".gf-number-row input { width:72px; padding:7px 8px; border:1px solid rgba(255,255,255,0.13); border-radius:6px; font-size:13px; background:#2d3248; color:#dde3ec; font-family:inherit; transition:border-color 0.15s; }",
-    ".gf-number-row input:focus { outline:none; border-color:#4CAF50; box-shadow:0 0 0 3px rgba(76,175,80,0.15); }",
+    ".gf-number-row input { width:72px; padding:7px 8px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; font-size:13px; background:#1e2030; color:#e8e6e3; transition:border-color 0.2s,box-shadow 0.2s; }",
+    ".gf-number-row input:focus { outline:none; border-color:#d4a373; box-shadow:0 0 0 3px rgba(212,163,115,0.15); }",
     ".gf-number-row span { font-size:12px; color:#8890a4; }",
     ".gf-nav-row { display:flex; gap:6px; margin-top:8px; }",
-    ".gf-nav-btn { flex:1; padding:7px 8px; font-size:11px; font-weight:600; background:#2d3248; color:#4CAF50; border:1.5px solid #4CAF50; border-radius:6px; cursor:pointer; transition:all 0.15s; font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
-    ".gf-nav-btn:hover { background:#4CAF50; color:#fff; box-shadow:0 2px 6px rgba(76,175,80,0.28); }",
-    ".gf-nav-btn:disabled { opacity:0.38; cursor:not-allowed; border-color:rgba(255,255,255,0.13); color:#8890a4; }",
-    ".gf-nav-btn:disabled:hover { background:#2d3248; color:#8890a4; box-shadow:none; }",
-    ".gf-nav-btn.active { background:#4CAF50; color:#fff; }",
-    "#gf-nav-reset { background:#2d3248; color:#8890a4; border-color:rgba(255,255,255,0.13); }",
-    "#gf-nav-reset:hover { background:#8890a4; color:#fff; }",
-    ".gf-reset-btn { display:block; width:100%; margin-top:14px; padding:10px; background:#262a3c; border:1.5px solid rgba(255,255,255,0.07); border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; color:#8890a4; transition:all 0.2s; font-family:inherit; letter-spacing:0.2px; text-align:center; }",
-    ".gf-reset-btn:hover { background:rgba(192,57,43,0.15); border-color:rgba(192,57,43,0.4); color:#e57373; }"
+    ".gf-nav-btn { flex:1; padding:7px 8px; font-size:11px; font-weight:600; background:#1e2030; color:#d4a373; border:1.5px solid #d4a373; border-radius:6px; cursor:pointer; transition:all 0.2s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
+    ".gf-nav-btn:hover { background:#d4a373; color:#0f1117; box-shadow:0 2px 8px rgba(212,163,115,0.25); }",
+    ".gf-nav-btn:disabled { opacity:0.38; cursor:not-allowed; border-color:rgba(255,255,255,0.1); color:#5a6785; }",
+    ".gf-nav-btn:disabled:hover { background:#1e2030; color:#5a6785; box-shadow:none; }",
+    ".gf-nav-btn.active { background:#d4a373; color:#0f1117; }",
+    "#gf-nav-reset { background:#1e2030; color:#8890a4; border-color:rgba(255,255,255,0.1); }",
+    "#gf-nav-reset:hover { background:rgba(192,57,43,0.15); border-color:rgba(192,57,43,0.4); color:#e57373; }",
+    ".gf-reset-btn { display:block; width:100%; margin-top:16px; padding:10px; background:#171923; border:1.5px solid rgba(255,255,255,0.06); border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; color:#5a6785; transition:all 0.2s; letter-spacing:0.2px; text-align:center; }",
+    ".gf-reset-btn:hover { background:rgba(192,57,43,0.12); border-color:rgba(192,57,43,0.35); color:#e57373; }"
   ].join("\n");
   class SidebarPanel {
 constructor(fi) {
@@ -895,7 +860,7 @@ constructor(fi) {
       this.sb = createSidebar({
         width: 340,
         title: "Gutefrage Filter",
-        accentColor: "#4CAF50",
+        accentColor: "#d4a373",
         onOpen: function() {
           fi.enableFilters();
           setTimeout(function() {
@@ -905,17 +870,17 @@ constructor(fi) {
         onClose: function() {
         }
       });
-      this.renderContent()["catch"](function(err) {
-        console.warn("[GSF] Panel render error:", err);
+      this.renderContent().catch(function(err) {
+        panelLog.warn("Panel render error:", err);
       });
     }
 isOpen() {
       return this.sb.isOpen();
     }
 updateStats(visible, total) {
-      var statsEl = this.sb.bodyEl.querySelector(".gf-stats-bar");
+      const statsEl = this.sb.bodyEl.querySelector(".gf-stats-bar");
       if (!statsEl) return;
-      var filtered = total - visible;
+      const filtered = total - visible;
       if (filtered > 0) {
         statsEl.textContent = visible + " sichtbar  ·  " + filtered + " ausgeblendet";
         statsEl.classList.add("active");
@@ -923,105 +888,203 @@ updateStats(visible, total) {
         statsEl.classList.remove("active");
       }
     }
-async renderContent() {
-      var f = this.fi.filters;
-      var hideTypes = f.contentFilters.hidePostTypes || [];
-      var customTags = (await GM.getValue("customTagsToRemove", DEFAULT_TAGS)).join(", ");
-      var blockedAuthors = (await GM.getValue("blockedAuthors", [])).join(", ");
-      var dateVal = f.afterDate || "";
-      var isUnansweredPage = window.location.pathname.indexOf("/unbeantwortet") !== -1;
-      var html = "<style>" + SIDEBAR_CSS + "</style>";
-      html += '<div class="gf-stats-bar"></div>';
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Fragetyp</div>';
-      html += '<div class="gf-pill-row">';
-      html += '<label class="gf-pill-label"><input type="checkbox" data-posttype="frage"' + (hideTypes.indexOf("frage") === -1 ? " checked" : "") + "> Fragen</label>";
-      html += '<label class="gf-pill-label"><input type="checkbox" data-posttype="diskussion"' + (hideTypes.indexOf("diskussion") === -1 ? " checked" : "") + "> Diskussionen</label>";
-      html += '<label class="gf-pill-label"><input type="checkbox" data-posttype="umfrage"' + (hideTypes.indexOf("umfrage") === -1 ? " checked" : "") + "> Umfragen</label>";
-      html += "</div></div>";
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Datum-Filter</div>';
-      html += '<input type="datetime-local" class="gf-input" data-filter="afterDate" value="' + dateVal + '" title="Nur Beiträge ab diesem Datum anzeigen">';
-      html += '<div class="gf-hint">Blendet Beiträge <strong>vor</strong> diesem Datum aus (AB-Filter)</div></div>';
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Feed-Navigation</div>';
-      html += '<span class="gf-label">Zu diesem Datum springen:</span>';
-      html += '<input type="datetime-local" class="gf-input" id="gf-nav-date" value="' + await GM.getValue("navDate", "") + '" title="Springt im Gutefrage-Feed zu diesem Datum (VOR-Navigation)">';
-      html += '<div class="gf-hint">Springt im Feed zu Beiträgen <strong>vor</strong> diesem Datum</div>';
-      html += '<div class="gf-nav-row">';
-      html += '<button class="gf-nav-btn' + (!isUnansweredPage ? " active" : "") + '" id="gf-nav-alle" title="In „Alle Beiträge für Dich“ zu diesem Datum springen">Alle Beiträge →</button>';
-      html += '<button class="gf-nav-btn' + (isUnansweredPage ? " active" : "") + '" id="gf-nav-unbeantwortet" title="Zu diesem Datum in „Unbeantwortet“ springen">Unbeantwortet →</button>';
-      html += '<button class="gf-nav-btn" id="gf-nav-reset" title="Feed-Navigation zurücksetzen (Datum löschen)">Zurücksetzen ↺</button>';
-      html += "</div></div>";
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Themenbereich</div>';
-      html += '<span class="gf-label">Themen ausschließen (kommagetrennt):</span>';
-      html += '<input type="text" class="gf-input" placeholder="z.B. Liebe, Sport, Tiere" value="' + this._escapeHTML(f.topicFilters.excludeTopics) + '" data-filter="topicFilters.excludeTopics">';
-      html += '<span class="gf-label">Nur diese Themen (kommagetrennt):</span>';
-      html += '<input type="text" class="gf-input" placeholder="z.B. Computer, Technik" value="' + this._escapeHTML(f.topicFilters.includeTopics) + '" data-filter="topicFilters.includeTopics">';
-      html += '<div class="gf-hint">Themenname oder Slug (z.B. computer-internet)</div></div>';
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Bilder-Filter</div>';
-      html += this._toggleHTML("sb-only-with-images", "contentFilters.onlyWithImages", f.contentFilters.onlyWithImages, "Nur Beiträge mit Bildern");
-      html += this._toggleHTML("sb-hide-with-images", "contentFilters.hideWithImages", f.contentFilters.hideWithImages, "Beiträge mit Bildern ausblenden");
-      html += '<div class="gf-hint">Filtert nach Posts mit oder ohne Bildern</div></div>';
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Gemerkte Beiträge</div>';
-      html += this._toggleHTML("sb-only-bookmarked", "contentFilters.onlyBookmarked", f.contentFilters.onlyBookmarked, "Nur gemerkte anzeigen");
-      html += this._toggleHTML("sb-hide-bookmarked", "contentFilters.hideBookmarked", f.contentFilters.hideBookmarked, "Gemerkte ausblenden");
-      html += "</div>";
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Interaktion</div>';
-      html += '<span class="gf-label">Anzahl Antworten:</span>';
-      html += '<div class="gf-number-row">';
-      html += '<input type="number" placeholder="Min" value="' + f.interactionFilters.minAnswers + '" data-filter="interactionFilters.minAnswers" min="0">';
-      html += "<span>bis</span>";
-      html += '<input type="number" placeholder="Max" value="' + f.interactionFilters.maxAnswers + '" data-filter="interactionFilters.maxAnswers" min="0">';
-      html += "</div>";
-      html += '<span class="gf-label">Mindest-Likes:</span>';
-      html += '<input type="number" class="gf-input" placeholder="z.B. 5" value="' + f.interactionFilters.minLikes + '" data-filter="interactionFilters.minLikes" min="0">';
-      html += "</div>";
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Textfilter</div>';
-      html += '<span class="gf-label">Suchbegriffe (kommagetrennt):</span>';
-      html += '<input type="text" class="gf-input" placeholder="z.B. JavaScript, Python" value="' + this._escapeHTML(f.textFilters.keywords) + '" data-filter="textFilters.keywords">';
-      html += '<span class="gf-label">Ausschließen (kommagetrennt):</span>';
-      html += '<input type="text" class="gf-input" placeholder="z.B. Spam, Werbung" value="' + this._escapeHTML(f.textFilters.excludeKeywords) + '" data-filter="textFilters.excludeKeywords">';
-      html += "</div>";
-      html += '<div class="gf-section">';
-      html += '<div class="gf-section-title">Einstellungen</div>';
-      html += '<span class="gf-label">Tags automatisch entfernen (kommagetrennt):</span>';
-      html += '<input type="text" class="gf-input" id="gf-custom-tags" value="' + this._escapeHTML(customTags) + '">';
-      html += '<span class="gf-label">Gesperrte Autoren (kommagetrennt):</span>';
-      html += '<input type="text" class="gf-input" id="gf-blocked-authors" value="' + this._escapeHTML(blockedAuthors) + '">';
-      html += "</div>";
-      html += '<button class="gf-reset-btn">↺; Alle Filter zurücksetzen</button>';
-      this.sb.bodyEl.innerHTML = html;
-      this.attachEventListeners();
+
+_ce(tag, attrs, ...children) {
+      const el = document.createElement(tag);
+      if (attrs) {
+        for (const key of Object.keys(attrs)) {
+          const value = attrs[key];
+          if (key === "className") {
+            el.className = value;
+          } else if (key === "textContent") {
+            el.textContent = value;
+          } else {
+            el.setAttribute(key, value);
+          }
+        }
+      }
+      for (const child of children) {
+        if (typeof child === "string") {
+          el.appendChild(document.createTextNode(child));
+        } else if (child instanceof Node) {
+          el.appendChild(child);
+        }
+      }
+      return el;
     }
-_toggleHTML(id, dataFilter, isOn, label) {
-      return [
-        '<div class="gf-toggle-row">',
-        '<span class="gf-toggle-label">' + label + "</span>",
-        '<button class="Toggle-button u-mrm" type="button" id="' + id + '" role="switch" aria-checked="' + isOn + '"' + (dataFilter ? ' data-filter="' + dataFilter + '"' : "") + ">",
-        '<span class="Toggle ' + (isOn ? "Toggle--on" : "Toggle--off") + '"><span class="Toggle-label"></span></span>',
-        "</button></div>"
-      ].join("");
+_section(title) {
+      const sec = this._ce("div", { className: "gf-section" });
+      sec.appendChild(this._ce("div", { className: "gf-section-title", textContent: title }));
+      return sec;
+    }
+_pillCheckbox(postType, label, checked) {
+      const lbl = this._ce("label", { className: "gf-pill-label" });
+      const input = this._ce("input", { type: "checkbox", "data-posttype": postType });
+      input.checked = checked;
+      lbl.appendChild(input);
+      lbl.appendChild(document.createTextNode(" " + label));
+      return lbl;
+    }
+_toggleEl(id, dataFilter, isOn, label) {
+      const lbl = this._ce("label", { className: "gf-switch", id });
+      const input = this._ce("input", { type: "checkbox", role: "switch" });
+      if (dataFilter) input.setAttribute("data-filter", dataFilter);
+      input.checked = isOn;
+      lbl.appendChild(input);
+      const track = this._ce("span", { className: "gf-switch-track" });
+      track.appendChild(this._ce("span", { className: "gf-switch-thumb" }));
+      lbl.appendChild(track);
+      lbl.appendChild(this._ce("span", { className: "gf-switch-label", textContent: label }));
+      return lbl;
+    }
+async renderContent() {
+      const f = this.fi.filters;
+      const hideTypes = f.contentFilters.hidePostTypes || [];
+      const customTags = (await GM.getValue("customTagsToRemove", DEFAULT_TAGS)).join(", ");
+      const blockedAuthors = (await GM.getValue("blockedAuthors", [])).join(", ");
+      const dateVal = f.afterDate || "";
+      const navDateVal = await GM.getValue("navDate", "");
+      const isUnansweredPage = window.location.pathname.indexOf("/unbeantwortet") !== -1;
+      const container = this.sb.bodyEl;
+      container.textContent = "";
+      const fragment = document.createDocumentFragment();
+      const styleEl = document.createElement("style");
+      styleEl.textContent = SIDEBAR_CSS;
+      fragment.appendChild(styleEl);
+      fragment.appendChild(this._ce("div", { className: "gf-stats-bar" }));
+      {
+        const sec = this._section("Fragetyp");
+        const row = this._ce("div", { className: "gf-pill-row" });
+        row.appendChild(this._pillCheckbox("frage", "Fragen", hideTypes.indexOf("frage") === -1));
+        row.appendChild(this._pillCheckbox("diskussion", "Diskussionen", hideTypes.indexOf("diskussion") === -1));
+        row.appendChild(this._pillCheckbox("umfrage", "Umfragen", hideTypes.indexOf("umfrage") === -1));
+        sec.appendChild(row);
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Datum-Filter");
+        const dateInput = this._ce("input", { type: "datetime-local", className: "gf-input", "data-filter": "afterDate" });
+        dateInput.value = dateVal;
+        dateInput.title = "Nur Beiträge ab diesem Datum anzeigen";
+        sec.appendChild(dateInput);
+        const hint = this._ce("div", { className: "gf-hint" });
+        hint.appendChild(document.createTextNode("Blendet Beiträge "));
+        const hintStrong = document.createElement("strong");
+        hintStrong.textContent = "vor";
+        hint.appendChild(hintStrong);
+        hint.appendChild(document.createTextNode(" diesem Datum aus (AB-Filter)"));
+        sec.appendChild(hint);
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Feed-Navigation");
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Zu diesem Datum springen:" }));
+        const navInput = this._ce("input", { type: "datetime-local", className: "gf-input", id: "gf-nav-date" });
+        navInput.value = navDateVal;
+        sec.appendChild(navInput);
+        const navHint = this._ce("div", { className: "gf-hint" });
+        navHint.appendChild(document.createTextNode("Springt im Feed zu Beiträgen "));
+        const navStrong = document.createElement("strong");
+        navStrong.textContent = "vor";
+        navHint.appendChild(navStrong);
+        navHint.appendChild(document.createTextNode(" diesem Datum"));
+        sec.appendChild(navHint);
+        const navRow = this._ce("div", { className: "gf-nav-row" });
+        navRow.appendChild(this._ce("button", { className: "gf-nav-btn" + (!isUnansweredPage ? " active" : ""), id: "gf-nav-alle", title: "In „Alle Beiträge für Dich“ zu diesem Datum springen", textContent: "Alle Beiträge →" }));
+        navRow.appendChild(this._ce("button", { className: "gf-nav-btn" + (isUnansweredPage ? " active" : ""), id: "gf-nav-unbeantwortet", title: "Zu diesem Datum in „Unbeantwortet“ springen", textContent: "Unbeantwortet →" }));
+        navRow.appendChild(this._ce("button", { className: "gf-nav-btn", id: "gf-nav-reset", title: "Feed-Navigation zurücksetzen (Datum löschen)", textContent: "Zurücksetzen ↺" }));
+        sec.appendChild(navRow);
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Themenbereich");
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Themen ausschließen (kommagetrennt):" }));
+        const excludeInput = this._ce("input", { type: "text", className: "gf-input", placeholder: "z.B. Liebe, Sport, Tiere", "data-filter": "topicFilters.excludeTopics" });
+        excludeInput.value = f.topicFilters.excludeTopics;
+        sec.appendChild(excludeInput);
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Nur diese Themen (kommagetrennt):" }));
+        const includeInput = this._ce("input", { type: "text", className: "gf-input", placeholder: "z.B. Computer, Technik", "data-filter": "topicFilters.includeTopics" });
+        includeInput.value = f.topicFilters.includeTopics;
+        sec.appendChild(includeInput);
+        sec.appendChild(this._ce("div", { className: "gf-hint", textContent: "Themenname oder Slug (z.B. computer-internet)" }));
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Bilder-Filter");
+        sec.appendChild(this._toggleEl("sb-only-with-images", "contentFilters.onlyWithImages", f.contentFilters.onlyWithImages, "Nur Beiträge mit Bildern"));
+        sec.appendChild(this._toggleEl("sb-hide-with-images", "contentFilters.hideWithImages", f.contentFilters.hideWithImages, "Beiträge mit Bildern ausblenden"));
+        sec.appendChild(this._ce("div", { className: "gf-hint", textContent: "Filtert nach Posts mit oder ohne Bildern" }));
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Gemerkte Beiträge");
+        sec.appendChild(this._toggleEl("sb-only-bookmarked", "contentFilters.onlyBookmarked", f.contentFilters.onlyBookmarked, "Nur gemerkte anzeigen"));
+        sec.appendChild(this._toggleEl("sb-hide-bookmarked", "contentFilters.hideBookmarked", f.contentFilters.hideBookmarked, "Gemerkte ausblenden"));
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Interaktion");
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Anzahl Antworten:" }));
+        const numRow = this._ce("div", { className: "gf-number-row" });
+        const minAns = this._ce("input", { type: "number", placeholder: "Min", "data-filter": "interactionFilters.minAnswers" });
+        minAns.value = f.interactionFilters.minAnswers;
+        minAns.setAttribute("min", "0");
+        numRow.appendChild(minAns);
+        numRow.appendChild(this._ce("span", { textContent: "bis" }));
+        const maxAns = this._ce("input", { type: "number", placeholder: "Max", "data-filter": "interactionFilters.maxAnswers" });
+        maxAns.value = f.interactionFilters.maxAnswers;
+        maxAns.setAttribute("min", "0");
+        numRow.appendChild(maxAns);
+        sec.appendChild(numRow);
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Mindest-Likes:" }));
+        const likesInput = this._ce("input", { type: "number", className: "gf-input", placeholder: "z.B. 5", "data-filter": "interactionFilters.minLikes" });
+        likesInput.value = f.interactionFilters.minLikes;
+        likesInput.setAttribute("min", "0");
+        sec.appendChild(likesInput);
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Textfilter");
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Suchbegriffe (kommagetrennt):" }));
+        const kwInput = this._ce("input", { type: "text", className: "gf-input", placeholder: "z.B. JavaScript, Python", "data-filter": "textFilters.keywords" });
+        kwInput.value = f.textFilters.keywords;
+        sec.appendChild(kwInput);
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Ausschließen (kommagetrennt):" }));
+        const exKwInput = this._ce("input", { type: "text", className: "gf-input", placeholder: "z.B. Spam, Werbung", "data-filter": "textFilters.excludeKeywords" });
+        exKwInput.value = f.textFilters.excludeKeywords;
+        sec.appendChild(exKwInput);
+        fragment.appendChild(sec);
+      }
+      {
+        const sec = this._section("Einstellungen");
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Tags automatisch entfernen (kommagetrennt):" }));
+        const tagsInput = this._ce("input", { type: "text", className: "gf-input", id: "gf-custom-tags" });
+        tagsInput.value = customTags;
+        sec.appendChild(tagsInput);
+        sec.appendChild(this._ce("span", { className: "gf-label", textContent: "Gesperrte Autoren (kommagetrennt):" }));
+        const blockedInput = this._ce("input", { type: "text", className: "gf-input", id: "gf-blocked-authors" });
+        blockedInput.value = blockedAuthors;
+        sec.appendChild(blockedInput);
+        fragment.appendChild(sec);
+      }
+      fragment.appendChild(this._ce("button", { className: "gf-reset-btn", textContent: "Alle Filter zurücksetzen ↺" }));
+      container.appendChild(fragment);
+      this.attachEventListeners();
     }
 _escapeHTML(str) {
       if (!str) return "";
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 attachEventListeners() {
-      var body = this.sb.bodyEl;
-      var fi = this.fi;
-      var typeChecks = body.querySelectorAll("[data-posttype]");
-      for (var tc = 0; tc < typeChecks.length; tc++) {
+      const body = this.sb.bodyEl;
+      const fi = this.fi;
+      const typeChecks = body.querySelectorAll("[data-posttype]");
+      for (let tc = 0; tc < typeChecks.length; tc++) {
         typeChecks[tc].addEventListener("change", function() {
-          var type = this.getAttribute("data-posttype");
-          var hideTypes = (fi.filters.contentFilters.hidePostTypes || []).slice();
+          const type = this.getAttribute("data-posttype");
+          const hideTypes = (fi.filters.contentFilters.hidePostTypes || []).slice();
           if (this.checked) {
-            var idx = hideTypes.indexOf(type);
+            const idx = hideTypes.indexOf(type);
             if (idx > -1) hideTypes.splice(idx, 1);
           } else {
             if (hideTypes.indexOf(type) === -1) hideTypes.push(type);
@@ -1034,40 +1097,42 @@ attachEventListeners() {
           });
         });
       }
-      var toggleBtns = body.querySelectorAll(".Toggle-button[data-filter]");
-      for (var tb = 0; tb < toggleBtns.length; tb++) {
-        toggleBtns[tb].addEventListener("click", function() {
-          var toggle = this.querySelector(".Toggle");
-          var isOn = toggle.classList.contains("Toggle--on");
-          if (!isOn && (this.id === "sb-only-bookmarked" || this.id === "sb-hide-bookmarked")) {
-            var otherId = this.id === "sb-only-bookmarked" ? "sb-hide-bookmarked" : "sb-only-bookmarked";
-            var other = body.querySelector("#" + otherId);
-            if (other && other.querySelector(".Toggle").classList.contains("Toggle--on")) {
-              other.querySelector(".Toggle").classList.replace("Toggle--on", "Toggle--off");
-              other.setAttribute("aria-checked", "false");
-              fi.updateFilterValue(other.getAttribute("data-filter"), false);
+      const toggleSwitches = body.querySelectorAll(".gf-switch input[data-filter]");
+      for (let ts = 0; ts < toggleSwitches.length; ts++) {
+        toggleSwitches[ts].addEventListener("change", function() {
+          const switchLabel = this.closest(".gf-switch");
+          const isNowChecked = this.checked;
+          const switchId = switchLabel ? switchLabel.id : "";
+          if (isNowChecked && (switchId === "sb-only-bookmarked" || switchId === "sb-hide-bookmarked")) {
+            const otherId = switchId === "sb-only-bookmarked" ? "sb-hide-bookmarked" : "sb-only-bookmarked";
+            const other = body.querySelector("#" + otherId);
+            if (other) {
+              const otherInput = other.querySelector("input[data-filter]");
+              if (otherInput && otherInput.checked) {
+                otherInput.checked = false;
+                fi.updateFilterValue(otherInput.getAttribute("data-filter"), false);
+              }
             }
           }
-          if (!isOn && (this.id === "sb-only-with-images" || this.id === "sb-hide-with-images")) {
-            var otherId2 = this.id === "sb-only-with-images" ? "sb-hide-with-images" : "sb-only-with-images";
-            var other2 = body.querySelector("#" + otherId2);
-            if (other2 && other2.querySelector(".Toggle").classList.contains("Toggle--on")) {
-              other2.querySelector(".Toggle").classList.replace("Toggle--on", "Toggle--off");
-              other2.setAttribute("aria-checked", "false");
-              fi.updateFilterValue(other2.getAttribute("data-filter"), false);
+          if (isNowChecked && (switchId === "sb-only-with-images" || switchId === "sb-hide-with-images")) {
+            const otherId2 = switchId === "sb-only-with-images" ? "sb-hide-with-images" : "sb-only-with-images";
+            const other2 = body.querySelector("#" + otherId2);
+            if (other2) {
+              const otherInput2 = other2.querySelector("input[data-filter]");
+              if (otherInput2 && otherInput2.checked) {
+                otherInput2.checked = false;
+                fi.updateFilterValue(otherInput2.getAttribute("data-filter"), false);
+              }
             }
           }
-          toggle.classList.toggle("Toggle--on", !isOn);
-          toggle.classList.toggle("Toggle--off", isOn);
-          this.setAttribute("aria-checked", !isOn);
-          fi.updateFilterValue(this.getAttribute("data-filter"), !isOn).then(function() {
+          fi.updateFilterValue(this.getAttribute("data-filter"), isNowChecked).then(function() {
             fi.enableFilters();
             fi.debouncedApplyFilters();
           });
         });
       }
-      var filterInputs = body.querySelectorAll("input[data-filter]");
-      for (var fi2 = 0; fi2 < filterInputs.length; fi2++) {
+      const filterInputs = body.querySelectorAll('input[data-filter]:not([type="checkbox"])');
+      for (let fi2 = 0; fi2 < filterInputs.length; fi2++) {
         filterInputs[fi2].addEventListener("change", function() {
           fi.updateFilterValue(this.getAttribute("data-filter"), this.value).then(function() {
             fi.enableFilters();
@@ -1075,44 +1140,44 @@ attachEventListeners() {
           });
         });
       }
-      var navDate = body.querySelector("#gf-nav-date");
+      const navDate = body.querySelector("#gf-nav-date");
       if (navDate) {
         navDate.addEventListener("change", async function() {
           await GM.setValue("navDate", this.value);
         });
       }
-      var navAlle = body.querySelector("#gf-nav-alle");
+      const navAlle = body.querySelector("#gf-nav-alle");
       if (navAlle) {
         navAlle.addEventListener("click", function() {
           navigateToDate("alle");
         });
       }
-      var navUnanswered = body.querySelector("#gf-nav-unbeantwortet");
-      if (navUnanswered) {
-        navUnanswered.addEventListener("click", function() {
+      const navUnbeantwortet = body.querySelector("#gf-nav-unbeantwortet");
+      if (navUnbeantwortet) {
+        navUnbeantwortet.addEventListener("click", function() {
           navigateToDate("unbeantwortet");
         });
       }
-      var navReset = body.querySelector("#gf-nav-reset");
+      const navReset = body.querySelector("#gf-nav-reset");
       if (navReset) {
         navReset.addEventListener("click", function() {
           resetNavigation();
-          var dateInput = body.querySelector("#gf-nav-date");
+          const dateInput = body.querySelector("#gf-nav-date");
           if (dateInput) dateInput.value = "";
-          var url = new URL(window.location.href);
+          const url = new URL(window.location.href);
           if (url.searchParams.has("springe-zu")) {
             url.searchParams.delete("springe-zu");
             window.location.href = url.toString();
           }
         });
       }
-      var customTagsInput = body.querySelector("#gf-custom-tags");
+      const customTagsInput = body.querySelector("#gf-custom-tags");
       if (customTagsInput) {
         customTagsInput.addEventListener("change", async function() {
           await GM.setValue("customTagsToRemove", parseCSV(this.value, false));
         });
       }
-      var blockedAuthorsInput = body.querySelector("#gf-blocked-authors");
+      const blockedAuthorsInput = body.querySelector("#gf-blocked-authors");
       if (blockedAuthorsInput) {
         blockedAuthorsInput.addEventListener("change", async function() {
           await GM.setValue("blockedAuthors", parseCSV(this.value, false));
@@ -1120,7 +1185,7 @@ attachEventListeners() {
           fi.debouncedApplyFilters();
         });
       }
-      var resetBtn = body.querySelector(".gf-reset-btn");
+      const resetBtn = body.querySelector(".gf-reset-btn");
       if (resetBtn) {
         resetBtn.addEventListener("click", (async function() {
           fi.filters = {
@@ -1139,7 +1204,7 @@ attachEventListeners() {
     }
   }
   
-  var log = createLogger("Gutefrage Smart Filters");
+  const log = createLogger("Gutefrage Smart Filters");
   GM_addStyle([
     ".FilterMenu { max-height:60vh !important; overflow-y:auto !important; overflow-x:hidden !important; padding-right:10px !important; position:relative !important; scrollbar-width:thin; scrollbar-color:rgba(0,0,0,0.3) rgba(0,0,0,0.1); }",
     ".FilterMenu::-webkit-scrollbar { width:6px; }",
@@ -1151,7 +1216,7 @@ attachEventListeners() {
   ].join("\n"));
   log.log("Initializing...");
   new TagRemover();
-  var filterIntegration = new EnhancedFilterIntegration();
+  const filterIntegration = new EnhancedFilterIntegration();
   filterIntegration.init().then(function() {
     new SidebarPanel(filterIntegration);
   });
