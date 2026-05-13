@@ -52,33 +52,20 @@ export class MangaDownloader {
     /** @private */
     this._menuId = null;
 
-    // Build UI (closed Shadow DOM sidebar) + register menu command (synchronous)
-    this.ui = buildUI(this.mangaMode);
-    this._initUI();
-    this._watchUrlChanges();
+    /** @private @type {Object|null} lazily built on first toggle */
+    this.ui = null;
+
+    // Register menu command immediately — nothing else runs until toggle
     this._registerMenuCommand();
   }
 
   // ── Public API ───────────────────────────────────────────────────────
 
   /**
-   * Initializes the downloader: restores saved manga-mode, cleans legacy storage.
-   * Called once from the entry bootstrap. Menu command is already registered
-   * in the constructor — this only handles async init tasks.
+   * No-op — kept for backward compatibility with entry bootstrap.
+   * Menu command is already registered in the constructor.
    */
-  async init() {
-    // Restore persisted manga-mode state
-    try {
-      this.mangaMode = await GM.getValue('mpd-manga-mode', false);
-    } catch (_) { /* GM unavailable during dev */ }
-    // Update UI checkbox to reflect restored state
-    if (this.mangaMode && this.ui.mangaCheck) {
-      this.ui.mangaCheck.checked = true;
-    }
-
-    // Clean up legacy storage key (best-effort, ignore failures)
-    GM.deleteValue('mpd-allowed-sites').catch(() => {});
-  }
+  init() {}
 
   // ── Menu command ────────────────────────────────────────────────────
 
@@ -97,14 +84,26 @@ export class MangaDownloader {
   }
 
   /**
-   * Toggles the downloader on/off, showing or hiding the sidebar.
+   * Builds UI lazily on first enable.
+   * @private
+   */
+  _ensureUI() {
+    if (this.ui) return;
+    this.ui = buildUI(this.mangaMode);
+    this._initUI();
+    this._watchUrlChanges();
+  }
+
+  /**
+   * Toggles the downloader on/off, building UI on first enable.
    * @private
    */
   _toggle() {
     this._enabled = !this._enabled;
     if (this._enabled) {
+      this._ensureUI();
       this.ui.sidebar.open();
-    } else {
+    } else if (this.ui) {
       this.ui.sidebar.close();
     }
   }
@@ -123,7 +122,6 @@ export class MangaDownloader {
     this.ui.dlBtn.addEventListener('click', () => this._download());
     this.ui.mangaCheck.addEventListener('change', (e) => {
       this.mangaMode = e.target.checked;
-      GM.setValue('mpd-manga-mode', this.mangaMode).catch(() => {});
     });
   }
 

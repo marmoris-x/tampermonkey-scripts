@@ -8,9 +8,6 @@
 // @match        *://*/*
 // @grant        GM.xmlHttpRequest
 // @grant        GM.registerMenuCommand
-// @grant        GM.getValue
-// @grant        GM.setValue
-// @grant        GM.deleteValue
 // @grant        GM_xmlhttpRequest
 // @connect      *
 // Required: manga images served from arbitrary CDNs (cloudfront, img-*.cdn, etc.)

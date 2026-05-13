@@ -311,7 +311,7 @@ export function buildUI(mangaMode) {
   btnRow.appendChild(dlBtn);
   controls.appendChild(btnRow);
 
-  // Manga mode toggle
+  // Manga mode toggle (in-memory only, resets on page reload)
   const mangaLabel = document.createElement('label');
   mangaLabel.className = 'mpd-toggle-row';
 
@@ -320,15 +320,6 @@ export function buildUI(mangaMode) {
   mangaCheck.id = 'mpd-manga-mode';
   mangaCheck.checked = !!mangaMode;
   mangaCheck.setAttribute('aria-checked', mangaMode ? 'true' : 'false');
-
-  // Persist manga mode changes via GM storage
-  mangaCheck.addEventListener('change', () => {
-    const val = mangaCheck.checked;
-    mangaCheck.setAttribute('aria-checked', val ? 'true' : 'false');
-    if (typeof GM !== 'undefined' && GM.setValue) {
-      GM.setValue('mpd-manga-mode', val).catch(() => {});
-    }
-  });
 
   const mangaLabelSpan = document.createElement('span');
   mangaLabelSpan.textContent = 'Manga-Modus (auto weiterklicken)';
@@ -367,8 +358,6 @@ export function buildUI(mangaMode) {
   root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') sidebar.close();
   });
-
-  sidebar.open();
 
   return {
     sidebar,

@@ -13,10 +13,7 @@
 // @require      https://raw.githubusercontent.com/Tampermonkey/utils/refs/heads/main/requires/gh_2215_make_GM_xhr_more_parallel_again.js
 // @sandbox      raw
 // @connect      *
-// @grant        GM.deleteValue
-// @grant        GM.getValue
 // @grant        GM.registerMenuCommand
-// @grant        GM.setValue
 // @grant        GM.xmlHttpRequest
 // @grant        GM_addElement
 // @grant        GM_xmlhttpRequest
@@ -712,14 +709,6 @@
     mangaCheck.id = "mpd-manga-mode";
     mangaCheck.checked = !!mangaMode;
     mangaCheck.setAttribute("aria-checked", mangaMode ? "true" : "false");
-    mangaCheck.addEventListener("change", () => {
-      const val = mangaCheck.checked;
-      mangaCheck.setAttribute("aria-checked", val ? "true" : "false");
-      if (typeof GM !== "undefined" && GM.setValue) {
-        GM.setValue("mpd-manga-mode", val).catch(() => {
-        });
-      }
-    });
     const mangaLabelSpan = document.createElement("span");
     mangaLabelSpan.textContent = "Manga-Modus (auto weiterklicken)";
     mangaLabel.appendChild(mangaCheck);
@@ -745,7 +734,6 @@
     root.addEventListener("keydown", (e) => {
       if (e.key === "Escape") sidebar.close();
     });
-    sidebar.open();
     return {
       sidebar,
       root,
@@ -946,22 +934,11 @@ constructor(logger2) {
       this.abortController = null;
       this._enabled = false;
       this._menuId = null;
-      this.ui = buildUI(this.mangaMode);
-      this._initUI();
-      this._watchUrlChanges();
+      this.ui = null;
       this._registerMenuCommand();
     }
 
-async init() {
-      try {
-        this.mangaMode = await GM.getValue("mpd-manga-mode", false);
-      } catch (_) {
-      }
-      if (this.mangaMode && this.ui.mangaCheck) {
-        this.ui.mangaCheck.checked = true;
-      }
-      GM.deleteValue("mpd-allowed-sites").catch(() => {
-      });
+init() {
     }
 
 _registerMenuCommand() {
@@ -969,11 +946,18 @@ _registerMenuCommand() {
       const label = this._enabled ? "Manga Downloader deaktivieren" : "Manga Downloader aktivieren";
       this._menuId = GM.registerMenuCommand(label, () => this._toggle());
     }
+_ensureUI() {
+      if (this.ui) return;
+      this.ui = buildUI(this.mangaMode);
+      this._initUI();
+      this._watchUrlChanges();
+    }
 _toggle() {
       this._enabled = !this._enabled;
       if (this._enabled) {
+        this._ensureUI();
         this.ui.sidebar.open();
-      } else {
+      } else if (this.ui) {
         this.ui.sidebar.close();
       }
     }
@@ -986,8 +970,6 @@ _initUI() {
       this.ui.dlBtn.addEventListener("click", () => this._download());
       this.ui.mangaCheck.addEventListener("change", (e) => {
         this.mangaMode = e.target.checked;
-        GM.setValue("mpd-manga-mode", this.mangaMode).catch(() => {
-        });
       });
     }
 
