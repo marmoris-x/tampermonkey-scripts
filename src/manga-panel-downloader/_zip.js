@@ -1,39 +1,20 @@
-// Local copy of buildStoreZip from src/shared/zip-builder.js
-// Side-effect-free extraction for Manga Panel Downloader.
+// ZIP archive builder — STORE (no-compression) format
+// Uses CRC-32 from separate module for checksum computation.
 
-/* --- CRC-32 Table (lazily initialized) --- */
+'use strict';
 
-let crcTable = null;
-function buildCRCTable() {
-  if (crcTable) return crcTable;
-  crcTable = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) {
-      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    }
-    crcTable[i] = c;
-  }
-  return crcTable;
-}
-
-function crc32(data) {
-  const table = buildCRCTable();
-  let crc = 0xFFFFFFFF;
-  for (let i = 0; i < data.length; i++) {
-    crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-  }
-  return (crc ^ 0xFFFFFFFF) >>> 0;
-}
+import { crc32 } from './_crc32.js';
 
 const encoder = new TextEncoder();
 
 /**
  * Builds a STORE (no-compression) ZIP archive.
+ * Returns a Promise for compatibility with async pipelines;
+ * the actual computation is synchronous.
  * @param {{ name: string, data: Uint8Array }[]} files - Array of {name, data} objects
- * @returns {Uint8Array} Complete ZIP file as bytes
+ * @returns {Promise<Uint8Array>} Complete ZIP file as bytes
  */
-export function buildStoreZip(files) {
+async function buildStoreZip(files) {
   const localHeaders = [];
   const centralEntries = [];
   const offsets = [];
@@ -121,3 +102,24 @@ export function buildStoreZip(files) {
   eocd.setUint16(20, 0, true);            // comment length
   return out;
 }
+
+/**
+ * Converts Blob-based file entries to Uint8Array and builds a STORE ZIP blob.
+ * @param {Array<{filename: string, blob: Blob}>} files - Source files with Blob data
+ * @returns {Promise<Blob>} ZIP file as a downloadable Blob
+ */
+async function buildZipBlob(files) {
+  const converted = await Promise.all(files.map(async (file) => {
+    const buf = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(new Uint8Array(fr.result));
+      fr.onerror = () => reject(fr.error || new Error('FileReader error'));
+      fr.readAsArrayBuffer(file.blob);
+    });
+    return { name: file.filename, data: buf };
+  }));
+  const zipBytes = await buildStoreZip(converted);
+  return new Blob([zipBytes], { type: 'application/zip' });
+}
+
+export { buildStoreZip, buildZipBlob };

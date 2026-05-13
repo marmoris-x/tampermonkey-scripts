@@ -609,7 +609,7 @@
     return (crc ^ 4294967295) >>> 0;
   }
   const encoder = new TextEncoder();
-  function buildStoreZip(files) {
+  async function buildStoreZip(files) {
     const localHeaders = [];
     const centralEntries = [];
     const offsets = [];
