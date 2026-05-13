@@ -17,6 +17,7 @@
 // @grant        GM.deleteValue
 // @grant        GM.registerMenuCommand
 // @grant        GM.xmlHttpRequest
+// @grant        GM_addElement
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
@@ -460,27 +461,69 @@
       }, 80);
     });
   }
-  function createShadowContainer(opts) {
-    opts = opts || {};
+  const CONTENT_CSS$1 = [
+    "#mpd-controls { padding:12px 0; border-bottom:1px solid #2c2d32; display:flex; flex-direction:column; gap:9px; }",
+    ".mpd-btn-row { display:flex; gap:8px; }",
+    ".mpd-btn-row button { flex:1; }",
+    ".mpd-btn { padding:7px 12px; border:none; border-radius:4px; font-size:13px; font-weight:600; cursor:pointer; transition:background 0.15s; }",
+    ".mpd-primary { background:#2f9e44; color:#fff; }",
+    ".mpd-primary:hover:not(:disabled) { background:#237032; }",
+    ".mpd-danger { background:#c92a2a; color:#fff; }",
+    ".mpd-danger:hover:not(:disabled) { background:#a61e1e; }",
+    ".mpd-secondary { background:#2c2d32; color:#c1c2c5; }",
+    ".mpd-secondary:hover:not(:disabled) { background:#373a40; }",
+    ".mpd-btn:disabled { background:#333; color:#555; cursor:not-allowed; }",
+    "#mpd-progress { height:3px; background:#2c2d32; border-radius:2px; overflow:hidden; display:none; }",
+    "#mpd-progress-bar { height:100%; background:#2f9e44; width:0%; transition:width 0.15s; }",
+    "#mpd-status { font-size:12px; color:#909296; min-height:16px; }",
+    ".mpd-thumb { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid #25262b; }",
+    ".mpd-thumb img { width:48px; height:48px; object-fit:cover; border-radius:3px; flex-shrink:0; background:#25262b; }",
+    ".mpd-thumb-info { flex:1; min-width:0; }",
+    ".mpd-thumb-name { font-size:11px; color:#909296; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
+    ".mpd-thumb-size { font-size:11px; color:#555; }",
+    ".mpd-thumb input[type=checkbox] { flex-shrink:0; width:15px; height:15px; cursor:pointer; accent-color:#2f9e44; }",
+    "#mpd-footer { padding:8px 0; border-top:1px solid #2c2d32; font-size:11px; color:#555; }",
+    ".mpd-toggle-row { display:flex; align-items:center; gap:8px; font-size:12px; color:#909296; cursor:pointer; user-select:none; }",
+    ".mpd-toggle-row input { cursor:pointer; accent-color:#2f9e44; }"
+  ].join("");
+  function applyStyles(root, cssText) {
+    if (root.adoptedStyleSheets !== void 0) {
+      try {
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(cssText);
+        root.adoptedStyleSheets = [sheet];
+        return;
+      } catch (_) {
+      }
+    }
+    if (typeof GM_addElement !== "undefined") {
+      try {
+        GM_addElement(root, "style", { textContent: cssText });
+        return;
+      } catch (_) {
+      }
+    }
+    const style = document.createElement("style");
+    style.textContent = cssText;
+    root.appendChild(style);
+  }
+  function createShadowContainer(opts = {}) {
     const host = document.createElement(opts.tag || "div");
     if (opts.id) host.id = opts.id;
     if (opts.className) host.className = opts.className;
     const root = host.attachShadow({ mode: "closed" });
     if (opts.styles) {
-      const style = document.createElement("style");
-      style.textContent = opts.styles;
-      root.appendChild(style);
+      applyStyles(root, opts.styles);
     }
     document.body.appendChild(host);
     return { host, root };
   }
-  function createSidebar(opts) {
-    opts = opts || {};
+  function createSidebar(opts = {}) {
     const width = opts.width || 340;
     const accent = opts.accentColor || "#2196F3";
     const title = opts.title || "";
     let isOpen = false;
-    const baseCSS = [
+    const sidebarCSS = [
       ":host { position:fixed; top:0; right:0; width:" + width + "px; height:100vh; z-index:2147483645;",
       "background:#1a1a2e; color:#e0e0e0; font:13px/1.5 system-ui,sans-serif;",
       "transform:translateX(" + width + "px); transition:transform 0.3s ease;",
@@ -498,7 +541,8 @@
       ".body::-webkit-scrollbar-thumb { background:#0f3460; border-radius:3px; }",
       opts.cssOverrides || ""
     ].join("");
-    const container = createShadowContainer({ styles: baseCSS });
+    const allCSS = sidebarCSS + "\n" + CONTENT_CSS$1;
+    const container = createShadowContainer({ styles: allCSS });
     const root = container.root;
     const header = document.createElement("div");
     header.className = "header";
@@ -506,7 +550,7 @@
     h2.textContent = title;
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
-    closeBtn.setAttribute("aria-label", "Close sidebar");
+    closeBtn.setAttribute("aria-label", "Sidebar schließen");
     header.appendChild(h2);
     header.appendChild(closeBtn);
     root.appendChild(header);
@@ -515,8 +559,7 @@
     root.appendChild(body);
     const tab = document.createElement("div");
     const tabRoot = tab.attachShadow({ mode: "closed" });
-    const tabStyle = document.createElement("style");
-    tabStyle.textContent = [
+    const tabCSS = [
       ":host { position:fixed; top:50%; z-index:2147483644; background:" + accent + "; color:#fff;",
       "padding:10px 6px; border-radius:6px 0 0 6px; cursor:pointer; font:12px system-ui,sans-serif;",
       "writing-mode:vertical-rl; text-orientation:mixed; box-shadow:-2px 2px 8px rgba(0,0,0,0.3);",
@@ -525,9 +568,9 @@
       ":host(:hover) { filter:brightness(1.1); }",
       ":host(.open) { right:" + (width + 8) + "px; transform:translateY(-50%) translateX(0); }"
     ].join("");
+    applyStyles(tabRoot, tabCSS);
     const tabSpan = document.createElement("span");
     tabSpan.textContent = title;
-    tabRoot.appendChild(tabStyle);
     tabRoot.appendChild(tabSpan);
     document.body.appendChild(tab);
     function open() {
@@ -550,22 +593,26 @@
       if (isOpen) close();
       else open();
     }
-    let dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
-    header.addEventListener("mousedown", function(e) {
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startRight = 0;
+    let startTop = 0;
+    header.addEventListener("mousedown", (e) => {
       if (e.target === closeBtn) return;
       dragging = true;
       startX = e.clientX;
       startY = e.clientY;
-      startRight = parseInt(container.host.style.right || 0, 10);
-      startTop = parseInt(container.host.style.top || 0, 10);
+      startRight = parseInt(container.host.style.right || "0", 10);
+      startTop = parseInt(container.host.style.top || "0", 10);
       e.preventDefault();
     });
-    document.addEventListener("mousemove", function(e) {
+    document.addEventListener("mousemove", (e) => {
       if (!dragging) return;
       container.host.style.right = startRight - (e.clientX - startX) + "px";
       container.host.style.top = startTop + (e.clientY - startY) + "px";
     });
-    document.addEventListener("mouseup", function() {
+    document.addEventListener("mouseup", () => {
       dragging = false;
     });
     closeBtn.addEventListener("click", close);
@@ -578,10 +625,8 @@
       open,
       close,
       toggle,
-      isOpen: function() {
-        return isOpen;
-      },
-      setTitle: function(t) {
+      isOpen: () => isOpen,
+      setTitle: (t) => {
         h2.textContent = t;
         tabSpan.textContent = t;
       }
