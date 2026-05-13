@@ -111,7 +111,7 @@
     const canvases = container.querySelectorAll("canvas");
     for (let l = 0; l < canvases.length; l++) {
       const c = canvases[l];
-      if (c.width < MIN_IMG_PX || c.height < MIN_IMG_PX) return;
+      if (c.width < MIN_IMG_PX || c.height < MIN_IMG_PX) continue;
       try {
         const d = c.toDataURL("image/jpeg", 0.92);
         if (d && d.length > 1e3) tryAdd(c, d);
@@ -931,8 +931,6 @@
     return new Blob([zipBytes], { type: "application/zip" });
   }
   const CONCURRENT_DL = 6;
-  const MANGA_POLL_MS = 50;
-  const MANGA_MAX_WAIT_MS = 3e3;
   class MangaDownloader {
 constructor(logger2) {
       this.log = logger2;
@@ -1063,16 +1061,6 @@ _collectPageUrls() {
         fresh.push(c);
       }
       return fresh;
-    }
-_pollImages(findFn) {
-      const deadline = Date.now() + MANGA_MAX_WAIT_MS;
-      const poll = () => {
-        if (Date.now() >= deadline) return Promise.resolve(findFn());
-        const imgs = findImages(document);
-        if (imgs.length > 0) return Promise.resolve(findFn());
-        return this._sleep(MANGA_POLL_MS).then(poll);
-      };
-      return poll();
     }
 
 async _scan() {

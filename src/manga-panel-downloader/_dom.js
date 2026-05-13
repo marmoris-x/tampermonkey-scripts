@@ -128,7 +128,7 @@ export function findImages(container) {
   const canvases = container.querySelectorAll('canvas');
   for (let l = 0; l < canvases.length; l++) {
     const c = canvases[l];
-    if (c.width < MIN_IMG_PX || c.height < MIN_IMG_PX) return;
+    if (c.width < MIN_IMG_PX || c.height < MIN_IMG_PX) continue;
     try {
       const d = c.toDataURL('image/jpeg', 0.92);
       if (d && d.length > 1000) tryAdd(c, d);

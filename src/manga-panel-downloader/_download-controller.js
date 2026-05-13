@@ -18,8 +18,6 @@ const MAX_PAGES = 200;
 const NAV_CLICK_WAIT_MS = 50;
 const NAV_LOAD_WAIT_MS = 150;
 const NAV_TIMEOUT_MS = 5000;
-const MANGA_POLL_MS = 50;
-const MANGA_MAX_WAIT_MS = 3000;
 
 /**
  * Main download controller for Manga Panel Downloader.
@@ -248,23 +246,6 @@ export class MangaDownloader {
       fresh.push(c);
     }
     return fresh;
-  }
-
-  /**
-   * Polls for images to appear on the page (manga mode single-page use).
-   * @param {Function} findFn - Returns fresh image candidates
-   * @returns {Promise<Array>}
-   * @private
-   */
-  _pollImages(findFn) {
-    const deadline = Date.now() + MANGA_MAX_WAIT_MS;
-    const poll = () => {
-      if (Date.now() >= deadline) return Promise.resolve(findFn());
-      const imgs = findImages(document);
-      if (imgs.length > 0) return Promise.resolve(findFn());
-      return this._sleep(MANGA_POLL_MS).then(poll);
-    };
-    return poll();
   }
 
   // ── Main scan (producer-consumer pipeline) ──────────────────────────
