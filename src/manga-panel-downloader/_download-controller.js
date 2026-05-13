@@ -18,6 +18,8 @@ const MAX_PAGES = 200;
 const NAV_CLICK_WAIT_MS = 50;
 const NAV_LOAD_WAIT_MS = 150;
 const NAV_TIMEOUT_MS = 5000;
+const MANGA_POLL_MS = 50;
+const MANGA_MAX_WAIT_MS = 3000;
 
 /**
  * Main download controller for Manga Panel Downloader.
@@ -227,10 +229,22 @@ export class MangaDownloader {
   /**
    * Finds and deduplicates image candidates on the current page,
    * sorted by vertical position.
-   * @returns {Array<{el: Element, src: string}>}
+   * In manga mode, polls briefly for images to appear (SPA lazy-load).
+   * @returns {Promise<Array<{el: Element, src: string}>>}
    * @private
    */
-  _collectPageUrls() {
+  async _collectPageUrls() {
+    // In manga mode, wait for images to appear (single-panel pages may
+    // take a moment to load the image after navigation)
+    if (this.mangaMode) {
+      const deadline = Date.now() + MANGA_MAX_WAIT_MS;
+      while (Date.now() < deadline) {
+        const imgs = findImages(document);
+        if (imgs.length > 0) break;
+        await this._sleep(MANGA_POLL_MS);
+      }
+    }
+
     const candidates = findImages(document);
     const withY = candidates.map(c => ({
       c,
@@ -298,7 +312,7 @@ export class MangaDownloader {
       if (this.mangaMode) {
         // Multi-page manga mode via harvestPages generator
         const getPageImages = async () => {
-          const found = this._collectPageUrls();
+          const found = await this._collectPageUrls();
           const fresh = [];
           for (let i = 0; i < found.length; i++) {
             const c = found[i];
@@ -337,7 +351,7 @@ export class MangaDownloader {
           if (signal.aborted) return;
         }
 
-        const found = this._collectPageUrls();
+        const found = await this._collectPageUrls();
         found.forEach(c => { c.num = ++seqNum; });
         queue.push(...found);
         totalExpected += found.length;

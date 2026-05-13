@@ -922,6 +922,8 @@
     return new Blob([zipBytes], { type: "application/zip" });
   }
   const CONCURRENT_DL = 6;
+  const MANGA_POLL_MS = 50;
+  const MANGA_MAX_WAIT_MS = 3e3;
   class MangaDownloader {
 constructor(logger2) {
       this.log = logger2;
@@ -1028,7 +1030,15 @@ _abort() {
       this._setStatus("Aborting...");
     }
 
-_collectPageUrls() {
+async _collectPageUrls() {
+      if (this.mangaMode) {
+        const deadline = Date.now() + MANGA_MAX_WAIT_MS;
+        while (Date.now() < deadline) {
+          const imgs = findImages(document);
+          if (imgs.length > 0) break;
+          await this._sleep(MANGA_POLL_MS);
+        }
+      }
       const candidates = findImages(document);
       const withY = candidates.map((c) => ({
         c,
@@ -1081,7 +1091,7 @@ async _scan() {
         let seqNum = 0;
         if (this.mangaMode) {
           const getPageImages = async () => {
-            const found = this._collectPageUrls();
+            const found = await this._collectPageUrls();
             const fresh = [];
             for (let i = 0; i < found.length; i++) {
               const c = found[i];
@@ -1120,7 +1130,7 @@ async _scan() {
           for await (const scrollEvent of scrollGen) {
             if (signal.aborted) return;
           }
-          const found = this._collectPageUrls();
+          const found = await this._collectPageUrls();
           found.forEach((c) => {
             c.num = ++seqNum;
           });
