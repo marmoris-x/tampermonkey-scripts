@@ -16,11 +16,9 @@
 // @grant        GM.addStyle
 // @grant        GM.deleteValue
 // @grant        GM.registerMenuCommand
+// @grant        GM.setValue
 // @grant        GM.xmlHttpRequest
 // @grant        GM_addElement
-// @grant        GM_deleteValue
-// @grant        GM_registerMenuCommand
-// @grant        GM_xmlhttpRequest
 // @grant        window.onurlchange
 // @run-at       document-idle
 // @noframes
@@ -29,45 +27,12 @@
 (function () {
   'use strict';
 
-  function createLogger(prefix, debugMode) {
-    debugMode = debugMode || false;
-    const tag = "[" + prefix + "]";
-    return {
-      log: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.log.apply(console, args);
-      },
-      warn: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.warn.apply(console, args);
-      },
-      error: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.error.apply(console, args);
-      },
-      info: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.info.apply(console, args);
-      },
-      debug: function() {
-        if (debugMode) {
-          const args = [tag];
-          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-          console.debug.apply(console, args);
-        }
-      }
-    };
-  }
-  var MIN_IMG_PX = 400;
+  const MIN_IMG_PX = 400;
   function extractLazySrc(el) {
     return el.dataset.src || el.dataset.lazySrc || el.dataset.original || el.dataset.url || el.dataset.imgSrc || el.dataset.lazyload || el.getAttribute("data-cfsrc") || el.getAttribute("data-echo") || null;
   }
   function getSrc(el) {
-    var raw = el.src || el.currentSrc || extractLazySrc(el) || (el.getAttribute("data-srcset") || "").split(/[\s,]+/)[0] || (el.getAttribute("srcset") || "").split(/[\s,]+/)[0] || "";
+    const raw = el.src || el.currentSrc || extractLazySrc(el) || (el.getAttribute("data-srcset") || "").split(/[\s,]+/)[0] || (el.getAttribute("srcset") || "").split(/[\s,]+/)[0] || "";
     if (!raw || raw.startsWith("data:") || raw.startsWith("http")) return raw;
     try {
       return new URL(raw, location.href).href;
@@ -76,7 +41,7 @@
     }
   }
   function allSrcsOf(el) {
-    var srcs = new Set();
+    const srcs = new Set();
     function add(v) {
       if (!v || typeof v !== "string" || v.length < 5) return;
       srcs.add(v);
@@ -87,12 +52,12 @@
     add(extractLazySrc(el));
     add((el.getAttribute && el.getAttribute("data-srcset") || "").split(/[\s,]+/)[0]);
     add((el.getAttribute && el.getAttribute("srcset") || "").split(/[\s,]+/)[0]);
-    var arr = [];
-    srcs.forEach(function(s2) {
-      arr.push(s2);
+    const arr = [];
+    srcs.forEach(function(s) {
+      arr.push(s);
     });
-    for (var i = 0; i < arr.length; i++) {
-      var s = arr[i];
+    for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
       if (s && !s.startsWith("data:") && !s.startsWith("http")) {
         try {
           add(new URL(s, location.href).href);
@@ -103,53 +68,53 @@
     return srcs;
   }
   function findImages(container) {
-    var seen = new Set();
-    var results = [];
+    const seen = new Set();
+    const results = [];
     function tryAdd(el, src) {
       if (!src || el && el.dataset && el.dataset.mpdProcessed) return;
       if (seen.has(src)) return;
       if (/\.(svg|gif)(\?|#|$)/i.test(src)) return;
       if (src.startsWith("data:image/svg") || src.startsWith("data:image/gif")) return;
-      var parentTag = el.parentElement && el.parentElement.tagName ? el.parentElement.tagName.toLowerCase() : "";
+      const parentTag = el.parentElement && el.parentElement.tagName ? el.parentElement.tagName.toLowerCase() : "";
       if (parentTag === "nav" || parentTag === "header" || parentTag === "footer") return;
       if (el.nodeType === Node.ELEMENT_NODE) {
-        var cs = window.getComputedStyle(el);
+        const cs = window.getComputedStyle(el);
         if (cs.display === "none" || cs.visibility === "hidden") return;
         if (el.tagName === "IMG" && el.offsetWidth === 0 && el.offsetHeight === 0) return;
       }
-      var nw = el.naturalWidth || parseInt(el.getAttribute && el.getAttribute("width")) || el.offsetWidth || 0;
-      var nh = el.naturalHeight || parseInt(el.getAttribute && el.getAttribute("height")) || el.offsetHeight || 0;
+      const nw = el.naturalWidth || parseInt(el.getAttribute && el.getAttribute("width")) || el.offsetWidth || 0;
+      const nh = el.naturalHeight || parseInt(el.getAttribute && el.getAttribute("height")) || el.offsetHeight || 0;
       if (nw > 0 && nw < 100 && nh > 0 && nh < 100) return;
       seen.add(src);
       results.push({ el, src });
     }
-    var imgs = container.querySelectorAll("img");
-    for (var i = 0; i < imgs.length; i++) {
+    const imgs = container.querySelectorAll("img");
+    for (let i = 0; i < imgs.length; i++) {
       tryAdd(imgs[i], getSrc(imgs[i]));
     }
-    var sources = container.querySelectorAll("picture source");
-    for (var j = 0; j < sources.length; j++) {
-      var s = sources[j];
-      var url = (s.srcset || "").split(/[\s,]+/)[0];
+    const sources = container.querySelectorAll("picture source");
+    for (let j = 0; j < sources.length; j++) {
+      const s = sources[j];
+      const url = (s.srcset || "").split(/[\s,]+/)[0];
       if (url) {
-        var picture = s.closest("picture");
+        const picture = s.closest("picture");
         tryAdd(picture ? picture.querySelector("img") : s, url);
       }
     }
-    var bgEls = container.querySelectorAll('[style*="background"]');
-    for (var k = 0; k < bgEls.length; k++) {
-      var bgEl = bgEls[k];
-      var match = bgEl.style.backgroundImage ? bgEl.style.backgroundImage.match(/url\(['"]?([^'")\s]+)['"]?\)/) : null;
+    const bgEls = container.querySelectorAll('[style*="background"]');
+    for (let k = 0; k < bgEls.length; k++) {
+      const bgEl = bgEls[k];
+      const match = bgEl.style.backgroundImage ? bgEl.style.backgroundImage.match(/url\(['"]?([^'")\s]+)['"]?\)/) : null;
       if (match && bgEl.offsetWidth >= MIN_IMG_PX && bgEl.offsetHeight >= MIN_IMG_PX) {
         tryAdd(bgEl, match[1]);
       }
     }
-    var canvases = container.querySelectorAll("canvas");
-    for (var l = 0; l < canvases.length; l++) {
-      var c = canvases[l];
+    const canvases = container.querySelectorAll("canvas");
+    for (let l = 0; l < canvases.length; l++) {
+      const c = canvases[l];
       if (c.width < MIN_IMG_PX || c.height < MIN_IMG_PX) return;
       try {
-        var d = c.toDataURL("image/jpeg", 0.92);
+        const d = c.toDataURL("image/jpeg", 0.92);
         if (d && d.length > 1e3) tryAdd(c, d);
       } catch (e) {
       }
@@ -157,125 +122,152 @@
     return results;
   }
   function triggerLazy(container) {
-    var imgs = container.querySelectorAll("img");
-    for (var i = 0; i < imgs.length; i++) {
-      var img = imgs[i];
-      var lazy = extractLazySrc(img);
+    const imgs = container.querySelectorAll("img");
+    for (let i = 0; i < imgs.length; i++) {
+      const img = imgs[i];
+      const lazy = extractLazySrc(img);
       if (lazy && !img.src.startsWith("http") && !img.src.startsWith("data:")) {
         img.src = lazy;
       }
     }
   }
-  var MAX_SEG_H = 3500;
-  var MIN_SEG_H = 600;
-  var FETCH_RETRY_COUNT = 2;
-  function sleep$1(ms) {
-    return new Promise(function(r) {
-      setTimeout(r, ms);
-    });
-  }
-  function fetchBlob(url, extraHeaders) {
-    extraHeaders = extraHeaders || {};
-    var headers = {};
-    headers.Referer = location.href;
-    headers.Origin = location.origin;
-    for (var key in extraHeaders) {
-      if (extraHeaders.hasOwnProperty(key)) {
-        headers[key] = extraHeaders[key];
+  class Semaphore {
+constructor(max) {
+      this._max = max;
+      this._current = 0;
+      this._queue = [];
+    }
+acquire() {
+      if (this._current < this._max) {
+        this._current++;
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        this._queue.push(resolve);
+      });
+    }
+release() {
+      if (this._queue.length > 0) {
+        const next = this._queue.shift();
+        next();
+      } else {
+        this._current--;
       }
     }
-    var cleanHeaders = {};
-    for (var k in headers) {
+  }
+  const downloadSemaphore = new Semaphore(6);
+  function fetchBlob(url, extraHeaders, signal, onProgress) {
+    const extra = extraHeaders || {};
+    const headers = {};
+    headers.Referer = location.href;
+    headers.Origin = location.origin;
+    for (const key in extra) {
+      if (extra.hasOwnProperty(key)) {
+        headers[key] = extra[key];
+      }
+    }
+    const cleanHeaders = {};
+    for (const k in headers) {
       if (headers.hasOwnProperty(k) && headers[k] != null) {
         cleanHeaders[k] = headers[k];
       }
     }
-    return new Promise(function(resolve, reject) {
-      GM_xmlhttpRequest({
+    return new Promise((resolve, reject) => {
+      GM.xmlHttpRequest({
         method: "GET",
         url,
         responseType: "blob",
+        anonymous: true,
         headers: cleanHeaders,
-        onload: function(r) {
+        onload: (r) => {
           if (r.status === 200 && r.response && r.response.size > 100) {
             resolve(r.response);
           } else {
             reject(new Error("HTTP " + r.status));
           }
         },
-        onerror: function() {
-          reject(new Error("Network error"));
-        },
-        ontimeout: function() {
-          reject(new Error("Timeout"));
-        },
+        onerror: () => reject(new Error("Network error")),
+        ontimeout: () => reject(new Error("Timeout")),
         timeout: 2e4
       });
     });
   }
-  async function fetchBlobWithFallbacks(src, el) {
+  async function fetchBlobWithFallbacks(src, el, signal, onProgress) {
     if (src && src.startsWith("data:")) {
-      var resp = await fetch(src);
+      const resp = await fetch(src);
       return resp.blob();
     }
-    var errs = [];
+    const errs = [];
     try {
-      return await fetchBlob(src);
+      return await fetchBlob(src, {}, signal, onProgress);
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
     try {
-      return await fetchBlob(src, { Origin: null });
+      return await fetchBlob(src, { Origin: null }, signal, onProgress);
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
     try {
-      return await fetchBlob(src, { Referer: null, Origin: null });
+      return await fetchBlob(src, { Referer: null, Origin: null }, signal, onProgress);
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
     try {
-      var r = await fetch(src, { credentials: "include" });
+      const r = await fetch(src, { credentials: "include" });
       if (r.ok) return r.blob();
       throw new Error("HTTP " + r.status);
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
     try {
       if (el && el.tagName === "IMG" && el.complete && el.naturalWidth > 0) {
-        var c = document.createElement("canvas");
+        const c = document.createElement("canvas");
         c.width = el.naturalWidth;
         c.height = el.naturalHeight;
         c.getContext("2d").drawImage(el, 0, 0);
-        return await new Promise(function(r2) {
-          c.toBlob(r2, "image/jpeg", 0.92);
+        return await new Promise((r) => {
+          c.toBlob(r, "image/jpeg", 0.92);
         });
       }
       throw new Error("Not a loaded img");
     } catch (e) {
+      if (e.name === "AbortError") throw e;
       errs.push(e.message);
     }
     throw new Error(errs.join(" | "));
   }
-  async function fetchWithRetry(src, el, isAborted) {
-    var lastErr;
-    for (var attempt = 0; attempt <= FETCH_RETRY_COUNT; attempt++) {
+  async function fetchWithRetry(src, el, isAborted, signal, onProgress) {
+    const FETCH_RETRY_COUNT = 2;
+    let lastErr;
+    for (let attempt = 0; attempt <= FETCH_RETRY_COUNT; attempt++) {
       if (isAborted && isAborted()) throw new Error("Aborted");
       try {
-        return await fetchBlobWithFallbacks(src, el);
+        await downloadSemaphore.acquire();
+        const result = await fetchBlobWithFallbacks(src, el, signal, onProgress);
+        downloadSemaphore.release();
+        return result;
       } catch (e) {
+        downloadSemaphore.release();
+        if (e.name === "AbortError") throw e;
         lastErr = e;
         if (attempt < FETCH_RETRY_COUNT) {
-          await sleep$1(600 * (attempt + 1));
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
         }
       }
     }
     throw lastErr;
   }
+  const MAX_SEG_H = 3500;
+  const MIN_SEG_H = 600;
   function findSplitPoints(h) {
     if (h <= MAX_SEG_H) return [0, h];
-    var pts = [0];
-    for (var y = MAX_SEG_H; y < h; y += MAX_SEG_H) pts.push(y);
+    const pts = [0];
+    for (let y = MAX_SEG_H; y < h; y += MAX_SEG_H) pts.push(y);
     pts.push(h);
     if (pts.length > 2 && pts[pts.length - 1] - pts[pts.length - 2] < MIN_SEG_H) {
       pts.splice(pts.length - 2, 1);
@@ -283,12 +275,12 @@
     return pts;
   }
   async function processImage(url, pageNum, srcEl, isAborted) {
-    var blob = await fetchWithRetry(url, srcEl, isAborted);
-    var ew = srcEl ? srcEl.naturalWidth : 0;
-    var eh = srcEl ? srcEl.naturalHeight : 0;
+    const blob = await fetchWithRetry(url, srcEl, isAborted);
+    const ew = srcEl ? srcEl.naturalWidth : 0;
+    const eh = srcEl ? srcEl.naturalHeight : 0;
     if (ew > 0 && eh > 0 && eh <= MAX_SEG_H && blob.type !== "image/webp") {
-      var ext = blob.type === "image/png" ? "png" : "jpg";
-      var pad = ("000" + pageNum).slice(-3);
+      const ext = blob.type === "image/png" ? "png" : "jpg";
+      const pad = ("000" + pageNum).slice(-3);
       return [{
         filename: "page_" + pad + "." + ext,
         blob,
@@ -297,33 +289,29 @@
         h: eh
       }];
     }
-    var objUrl = URL.createObjectURL(blob);
-    var img;
+    const objUrl = URL.createObjectURL(blob);
+    let img;
     try {
-      img = await new Promise(function(res, rej) {
-        var el = new Image();
-        el.onload = function() {
-          res(el);
-        };
-        el.onerror = function() {
-          rej(new Error("Decode failed"));
-        };
+      img = await new Promise((res, rej) => {
+        const el = new Image();
+        el.onload = () => res(el);
+        el.onerror = () => rej(new Error("Decode failed"));
         el.src = objUrl;
       });
     } finally {
       URL.revokeObjectURL(objUrl);
     }
-    var w = img.naturalWidth;
-    var h = img.naturalHeight;
-    var pts = findSplitPoints(h);
-    var srcExt = pts.length === 2 && blob.type === "image/png" ? "png" : "jpg";
-    var pad2 = ("000" + pageNum).slice(-3);
-    var results = [];
-    for (var i = 0; i < pts.length - 1; i++) {
-      var y0 = pts[i];
-      var segH = pts[i + 1] - y0;
-      var suffix = pts.length === 2 ? "" : "_part" + (i + 1);
-      var filename = "page_" + pad2 + suffix + "." + srcExt;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    const pts = findSplitPoints(h);
+    const srcExt = pts.length === 2 && blob.type === "image/png" ? "png" : "jpg";
+    const pad2 = ("000" + pageNum).slice(-3);
+    const results = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const y0 = pts[i];
+      const segH = pts[i + 1] - y0;
+      const suffix = pts.length === 2 ? "" : "_part" + (i + 1);
+      const filename = "page_" + pad2 + suffix + "." + srcExt;
       if (pts.length === 2 && blob.type !== "image/webp") {
         results.push({
           filename,
@@ -333,8 +321,8 @@
           h: segH
         });
       } else {
-        var segBlob = await new Promise(function(r) {
-          var cv = document.createElement("canvas");
+        const segBlob = await new Promise((r) => {
+          const cv = document.createElement("canvas");
           cv.width = w;
           cv.height = segH;
           cv.getContext("2d").drawImage(img, 0, y0, w, segH, 0, 0, w, segH);
@@ -351,71 +339,87 @@
     }
     return results;
   }
-  var SCROLL_TIMEOUT_MS = 3e3;
+  const SCROLL_TIMEOUT_MS = 3e3;
   function sleep(ms) {
-    return new Promise(function(r) {
-      setTimeout(r, ms);
-    });
+    return new Promise((r) => setTimeout(r, ms));
   }
-  async function scrollLoad() {
+  function getUnloaded() {
+    const result = [];
+    const imgs = document.querySelectorAll("img");
+    for (let i = 0; i < imgs.length; i++) {
+      const img = imgs[i];
+      if ((!img.complete || !img.naturalWidth) && (img.src && (img.src.startsWith("http") || extractLazySrc(img)))) {
+        result.push(img);
+      }
+    }
+    return result;
+  }
+  function countLoadedImages() {
+    const imgs = document.querySelectorAll("img");
+    let count = 0;
+    for (let i = 0; i < imgs.length; i++) {
+      if (imgs[i].complete && imgs[i].naturalWidth > 0) count++;
+    }
+    return count;
+  }
+  async function* scrollLoad(isAborted) {
     triggerLazy(document);
     await sleep(150);
-    function getUnloaded() {
-      var result = [];
-      var imgs = document.querySelectorAll("img");
-      for (var i = 0; i < imgs.length; i++) {
-        var img = imgs[i];
-        if ((!img.complete || !img.naturalWidth) && (img.src && (img.src.startsWith("http") || extractLazySrc(img)))) {
-          result.push(img);
-        }
-      }
-      return result;
-    }
-    var unloaded = getUnloaded();
-    for (var u = 0; u < unloaded.length; u++) {
+    yield { type: "pass", passNumber: 1, imagesFound: countLoadedImages() };
+    if (isAborted && isAborted()) return;
+    const unloaded = getUnloaded();
+    for (let u = 0; u < unloaded.length; u++) {
+      if (isAborted && isAborted()) return;
       unloaded[u].scrollIntoView({ block: "center", behavior: "instant" });
       triggerLazy(document);
       await sleep(60);
     }
-    var pageH = document.documentElement.scrollHeight;
-    for (var y = 0; y <= pageH; y += window.innerHeight) {
+    yield { type: "pass", passNumber: 2, imagesFound: countLoadedImages() };
+    if (isAborted && isAborted()) return;
+    const pageH = document.documentElement.scrollHeight;
+    for (let y = 0; y <= pageH; y += window.innerHeight) {
+      if (isAborted && isAborted()) return;
       window.scrollTo(0, y);
       triggerLazy(document);
       await sleep(40);
     }
-    var deadline = Date.now() + SCROLL_TIMEOUT_MS;
+    yield { type: "pass", passNumber: 3, imagesFound: countLoadedImages() };
+    if (isAborted && isAborted()) return;
+    const deadline = Date.now() + SCROLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
+      if (isAborted && isAborted()) return;
       triggerLazy(document);
       if (getUnloaded().length === 0) break;
       await sleep(150);
     }
     window.scrollTo(0, 0);
-    await sleep(100);
+    const totalLoaded = countLoadedImages();
+    yield { type: "complete", totalLoaded };
   }
   function guessNextUrl(url) {
     try {
-      var u = new URL(url);
+      const u = new URL(url);
       if (u.searchParams.has("page")) {
-        var n = parseInt(u.searchParams.get("page"), 10);
+        const n = parseInt(u.searchParams.get("page"), 10);
         if (!isNaN(n)) {
-          var next = new URL(url);
+          const next = new URL(url);
           next.searchParams.set("page", n + 1);
           return next.href;
         }
       }
-      var m = u.pathname.match(/^(.*\/)(\d+)(\/?)$/);
+      const m = u.pathname.match(/^(.*\/)(\d+)(\/?)$/);
       if (m) {
-        var pn = parseInt(m[2], 10);
+        const pn = parseInt(m[2], 10);
         if (!isNaN(pn) && pn > 0 && pn < 1e4) {
           return u.origin + m[1] + (pn + 1) + m[3] + u.search;
         }
       }
-    } catch (e) {
+    } catch (_) {
     }
     return null;
   }
   function clickNextPage() {
-    var selectors = [
+    const selectors = [
       'a[rel="next"]',
       '[class*="next"]:not([disabled])',
       '[aria-label*="next" i]',
@@ -423,16 +427,16 @@
       '[aria-label*="weiter" i]',
       '[title*="weiter" i]'
     ];
-    for (var i = 0; i < selectors.length; i++) {
-      var el = document.querySelector(selectors[i]);
+    for (let i = 0; i < selectors.length; i++) {
+      const el = document.querySelector(selectors[i]);
       if (el) {
         el.click();
         return true;
       }
     }
-    var links = document.querySelectorAll("a, button");
-    for (var j = 0; j < links.length; j++) {
-      var t = (links[j].textContent || "").trim().toLowerCase();
+    const links = document.querySelectorAll("a, button");
+    for (let j = 0; j < links.length; j++) {
+      const t = (links[j].textContent || "").trim().toLowerCase();
       if (t === "next" || t === "weiter" || t === ">" || t === "›" || t === "→") {
         links[j].click();
         return true;
@@ -442,26 +446,66 @@
   }
   function navigateNext() {
     if (clickNextPage()) return;
-    var nextUrl = guessNextUrl(location.href);
+    const nextUrl = guessNextUrl(location.href);
     if (nextUrl) location.href = nextUrl;
   }
-  function waitForUrlChange(prevUrl, timeout) {
-    return new Promise(function(resolve) {
-      var start = Date.now();
-      var id = setInterval(function() {
-        if (location.href !== prevUrl) {
-          clearInterval(id);
-          resolve(true);
-          return;
-        }
-        if (Date.now() - start > timeout) {
+  function waitForUrlChange(prevUrl, timeout = 5e3) {
+    return new Promise((resolve) => {
+      if (window.onurlchange === null) {
+        const handler = (info) => {
+          if (info.url !== prevUrl) {
+            window.removeEventListener("urlchange", handler);
+            resolve(true);
+          }
+        };
+        window.addEventListener("urlchange", handler);
+        setTimeout(() => {
+          window.removeEventListener("urlchange", handler);
+          resolve(false);
+        }, timeout);
+      } else {
+        const id = setInterval(() => {
+          if (location.href !== prevUrl) {
+            clearInterval(id);
+            resolve(true);
+          }
+        }, 80);
+        setTimeout(() => {
           clearInterval(id);
           resolve(false);
-        }
-      }, 80);
+        }, timeout);
+      }
     });
   }
-  const CONTENT_CSS$1 = [
+  const MAX_PAGES = 200;
+  async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, externalAbort }) {
+    let page = 1;
+    let currentUrl = location.href;
+    while (page <= maxPages) {
+      if (externalAbort && externalAbort()) return;
+      const scrollGen = scrollLoad(() => externalAbort ? externalAbort() : false);
+      for await (const _ of scrollGen) {
+        if (externalAbort && externalAbort()) return;
+      }
+      const images = await getPageImages();
+      if (externalAbort && externalAbort()) return;
+      if (!images || images.length === 0) {
+        yield { page, images: [], status: "no-images", stop: true };
+        return;
+      }
+      yield { page, images };
+      navigateNext();
+      const changed = await waitForUrlChange(currentUrl);
+      if (!changed) {
+        yield { page, status: "nav-timeout", stop: true };
+        return;
+      }
+      currentUrl = location.href;
+      page++;
+    }
+  }
+  const SIDEBAR_WIDTH = 320;
+  const CONTENT_CSS = [
     "#mpd-controls { padding:12px 0; border-bottom:1px solid #2c2d32; display:flex; flex-direction:column; gap:9px; }",
     ".mpd-btn-row { display:flex; gap:8px; }",
     ".mpd-btn-row button { flex:1; }",
@@ -541,7 +585,7 @@
       ".body::-webkit-scrollbar-thumb { background:#0f3460; border-radius:3px; }",
       opts.cssOverrides || ""
     ].join("");
-    const allCSS = sidebarCSS + "\n" + CONTENT_CSS$1;
+    const allCSS = sidebarCSS + "\n" + CONTENT_CSS;
     const container = createShadowContainer({ styles: allCSS });
     const root = container.root;
     const header = document.createElement("div");
@@ -631,6 +675,146 @@
         tabSpan.textContent = t;
       }
     };
+  }
+  function buildUI(mangaMode) {
+    const sidebar = createSidebar({
+      width: SIDEBAR_WIDTH,
+      title: "Manga Downloader",
+      accentColor: "#2f9e44"
+    });
+    const root = sidebar.root;
+    const body = sidebar.bodyEl;
+    const controls = document.createElement("div");
+    controls.id = "mpd-controls";
+    const btnRow = document.createElement("div");
+    btnRow.className = "mpd-btn-row";
+    const scanBtn = document.createElement("button");
+    scanBtn.id = "mpd-scan";
+    scanBtn.className = "mpd-btn mpd-primary";
+    scanBtn.textContent = "Scan";
+    scanBtn.setAttribute("role", "button");
+    scanBtn.setAttribute("aria-label", "Bilder auf der aktuellen Seite scannen");
+    scanBtn.tabIndex = 0;
+    const dlBtn = document.createElement("button");
+    dlBtn.id = "mpd-dl";
+    dlBtn.className = "mpd-btn mpd-secondary";
+    dlBtn.textContent = "ZIP";
+    dlBtn.disabled = true;
+    dlBtn.setAttribute("role", "button");
+    dlBtn.setAttribute("aria-label", "Ausgewählte Bilder als ZIP herunterladen");
+    dlBtn.tabIndex = 0;
+    btnRow.appendChild(scanBtn);
+    btnRow.appendChild(dlBtn);
+    controls.appendChild(btnRow);
+    const mangaLabel = document.createElement("label");
+    mangaLabel.className = "mpd-toggle-row";
+    const mangaCheck = document.createElement("input");
+    mangaCheck.type = "checkbox";
+    mangaCheck.id = "mpd-manga-mode";
+    mangaCheck.checked = !!mangaMode;
+    mangaCheck.setAttribute("aria-checked", mangaMode ? "true" : "false");
+    mangaCheck.addEventListener("change", () => {
+      const val = mangaCheck.checked;
+      mangaCheck.setAttribute("aria-checked", val ? "true" : "false");
+      if (typeof GM !== "undefined" && GM.setValue) {
+        GM.setValue("mpd-manga-mode", val).catch(() => {
+        });
+      }
+    });
+    const mangaLabelSpan = document.createElement("span");
+    mangaLabelSpan.textContent = "Manga-Modus (auto weiterklicken)";
+    mangaLabel.appendChild(mangaCheck);
+    mangaLabel.appendChild(mangaLabelSpan);
+    controls.appendChild(mangaLabel);
+    const progressEl = document.createElement("div");
+    progressEl.id = "mpd-progress";
+    const progressBar = document.createElement("div");
+    progressBar.id = "mpd-progress-bar";
+    progressEl.appendChild(progressBar);
+    controls.appendChild(progressEl);
+    const statusEl = document.createElement("div");
+    statusEl.id = "mpd-status";
+    statusEl.textContent = "Ready.";
+    controls.appendChild(statusEl);
+    body.appendChild(controls);
+    const resultsEl = document.createElement("div");
+    resultsEl.id = "mpd-results";
+    body.appendChild(resultsEl);
+    const footerEl = document.createElement("div");
+    footerEl.id = "mpd-footer";
+    body.appendChild(footerEl);
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") sidebar.close();
+    });
+    sidebar.open();
+    return {
+      sidebar,
+      root,
+      scanBtn,
+      dlBtn,
+      mangaCheck,
+      statusEl,
+      progressEl,
+      progressBar,
+      resultsEl,
+      footerEl
+    };
+  }
+  function setScanBtn(scanBtn, scanning) {
+    if (!scanBtn) return;
+    scanBtn.textContent = scanning ? "Stop" : "Scan";
+    scanBtn.className = scanning ? "mpd-btn mpd-danger" : "mpd-btn mpd-primary";
+    scanBtn.setAttribute(
+      "aria-label",
+      scanning ? "Scanvorgang abbrechen" : "Bilder auf der aktuellen Seite scannen"
+    );
+  }
+  function addSegmentsToUI(segments, resultsEl) {
+    if (!resultsEl) return;
+    while (resultsEl.firstChild) {
+      resultsEl.removeChild(resultsEl.firstChild);
+    }
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const div = document.createElement("div");
+      div.className = "mpd-thumb";
+      const img = document.createElement("img");
+      img.src = seg.previewUrl || "";
+      img.alt = seg.filename || "Segment Vorschau";
+      img.loading = "lazy";
+      const info = document.createElement("div");
+      info.className = "mpd-thumb-info";
+      const nameDiv = document.createElement("div");
+      nameDiv.className = "mpd-thumb-name";
+      nameDiv.textContent = seg.filename || "";
+      const sizeDiv = document.createElement("div");
+      sizeDiv.className = "mpd-thumb-size";
+      sizeDiv.textContent = (seg.w || "?") + " × " + (seg.h || "?") + " px";
+      info.appendChild(nameDiv);
+      info.appendChild(sizeDiv);
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = true;
+      cb.dataset.idx = String(i);
+      cb.setAttribute("aria-label", seg.filename || "Segment " + (i + 1));
+      div.appendChild(img);
+      div.appendChild(info);
+      div.appendChild(cb);
+      resultsEl.appendChild(div);
+    }
+  }
+  function triggerDownload(blob, filename) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.style.display = "none";
+    a.setAttribute("aria-hidden", "true");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+    }, 1e4);
   }
   let crcTable = null;
   function buildCRCTable() {
@@ -737,494 +921,426 @@
     eocd.setUint16(20, 0, true);
     return out;
   }
-  var SW = 320;
-  var CONTENT_CSS = [
-    "#mpd-controls { padding:12px 0; border-bottom:1px solid #2c2d32; display:flex; flex-direction:column; gap:9px; }",
-    ".mpd-btn-row { display:flex; gap:8px; }",
-    ".mpd-btn-row button { flex:1; }",
-    ".mpd-btn { padding:7px 12px; border:none; border-radius:4px; font-size:13px; font-weight:600; cursor:pointer; transition:background 0.15s; }",
-    ".mpd-primary { background:#2f9e44; color:#fff; }",
-    ".mpd-primary:hover:not(:disabled) { background:#237032; }",
-    ".mpd-danger { background:#c92a2a; color:#fff; }",
-    ".mpd-danger:hover:not(:disabled) { background:#a61e1e; }",
-    ".mpd-secondary { background:#2c2d32; color:#c1c2c5; }",
-    ".mpd-secondary:hover:not(:disabled) { background:#373a40; }",
-    ".mpd-btn:disabled { background:#333; color:#555; cursor:not-allowed; }",
-    "#mpd-progress { height:3px; background:#2c2d32; border-radius:2px; overflow:hidden; display:none; }",
-    "#mpd-progress-bar { height:100%; background:#2f9e44; width:0%; transition:width 0.15s; }",
-    "#mpd-status { font-size:12px; color:#909296; min-height:16px; }",
-    ".mpd-thumb { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid #25262b; }",
-    ".mpd-thumb img { width:48px; height:48px; object-fit:cover; border-radius:3px; flex-shrink:0; background:#25262b; }",
-    ".mpd-thumb-info { flex:1; min-width:0; }",
-    ".mpd-thumb-name { font-size:11px; color:#909296; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
-    ".mpd-thumb-size { font-size:11px; color:#555; }",
-    ".mpd-thumb input[type=checkbox] { flex-shrink:0; width:15px; height:15px; cursor:pointer; accent-color:#2f9e44; }",
-    "#mpd-footer { padding:8px 0; border-top:1px solid #2c2d32; font-size:11px; color:#555; }",
-    ".mpd-toggle-row { display:flex; align-items:center; gap:8px; font-size:12px; color:#909296; cursor:pointer; user-select:none; }",
-    ".mpd-toggle-row input { cursor:pointer; accent-color:#2f9e44; }"
-  ].join("");
-  function buildUI(mangaMode) {
-    var sidebar = createSidebar({
-      width: SW,
-      title: "Manga Downloader",
-      accentColor: "#2f9e44"
-    });
-    var root = sidebar.root;
-    var style = document.createElement("style");
-    style.textContent = CONTENT_CSS;
-    root.appendChild(style);
-    var body = sidebar.bodyEl;
-    body.innerHTML = [
-      '<div id="mpd-controls">',
-      '<div class="mpd-btn-row">',
-      '<button class="mpd-btn mpd-primary" id="mpd-scan">Scan</button>',
-      '<button class="mpd-btn mpd-secondary" id="mpd-dl" disabled>ZIP</button>',
-      "</div>",
-      '<label class="mpd-toggle-row">',
-      '<input type="checkbox" id="mpd-manga-mode"',
-      mangaMode ? " checked" : "",
-      ">",
-      "<span>Manga-Modus (auto weiterklicken)</span>",
-      "</label>",
-      '<div id="mpd-progress"><div id="mpd-progress-bar"></div></div>',
-      '<div id="mpd-status">Ready.</div>',
-      "</div>",
-      '<div id="mpd-results"></div>',
-      '<div id="mpd-footer"></div>'
-    ].join("");
-    sidebar.open();
-    return {
-      sidebar,
-      root,
-      scanBtn: root.querySelector("#mpd-scan"),
-      dlBtn: root.querySelector("#mpd-dl"),
-      mangaCheck: root.querySelector("#mpd-manga-mode"),
-      statusEl: root.querySelector("#mpd-status"),
-      progressEl: root.querySelector("#mpd-progress"),
-      progressBar: root.querySelector("#mpd-progress-bar"),
-      resultsEl: root.querySelector("#mpd-results"),
-      footerEl: root.querySelector("#mpd-footer")
-    };
+  async function buildZipBlob(files) {
+    const converted = await Promise.all(files.map(async (file) => {
+      const buf = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(new Uint8Array(fr.result));
+        fr.onerror = () => reject(fr.error || new Error("FileReader error"));
+        fr.readAsArrayBuffer(file.blob);
+      });
+      return { name: file.filename, data: buf };
+    }));
+    const zipBytes = await buildStoreZip(converted);
+    return new Blob([zipBytes], { type: "application/zip" });
   }
-  function setScanBtn(scanBtn, scanning) {
-    if (!scanBtn) return;
-    scanBtn.textContent = scanning ? "Stop" : "Scan";
-    scanBtn.className = scanning ? "mpd-btn mpd-danger" : "mpd-btn mpd-primary";
-  }
-  function addSegmentsToUI(segments, resultsEl) {
-    if (!resultsEl) return;
-    resultsEl.innerHTML = "";
-    for (var i = 0; i < segments.length; i++) {
-      var seg = segments[i];
-      var div = document.createElement("div");
-      div.className = "mpd-thumb";
-      div.innerHTML = [
-        '<img src="' + seg.previewUrl + '">',
-        '<div class="mpd-thumb-info">',
-        '<div class="mpd-thumb-name">' + seg.filename + "</div>",
-        '<div class="mpd-thumb-size">' + seg.w + "×" + seg.h + "px</div>",
-        "</div>",
-        '<input type="checkbox" checked data-idx="' + i + '">'
-      ].join("");
-      resultsEl.appendChild(div);
+  const CONCURRENT_DL = 6;
+  const MANGA_POLL_MS = 50;
+  const MANGA_MAX_WAIT_MS = 3e3;
+  class MangaDownloader {
+constructor(logger2) {
+      this.log = logger2;
+      this.segments = [];
+      this.errors = [];
+      this.scanning = false;
+      this.mangaMode = false;
+      this.scannedUrls = new Set();
+      this.previewRevokeTimer = null;
+      this.abortController = null;
+      this._enabled = false;
+      this._menuId = null;
+      this.ui = buildUI(this.mangaMode);
+      this._initUI();
+      this._watchUrlChanges();
     }
-  }
-  function buildZipBlob(files) {
-    var pending = [];
-    for (var i = 0; i < files.length; i++) {
-      pending.push(new Promise(function(resolve, reject) {
-        var fr = new FileReader();
-        fr.onload = function() {
-          resolve(new Uint8Array(fr.result));
-        };
-        fr.onerror = function() {
-          reject(fr.error || new Error("FileReader error"));
-        };
-        fr.readAsArrayBuffer(files[i].blob);
-      }).then(function(data) {
-        return { name: files[i].filename, data };
-      }));
+
+init() {
+      GM.deleteValue("mpd-allowed-sites").catch(() => {
+      });
+      GM.deleteValue("mpd-manga-mode").catch(() => {
+      });
+      this._registerMenuCommand();
     }
-    return Promise.all(pending).then(function(converted) {
-      var zipBytes = buildStoreZip(converted);
-      return new Blob([zipBytes], { type: "application/zip" });
-    });
-  }
-  function triggerDownload(blob, filename) {
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function() {
-      URL.revokeObjectURL(a.href);
-    }, 1e4);
-  }
-  
-  var log = createLogger("Manga Panel Downloader");
-  GM_deleteValue("mpd-allowed-sites");
-  GM_deleteValue("mpd-manga-mode");
-  window.mpd_enabled = window.mpd_enabled || false;
-  var downloader = null;
-  function initDownloader() {
-    if (downloader) return;
-    downloader = new MangaDownloader();
-  }
-  function toggleDownloader() {
-    window.mpd_enabled = !window.mpd_enabled;
-    if (window.mpd_enabled) {
-      initDownloader();
-    } else if (downloader) {
-      var host = downloader.ui.sidebar.host;
-      if (host.parentNode) host.parentNode.removeChild(host);
-      downloader = null;
+
+_registerMenuCommand() {
+      if (this._menuId !== null) ;
+      const label = this._enabled ? "Manga Downloader deaktivieren" : "Manga Downloader aktivieren";
+      this._menuId = GM.registerMenuCommand(label, () => this._toggle());
     }
-  }
-  GM_registerMenuCommand(
-    window.mpd_enabled ? "Manga Downloader deaktivieren" : "Manga Downloader aktivieren",
-    toggleDownloader
-  );
-  if (window.mpd_enabled) {
-    initDownloader();
-  }
-  var CONCURRENT_DL = 6;
-  var MAX_PAGES = 200;
-  var NAV_CLICK_WAIT_MS = 50;
-  var NAV_LOAD_WAIT_MS = 150;
-  var NAV_TIMEOUT_MS = 5e3;
-  var MANGA_POLL_MS = 50;
-  var MANGA_MAX_WAIT_MS = 3e3;
-  function MangaDownloader() {
-    this.segments = [];
-    this.errors = [];
-    this.scanning = false;
-    this.aborted = false;
-    this.mangaMode = window.mpd_mangaMode || false;
-    this.scannedUrls = new Set();
-    this.previewRevokeTimer = null;
-    this.ui = buildUI(this.mangaMode);
-    this._initUI();
-    this._watchUrlChanges();
-  }
-  MangaDownloader.prototype._initUI = function() {
-    var self = this;
-    self.ui.scanBtn.addEventListener("click", function() {
-      if (self.scanning) self._abort();
-      else self._scan();
-    });
-    self.ui.dlBtn.addEventListener("click", function() {
-      self._download();
-    });
-    self.ui.mangaCheck.addEventListener("change", function(e) {
-      self.mangaMode = e.target.checked;
-      window.mpd_mangaMode = self.mangaMode;
-    });
-  };
-  MangaDownloader.prototype._watchUrlChanges = function() {
-    var self = this;
-    var lastUrl = location.href;
-    function onChange() {
-      if (location.href === lastUrl) return;
-      lastUrl = location.href;
-      if (self.scanning) return;
-      if (self.segments.length > 0) return;
-      self._reset();
-    }
-    window.addEventListener("popstate", onChange);
-    window.addEventListener("hashchange", onChange);
-    setInterval(onChange, 1e3);
-  };
-  MangaDownloader.prototype._reset = function() {
-    if (this.scanning) return;
-    clearTimeout(this.previewRevokeTimer);
-    this.previewRevokeTimer = null;
-    this._revokeAllPreviews();
-    this.segments = [];
-    this.errors = [];
-    this.ui.resultsEl.innerHTML = "";
-    this.ui.footerEl.textContent = "";
-    this.ui.dlBtn.disabled = true;
-    this._setStatus("Ready.");
-    this._setProgress(0);
-  };
-  MangaDownloader.prototype._revokeAllPreviews = function() {
-    for (var i = 0; i < this.segments.length; i++) {
-      try {
-        URL.revokeObjectURL(this.segments[i].previewUrl);
-      } catch (e) {
+_toggle() {
+      this._enabled = !this._enabled;
+      if (this._enabled) {
+        this.ui.sidebar.open();
+      } else {
+        this.ui.sidebar.close();
       }
     }
-  };
-  MangaDownloader.prototype._setStatus = function(msg) {
-    this.ui.statusEl.textContent = msg;
-  };
-  MangaDownloader.prototype._setProgress = function(pct) {
-    this.ui.progressEl.style.display = pct > 0 && pct < 100 ? "block" : "none";
-    this.ui.progressBar.style.width = pct + "%";
-  };
-  MangaDownloader.prototype._abort = function() {
-    this.aborted = true;
-    this._setStatus("Aborting...");
-  };
-  MangaDownloader.prototype._collectPageUrls = function() {
-    var self = this;
-    var findAndSort = function() {
-      var candidates = findImages(document);
-      var withY = candidates.map(function(c2) {
-        return { c: c2, y: (c2.el.getBoundingClientRect ? c2.el.getBoundingClientRect().top : 0) + window.scrollY };
+
+_initUI() {
+      this.ui.scanBtn.addEventListener("click", () => {
+        if (this.scanning) this._abort();
+        else this._scan();
       });
-      withY.sort(function(a, b) {
-        return a.y - b.y;
+      this.ui.dlBtn.addEventListener("click", () => this._download());
+      this.ui.mangaCheck.addEventListener("change", (e) => {
+        this.mangaMode = e.target.checked;
+        GM.setValue("mpd-manga-mode", this.mangaMode).catch(() => {
+        });
       });
-      var sorted = withY.map(function(w) {
-        return w.c;
-      });
-      var fresh = [];
-      for (var i = 0; i < sorted.length; i++) {
-        var c = sorted[i];
-        if (self.scannedUrls.has(c.src)) continue;
-        var srcs = allSrcsOf(c.el);
-        var seen = false;
-        srcs.forEach(function(v) {
-          if (self.scannedUrls.has(v)) seen = true;
+    }
+
+_watchUrlChanges() {
+      const handler = () => {
+        if (this.scanning) return;
+        if (this.segments.length > 0) return;
+        this._reset();
+      };
+      if (window.onurlchange === null) {
+        window.addEventListener("urlchange", handler);
+      } else {
+        window.addEventListener("popstate", handler);
+        window.addEventListener("hashchange", handler);
+      }
+    }
+
+_reset() {
+      if (this.scanning) return;
+      clearTimeout(this.previewRevokeTimer);
+      this.previewRevokeTimer = null;
+      this._revokeAllPreviews();
+      this.segments = [];
+      this.errors = [];
+      this._clearResults();
+      this.ui.dlBtn.disabled = true;
+      this._setStatus("Ready.");
+      this._setProgress(0);
+    }
+_clearResults() {
+      const el = this.ui.resultsEl;
+      while (el.firstChild) el.removeChild(el.firstChild);
+      this.ui.footerEl.textContent = "";
+    }
+_revokeAllPreviews() {
+      for (let i = 0; i < this.segments.length; i++) {
+        try {
+          URL.revokeObjectURL(this.segments[i].previewUrl);
+        } catch (_) {
+        }
+      }
+    }
+
+_setStatus(msg) {
+      this.ui.statusEl.textContent = msg;
+    }
+_setProgress(pct) {
+      this.ui.progressEl.style.display = pct > 0 && pct < 100 ? "block" : "none";
+      this.ui.progressBar.style.width = pct + "%";
+    }
+
+_abort() {
+      if (this.abortController) {
+        this.abortController.abort();
+      }
+      this._setStatus("Aborting...");
+    }
+
+_collectPageUrls() {
+      const candidates = findImages(document);
+      const withY = candidates.map((c) => ({
+        c,
+        y: (c.el.getBoundingClientRect ? c.el.getBoundingClientRect().top : 0) + window.scrollY
+      }));
+      withY.sort((a, b) => a.y - b.y);
+      const sorted = withY.map((w) => w.c);
+      const fresh = [];
+      for (let i = 0; i < sorted.length; i++) {
+        const c = sorted[i];
+        if (this.scannedUrls.has(c.src)) continue;
+        const srcs = allSrcsOf(c.el);
+        let seen = false;
+        srcs.forEach((v) => {
+          if (this.scannedUrls.has(v)) seen = true;
         });
         if (seen) continue;
-        self.scannedUrls.add(c.src);
-        srcs.forEach(function(v) {
-          self.scannedUrls.add(v);
-        });
+        this.scannedUrls.add(c.src);
+        srcs.forEach((v) => this.scannedUrls.add(v));
         fresh.push(c);
       }
       return fresh;
-    };
-    if (this.mangaMode) {
-      let poll2 = function() {
-        if (Date.now() >= deadline) return Promise.resolve(findAndSort());
-        var imgs = findImages(document);
-        if (imgs.length > 0) return Promise.resolve(findAndSort());
-        return self._sleep(MANGA_POLL_MS).then(poll2);
+    }
+_pollImages(findFn) {
+      const deadline = Date.now() + MANGA_MAX_WAIT_MS;
+      const poll = () => {
+        if (Date.now() >= deadline) return Promise.resolve(findFn());
+        const imgs = findImages(document);
+        if (imgs.length > 0) return Promise.resolve(findFn());
+        return this._sleep(MANGA_POLL_MS).then(poll);
       };
-      var deadline = Date.now() + MANGA_MAX_WAIT_MS;
-      return poll2();
-    } else {
-      return scrollLoad().then(findAndSort);
+      return poll();
     }
-  };
-  MangaDownloader.prototype._scan = function() {
-    var self = this;
-    if (self.scanning) return;
-    self.scanning = true;
-    self.aborted = false;
-    clearTimeout(self.previewRevokeTimer);
-    self.previewRevokeTimer = null;
-    self._revokeAllPreviews();
-    self.segments = [];
-    self.errors = [];
-    self.scannedUrls.clear();
-    var processedEls = document.querySelectorAll("[data-mpd-processed]");
-    for (var pe = 0; pe < processedEls.length; pe++) {
-      processedEls[pe].removeAttribute("data-mpd-processed");
-    }
-    self.ui.resultsEl.innerHTML = "";
-    self.ui.footerEl.textContent = "";
-    self.ui.dlBtn.disabled = true;
-    setScanBtn(self.ui.scanBtn, true);
-    self._setProgress(0);
-    self._setStatus("Starting...");
-    var queue = [];
-    var producerDone = false;
-    var totalExpected = 0;
-    var dlDone = 0;
-    function producer() {
-      var seqNum = 0;
-      var page = 1;
-      function runProducer() {
-        if (self.aborted) return Promise.resolve();
-        if (self.mangaMode && page > MAX_PAGES) return Promise.resolve();
-        self._setStatus("Page " + page + ": scanning... (" + totalExpected + " so far)");
-        var prevUrl = location.href;
-        return self._collectPageUrls().then(function(found) {
-          found.forEach(function(c) {
+
+async _scan() {
+      if (this.scanning) return;
+      this.scanning = true;
+      this.abortController = new AbortController();
+      const signal = this.abortController.signal;
+      clearTimeout(this.previewRevokeTimer);
+      this.previewRevokeTimer = null;
+      this._revokeAllPreviews();
+      this.segments = [];
+      this.errors = [];
+      this.scannedUrls.clear();
+      this._clearResults();
+      this.ui.dlBtn.disabled = true;
+      setScanBtn(this.ui.scanBtn, true);
+      this._setProgress(0);
+      this._setStatus("Starting...");
+      const processedEls = document.querySelectorAll("[data-mpd-processed]");
+      for (let pe = 0; pe < processedEls.length; pe++) {
+        processedEls[pe].removeAttribute("data-mpd-processed");
+      }
+      const queue = [];
+      let producerDone = false;
+      let totalExpected = 0;
+      let dlDone = 0;
+      const producer = async () => {
+        let seqNum = 0;
+        if (this.mangaMode) {
+          const getPageImages = async () => {
+            const found = this._collectPageUrls();
+            const fresh = [];
+            for (let i = 0; i < found.length; i++) {
+              const c = found[i];
+              if (signal.aborted) return fresh;
+              if (this.scannedUrls.has(c.src)) continue;
+              const srcs = allSrcsOf(c.el);
+              let seen = false;
+              srcs.forEach((v) => {
+                if (this.scannedUrls.has(v)) seen = true;
+              });
+              if (seen) continue;
+              this.scannedUrls.add(c.src);
+              srcs.forEach((v) => this.scannedUrls.add(v));
+              fresh.push(c);
+            }
+            return fresh;
+          };
+          const harvest = harvestPages({
+            getPageImages,
+            externalAbort: () => signal.aborted
+          });
+          for await (const pageResult of harvest) {
+            if (signal.aborted) return;
+            if (pageResult.images) {
+              pageResult.images.forEach((c) => {
+                c.num = ++seqNum;
+              });
+              queue.push(...pageResult.images);
+              totalExpected += pageResult.images.length;
+              this._setStatus(`Page ${pageResult.page} OK — ${totalExpected} panel(s) found`);
+            }
+            if (pageResult.stop) break;
+          }
+        } else {
+          const scrollGen = scrollLoad(() => signal.aborted);
+          for await (const scrollEvent of scrollGen) {
+            if (signal.aborted) return;
+          }
+          const found = this._collectPageUrls();
+          found.forEach((c) => {
             c.num = ++seqNum;
           });
-          queue.push.apply(queue, found);
+          queue.push(...found);
           totalExpected += found.length;
-          self._setStatus("Page " + page + " OK — " + totalExpected + " panel(s) found");
-          if (found.length === 0) {
-            self._setStatus("Page " + page + ": no panels. Finished.");
-            return;
-          }
-          if (!self.mangaMode) return;
-          navigateNext();
-          return self._sleep(NAV_CLICK_WAIT_MS).then(function() {
-            return waitForUrlChange(prevUrl, NAV_TIMEOUT_MS).then(function(changed) {
-              if (!changed) return;
-              return self._sleep(NAV_LOAD_WAIT_MS).then(function() {
-                page++;
-                return runProducer();
-              });
-            });
-          });
-        });
-      }
-      return runProducer().then(function() {
+          this._setStatus(`Page OK — ${totalExpected} panel(s) found`);
+        }
         producerDone = true;
-      });
-    }
-    function consumer() {
-      var running = new Set();
-      var allTasks = [];
-      function spawn(candidate) {
-        var task = (function() {
-          return Promise.resolve().then(function() {
-            if (self.aborted) return;
-            return processImage(
-              candidate.src,
-              candidate.num,
-              candidate.el,
-              function() {
-                return self.aborted;
-              }
-            );
-          }).then(function(segs) {
-            if (self.aborted || !segs) return;
-            segs.forEach(function(seg) {
-              self.segments.push(seg);
-            });
-            if (candidate.el) candidate.el.dataset.mpdProcessed = "true";
-          }).catch(function(e) {
-            self.errors.push({ src: candidate.src, message: e.message });
-            log.warn("Failed:", candidate.src ? candidate.src.slice(0, 80) : "", e.message);
-          }).then(function() {
-            dlDone++;
-            running.delete(task);
-            var pct = totalExpected > 0 ? dlDone / totalExpected * 100 : 0;
-            var errStr = self.errors.length ? " (" + self.errors.length + " errors)" : "";
-            self._setProgress(pct);
-            self._setStatus("Downloading: " + dlDone + "/" + totalExpected + errStr);
-          });
-        })();
-        running.add(task);
-        allTasks.push(task);
-      }
-      function consumerLoop() {
-        if (self.aborted) return Promise.resolve();
-        while (queue.length > 0 && running.size < CONCURRENT_DL) {
-          spawn(queue.shift());
-        }
-        if (producerDone && queue.length === 0 && running.size === 0) {
-          return Promise.resolve();
-        }
-        return self._sleep(40).then(consumerLoop);
-      }
-      return consumerLoop().then(function() {
+      };
+      const consumer = async () => {
+        const running = new Set();
+        const allTasks = [];
+        const spawn = (candidate) => {
+          const task = (async () => {
+            try {
+              if (signal.aborted) return;
+              const segs = await processImage(
+                candidate.src,
+                candidate.num,
+                candidate.el,
+                () => signal.aborted
+              );
+              if (signal.aborted || !segs) return;
+              segs.forEach((seg) => {
+                this.segments.push(seg);
+              });
+              if (candidate.el) candidate.el.dataset.mpdProcessed = "true";
+            } catch (e) {
+              this.errors.push({ src: candidate.src, message: e.message });
+              this.log.warn("Failed:", candidate.src ? candidate.src.slice(0, 80) : "", e.message);
+            } finally {
+              dlDone++;
+              running.delete(task);
+              const pct = totalExpected > 0 ? dlDone / totalExpected * 100 : 0;
+              const errStr = this.errors.length ? ` (${this.errors.length} errors)` : "";
+              this._setProgress(pct);
+              this._setStatus(`Downloading: ${dlDone}/${totalExpected}${errStr}`);
+            }
+          })();
+          running.add(task);
+          allTasks.push(task);
+        };
+        const consumerLoop = async () => {
+          while (!signal.aborted) {
+            while (queue.length > 0 && running.size < CONCURRENT_DL) {
+              spawn(queue.shift());
+            }
+            if (producerDone && queue.length === 0 && running.size === 0) {
+              return;
+            }
+            await this._sleep(40);
+          }
+        };
+        await consumerLoop();
         if (allTasks.length > 0) {
-          return Promise.all(allTasks.map(function(t) {
-            return t.catch(function() {
-            });
-          }));
+          await Promise.all(allTasks.map((t) => t.catch(() => {
+          })));
         }
-      });
-    }
-    var phase;
-    if (self.mangaMode) {
-      phase = producer().then(function() {
-        self._setStatus(totalExpected + " panels found. Downloading...");
-        return consumer();
-      });
-    } else {
-      phase = Promise.all([producer(), consumer()]);
-    }
-    return phase.then(function() {
-      self._renderResults();
-      self._setProgress(0);
-      var errStr = self.errors.length ? " | " + self.errors.length + " errors" : "";
-      self.ui.footerEl.textContent = self.segments.length + " Segmente" + errStr;
-      self._setStatus(
-        self.aborted ? "Aborted. " + self.segments.length + " files loaded." : "Done. " + self.segments.length + " files ready."
-      );
-      if (self.segments.length > 0) self.ui.dlBtn.disabled = false;
-    }).catch(function(e) {
-      self._setStatus("Error: " + (e && e.message || e));
-      log.error(e);
-    }).then(function() {
-      self.scanning = false;
-      setScanBtn(self.ui.scanBtn, false);
-    });
-  };
-  MangaDownloader.prototype._renderResults = function() {
-    this.segments.sort(function(a, b) {
-      return a.filename.localeCompare(b.filename);
-    });
-    addSegmentsToUI(this.segments, this.ui.resultsEl);
-  };
-  MangaDownloader.prototype._download = function() {
-    var self = this;
-    var checkboxes = self.ui.root.querySelectorAll("#mpd-results input[type=checkbox]:checked");
-    var checked = [];
-    for (var i = 0; i < checkboxes.length; i++) {
-      var seg = self.segments[parseInt(checkboxes[i].dataset.idx)];
-      if (seg && seg.blob) checked.push(seg);
-    }
-    if (!checked.length) {
-      self._setStatus("Nothing selected.");
-      return;
-    }
-    self.ui.dlBtn.disabled = true;
-    var host = location.hostname;
-    var date = ( new Date()).toISOString().slice(0, 10);
-    var chapter = location.pathname.replace(/\//g, "_").slice(1, 40) || "chapter";
-    var name = host + "_" + chapter + "_" + date + ".zip";
-    var finish = function(zipBlob) {
-      triggerDownload(zipBlob, name);
-      self.segments.forEach(function(seg2) {
-        seg2.blob = null;
-      });
-      self.ui.dlBtn.disabled = true;
-      clearTimeout(self.previewRevokeTimer);
-      self.previewRevokeTimer = setTimeout(function() {
-        self._revokeAllPreviews();
-      }, 3e4);
-      self._setStatus("Downloaded: " + name);
-    };
-    self._setStatus("Building ZIP (" + checked.length + " files)...");
-    buildZipBlob(checked).then(finish).catch(function(e) {
-      log.warn("Manual ZIP failed, downloading individually:", e.message);
-      var individual = function(idx) {
-        if (idx >= checked.length) {
-          self.segments.forEach(function(seg3) {
-            seg3.blob = null;
-          });
-          self.ui.dlBtn.disabled = true;
-          clearTimeout(self.previewRevokeTimer);
-          self.previewRevokeTimer = setTimeout(function() {
-            self._revokeAllPreviews();
-          }, 3e4);
-          self._setStatus(checked.length + " files downloaded individually.");
-          return;
-        }
-        var seg2 = checked[idx];
-        self._setStatus("Downloading " + (idx + 1) + "/" + checked.length + ": " + seg2.filename);
-        triggerDownload(seg2.blob, seg2.filename);
-        self._sleep(300).then(function() {
-          individual(idx + 1);
-        });
       };
       try {
-        individual(0);
-      } catch (e2) {
-        self._setStatus("Error: " + e2.message);
-        log.error("Download:", e2);
-        self.ui.dlBtn.disabled = false;
+        if (this.mangaMode) {
+          await producer();
+          if (!signal.aborted) {
+            this._setStatus(`${totalExpected} panels found. Downloading...`);
+            await consumer();
+          }
+        } else {
+          await Promise.all([producer(), consumer()]);
+        }
+        if (!signal.aborted || this.segments.length > 0) {
+          this._renderResults();
+        }
+        this._setProgress(0);
+        const errStr = this.errors.length ? ` | ${this.errors.length} errors` : "";
+        this.ui.footerEl.textContent = this.segments.length + " Segmente" + errStr;
+        if (signal.aborted) {
+          this._setStatus(`Aborted. ${this.segments.length} files loaded.`);
+        } else {
+          this._setStatus(`Done. ${this.segments.length} files ready.`);
+        }
+        if (this.segments.length > 0) this.ui.dlBtn.disabled = false;
+      } catch (e) {
+        this._setStatus("Error: " + (e && e.message || e));
+        this.log.error(e);
+      } finally {
+        this.scanning = false;
+        this.abortController = null;
+        setScanBtn(this.ui.scanBtn, false);
       }
-    });
-  };
-  MangaDownloader.prototype._sleep = function(ms) {
-    return new Promise(function(r) {
-      setTimeout(r, ms);
-    });
-  };
+    }
+_renderResults() {
+      this.segments.sort((a, b) => a.filename.localeCompare(b.filename));
+      addSegmentsToUI(this.segments, this.ui.resultsEl);
+    }
+
+_download() {
+      const checkboxes = this.ui.root.querySelectorAll("#mpd-results input[type=checkbox]:checked");
+      const checked = [];
+      for (let i = 0; i < checkboxes.length; i++) {
+        const seg = this.segments[parseInt(checkboxes[i].dataset.idx)];
+        if (seg && seg.blob) checked.push(seg);
+      }
+      if (!checked.length) {
+        this._setStatus("Nothing selected.");
+        return;
+      }
+      this.ui.dlBtn.disabled = true;
+      const host = location.hostname;
+      const date = ( new Date()).toISOString().slice(0, 10);
+      const chapter = location.pathname.replace(/\//g, "_").slice(1, 40) || "chapter";
+      const name = `${host}_${chapter}_${date}.zip`;
+      const finish = (zipBlob) => {
+        triggerDownload(zipBlob, name);
+        this.segments.forEach((seg) => {
+          seg.blob = null;
+        });
+        this.ui.dlBtn.disabled = true;
+        clearTimeout(this.previewRevokeTimer);
+        this.previewRevokeTimer = setTimeout(() => {
+          this._revokeAllPreviews();
+        }, 3e4);
+        this._setStatus("Downloaded: " + name);
+      };
+      this._setStatus(`Building ZIP (${checked.length} files)...`);
+      buildZipBlob(checked).then(finish).catch((e) => {
+        this.log.warn("Manual ZIP failed, downloading individually:", e.message);
+        const individual = (idx) => {
+          if (idx >= checked.length) {
+            this.segments.forEach((seg2) => {
+              seg2.blob = null;
+            });
+            this.ui.dlBtn.disabled = true;
+            clearTimeout(this.previewRevokeTimer);
+            this.previewRevokeTimer = setTimeout(() => {
+              this._revokeAllPreviews();
+            }, 3e4);
+            this._setStatus(`${checked.length} files downloaded individually.`);
+            return;
+          }
+          const seg = checked[idx];
+          this._setStatus(`Downloading ${idx + 1}/${checked.length}: ${seg.filename}`);
+          triggerDownload(seg.blob, seg.filename);
+          this._sleep(300).then(() => individual(idx + 1));
+        };
+        try {
+          individual(0);
+        } catch (e2) {
+          this._setStatus("Error: " + e2.message);
+          this.log.error("Download:", e2);
+          this.ui.dlBtn.disabled = false;
+        }
+      });
+    }
+
+_sleep(ms) {
+      return new Promise((r) => setTimeout(r, ms));
+    }
+  }
+  function createLogger(prefix, debugMode) {
+    debugMode = debugMode || false;
+    const tag = "[" + prefix + "]";
+    return {
+      log: function() {
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        console.log.apply(console, args);
+      },
+      warn: function() {
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        console.warn.apply(console, args);
+      },
+      error: function() {
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        console.error.apply(console, args);
+      },
+      info: function() {
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        console.info.apply(console, args);
+      },
+      debug: function() {
+        if (debugMode) {
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          console.debug.apply(console, args);
+        }
+      }
+    };
+  }
+  
+  const logger = createLogger("MPD");
+  const downloader = new MangaDownloader(logger);
+  downloader.init();
 
 })();
