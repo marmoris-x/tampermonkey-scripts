@@ -61,13 +61,21 @@ export class MangaDownloader {
   // ── Public API ───────────────────────────────────────────────────────
 
   /**
-   * Initializes the downloader: cleans legacy storage, registers menu command.
+   * Initializes the downloader: restores saved manga-mode, cleans legacy storage.
    * Called once from the entry bootstrap.
    */
-  init() {
-    // Clean up legacy storage keys (best-effort, ignore failures)
+  async init() {
+    // Restore persisted manga-mode state
+    try {
+      this.mangaMode = await GM.getValue('mpd-manga-mode', false);
+    } catch (_) { /* GM unavailable during dev */ }
+    // Update UI checkbox to reflect restored state
+    if (this.mangaMode && this.ui.mangaCheck) {
+      this.ui.mangaCheck.checked = true;
+    }
+
+    // Clean up legacy storage key (best-effort, ignore failures)
     GM.deleteValue('mpd-allowed-sites').catch(() => {});
-    GM.deleteValue('mpd-manga-mode').catch(() => {});
 
     this._registerMenuCommand();
   }

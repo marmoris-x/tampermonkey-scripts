@@ -14,6 +14,7 @@
 // @sandbox      raw
 // @connect      *
 // @grant        GM.deleteValue
+// @grant        GM.getValue
 // @grant        GM.registerMenuCommand
 // @grant        GM.setValue
 // @grant        GM.xmlHttpRequest
@@ -130,10 +131,6 @@
       }
     }
   }
-  const _activeRequests = new Map();
-  function _nextId() {
-    return Symbol("req");
-  }
   function _fetchBlob(url, signal, headerOverrides) {
     const headers = {};
     if (!headerOverrides || headerOverrides.Referer !== null) {
@@ -230,24 +227,15 @@
   async function downloadImage(url, signal, options = {}) {
     const maxRetries = options.retries !== void 0 ? options.retries : 2;
     const el = options.el || null;
-    const reqId = _nextId();
     let lastErr;
-    _activeRequests.set(reqId, { abort: () => {
-    } });
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (signal && signal.aborted) {
-        _activeRequests.delete(reqId);
         throw new DOMException("Aborted", "AbortError");
       }
       try {
-        const result = await _fetchWithFallbacks(url, el, signal);
-        _activeRequests.delete(reqId);
-        return result;
+        return await _fetchWithFallbacks(url, el, signal);
       } catch (e) {
-        if (e.name === "AbortError") {
-          _activeRequests.delete(reqId);
-          throw e;
-        }
+        if (e.name === "AbortError") throw e;
         lastErr = e;
         if (attempt < maxRetries) {
           const delay = 600 * (attempt + 1);
@@ -255,7 +243,6 @@
         }
       }
     }
-    _activeRequests.delete(reqId);
     throw lastErr || new Error("Download failed");
   }
   const MAX_SEG_H = 3500;
@@ -948,10 +935,15 @@ constructor(logger2) {
       this._watchUrlChanges();
     }
 
-init() {
+async init() {
+      try {
+        this.mangaMode = await GM.getValue("mpd-manga-mode", false);
+      } catch (_) {
+      }
+      if (this.mangaMode && this.ui.mangaCheck) {
+        this.ui.mangaCheck.checked = true;
+      }
       GM.deleteValue("mpd-allowed-sites").catch(() => {
-      });
-      GM.deleteValue("mpd-manga-mode").catch(() => {
       });
       this._registerMenuCommand();
     }

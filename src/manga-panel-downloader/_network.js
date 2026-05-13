@@ -1,21 +1,7 @@
-// Network module — MV3-compatible image download with fallback chain,
-// active-request tracking, and AbortController integration.
+// Network module — MV3-compatible image download with fallback chain
+// and AbortController integration.
 
 'use strict';
-
-/**
- * Tracks active GM.xmlHttpRequest instances for bulk abort.
- * Map<symbol, { abort: Function }>
- */
-const _activeRequests = new Map();
-
-/**
- * Generates a unique request ID.
- * @returns {symbol}
- */
-function _nextId() {
-  return Symbol('req');
-}
 
 /**
  * Core fetch — single GM.xmlHttpRequest call with Referer/Origin headers.
@@ -136,7 +122,6 @@ async function _fetchWithFallbacks(src, el, signal) {
  * - Retries up to 3 times with exponential backoff (600ms, 1200ms)
  * - Falls through 5 strategies (full headers → null Origin → no headers →
  *   native fetch → canvas redraw)
- * - Tracks the request internally for bulk abort via abortAll()
  *
  * @param {string} url - Image URL to download
  * @param {AbortSignal} [signal] - AbortSignal for cancellation
@@ -148,27 +133,17 @@ async function _fetchWithFallbacks(src, el, signal) {
 export async function downloadImage(url, signal, options = {}) {
   const maxRetries = options.retries !== undefined ? options.retries : 2;
   const el = options.el || null;
-  const reqId = _nextId();
   let lastErr;
-
-  // Register placeholder — will be replaced with real GM handle
-  _activeRequests.set(reqId, { abort: () => {} });
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (signal && signal.aborted) {
-      _activeRequests.delete(reqId);
       throw new DOMException('Aborted', 'AbortError');
     }
 
     try {
-      const result = await _fetchWithFallbacks(url, el, signal);
-      _activeRequests.delete(reqId);
-      return result;
+      return await _fetchWithFallbacks(url, el, signal);
     } catch (e) {
-      if (e.name === 'AbortError') {
-        _activeRequests.delete(reqId);
-        throw e;
-      }
+      if (e.name === 'AbortError') throw e;
       lastErr = e;
       if (attempt < maxRetries) {
         const delay = 600 * (attempt + 1);
@@ -177,25 +152,5 @@ export async function downloadImage(url, signal, options = {}) {
     }
   }
 
-  _activeRequests.delete(reqId);
   throw lastErr || new Error('Download failed');
-}
-
-/**
- * Aborts all in-flight download requests.
- * Iterates the internal request map and calls .abort() on each.
- */
-export function abortAll() {
-  for (const [, req] of _activeRequests) {
-    try { req.abort(); } catch (_) { /* ignore */ }
-  }
-  _activeRequests.clear();
-}
-
-/**
- * Returns the number of currently active download requests.
- * @returns {number}
- */
-export function getActiveCount() {
-  return _activeRequests.size;
 }
