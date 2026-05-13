@@ -8,8 +8,10 @@
 // @match        *://*/*
 // @grant        GM.xmlHttpRequest
 // @grant        GM.registerMenuCommand
-// @grant        GM.deleteValue
+// @grant        GM.getValue
 // @grant        GM.setValue
+// @grant        GM.deleteValue
+// @grant        GM_xmlhttpRequest
 // @connect      *
 // Required: manga images served from arbitrary CDNs (cloudfront, img-*.cdn, etc.)
 // Cannot enumerate — @connect * is the pragmatic choice for this downloader.

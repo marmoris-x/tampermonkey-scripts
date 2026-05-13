@@ -19,6 +19,7 @@
 // @grant        GM.setValue
 // @grant        GM.xmlHttpRequest
 // @grant        GM_addElement
+// @grant        GM_xmlhttpRequest
 // @grant        window.onurlchange
 // @run-at       document-idle
 // @noframes
