@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      4.0
+// @version      4.0.1
 // @author       marmoris
 // @description  Enhanced filtering options and automatic tag management for gutefrage.net
 // @license      MIT
@@ -515,6 +515,7 @@ observeNewContent() {
 async init() {
       if (!window.location.pathname.startsWith("/home/")) return;
       this.filters = await this.loadFilters();
+      this.enableFilters();
     }
 async loadFilters() {
       const saved = await loadSetting("enhancedFilters", {});
@@ -683,7 +684,7 @@ updateStats(visible, total) {
     const title = opts.title || "";
     let isOpen = false;
     const baseCSS = [
-      ":host { position:fixed; top:0; right:0; width:" + width + "px; height:100vh; z-index:2147483645;",
+      ":host { all:initial; contain:strict; isolation:isolate; position:fixed; top:0; right:0; width:" + width + "px; height:100vh; z-index:2147483645;",
       "background:#1a1a2e; color:#e0e0e0; font:13px/1.5 system-ui,sans-serif;",
       "transform:translateX(" + width + "px); transition:transform 0.3s ease;",
       "display:flex; flex-direction:column; }",
@@ -722,7 +723,7 @@ updateStats(visible, total) {
       ":host { position:fixed; top:50%; z-index:2147483644; background:" + accent + "; color:#fff;",
       "padding:10px 6px; border-radius:6px 0 0 6px; cursor:pointer; font:12px system-ui,sans-serif;",
       "writing-mode:vertical-rl; text-orientation:mixed; box-shadow:-2px 2px 8px rgba(0,0,0,0.3);",
-      "right:0; transform:translateY(-50%) translateX(100%);",
+      "right:0; transform:translateY(-50%) translateX(calc(100% - 28px));",
       "transition:right 0.3s ease, transform 0.3s ease; }",
       ":host(:hover) { filter:brightness(1.1); }",
       ":host(.open) { right:" + (width + 8) + "px; transform:translateY(-50%) translateX(0); }"

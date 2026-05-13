@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gutefrage Smart Filters
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      4.0
+// @version      4.0.1
 // @description  Enhanced filtering options and automatic tag management for gutefrage.net
 // @author       marmoris
 // @match        https://www.gutefrage.net/*

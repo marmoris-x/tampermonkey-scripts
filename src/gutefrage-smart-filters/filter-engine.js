@@ -52,6 +52,7 @@ export class EnhancedFilterIntegration {
   async init() {
     if (!window.location.pathname.startsWith('/home/')) return;
     this.filters = await this.loadFilters();
+    this.enableFilters();
   }
 
   /**
