@@ -2,8 +2,8 @@
 // Builds a shadow-DOM sidebar with scan controls, image segment listing, and
 // ZIP download. All element queries go through the sidebar ShadowRoot.
 
-import { createSidebar } from '../shared/ui-components.js';
-import { buildStoreZip } from '../shared/zip-builder.js';
+import { createSidebar } from './_ui.js';
+import { buildStoreZip } from './_zip.js';
 
 var SW = 320;
 

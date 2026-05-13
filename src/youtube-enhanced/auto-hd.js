@@ -3,7 +3,7 @@
 // and intervenes via the native player API to force the highest available
 // quality on each video.
 
-import { createLogger } from '../shared/logging-utils.js';
+import { createLogger } from './_logger.js';
 
 var log = createLogger('YouTube Enhanced');
 

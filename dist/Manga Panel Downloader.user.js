@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga Panel Downloader
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.4.0
+// @version      2.5.0
 // @author       marmoris-x
 // @description  Downloads manga/manhwa panels as ZIP — pipeline download, retry, abort, fast scrolling
 // @license      MIT
@@ -10,51 +10,52 @@
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.user.js
 // @match        *://*/*
-// @sandbox      JavaScript
-// @connect      *
-// @grant        GM_addStyle
+// @require      https://raw.githubusercontent.com/Tampermonkey/utils/refs/heads/main/requires/gh_2215_make_GM_xhr_more_parallel_again.js
+// @sandbox      raw
+// @connect      self
+// @grant        GM.addStyle
+// @grant        GM.deleteValue
+// @grant        GM.registerMenuCommand
+// @grant        GM.xmlHttpRequest
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
-// @inject-into  content
+// @grant        window.onurlchange
 // @run-at       document-idle
 // @noframes
-// @unwrap
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
   function createLogger(prefix, debugMode) {
     debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+    const tag = "[" + prefix + "]";
     return {
       log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
       },
       warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.warn.apply(console, args);
       },
       error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.error.apply(console, args);
       },
       info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.info.apply(console, args);
       },
       debug: function() {
         if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
           console.debug.apply(console, args);
         }
       }
@@ -461,12 +462,12 @@
   }
   function createShadowContainer(opts) {
     opts = opts || {};
-    var host = document.createElement(opts.tag || "div");
+    const host = document.createElement(opts.tag || "div");
     if (opts.id) host.id = opts.id;
     if (opts.className) host.className = opts.className;
-    var root = host.attachShadow({ mode: "closed" });
+    const root = host.attachShadow({ mode: "closed" });
     if (opts.styles) {
-      var style = document.createElement("style");
+      const style = document.createElement("style");
       style.textContent = opts.styles;
       root.appendChild(style);
     }
@@ -475,11 +476,11 @@
   }
   function createSidebar(opts) {
     opts = opts || {};
-    var width = opts.width || 340;
-    var accent = opts.accentColor || "#2196F3";
-    var title = opts.title || "";
-    var isOpen = false;
-    var baseCSS = [
+    const width = opts.width || 340;
+    const accent = opts.accentColor || "#2196F3";
+    const title = opts.title || "";
+    let isOpen = false;
+    const baseCSS = [
       ":host { position:fixed; top:0; right:0; width:" + width + "px; height:100vh; z-index:2147483645;",
       "background:#1a1a2e; color:#e0e0e0; font:13px/1.5 system-ui,sans-serif;",
       "transform:translateX(" + width + "px); transition:transform 0.3s ease;",
@@ -497,24 +498,24 @@
       ".body::-webkit-scrollbar-thumb { background:#0f3460; border-radius:3px; }",
       opts.cssOverrides || ""
     ].join("");
-    var container = createShadowContainer({ styles: baseCSS });
-    var root = container.root;
-    var header = document.createElement("div");
+    const container = createShadowContainer({ styles: baseCSS });
+    const root = container.root;
+    const header = document.createElement("div");
     header.className = "header";
-    var h2 = document.createElement("h2");
+    const h2 = document.createElement("h2");
     h2.textContent = title;
-    var closeBtn = document.createElement("button");
+    const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
     closeBtn.setAttribute("aria-label", "Close sidebar");
     header.appendChild(h2);
     header.appendChild(closeBtn);
     root.appendChild(header);
-    var body = document.createElement("div");
+    const body = document.createElement("div");
     body.className = "body";
     root.appendChild(body);
-    var tab = document.createElement("div");
-    var tabRoot = tab.attachShadow({ mode: "closed" });
-    var tabStyle = document.createElement("style");
+    const tab = document.createElement("div");
+    const tabRoot = tab.attachShadow({ mode: "closed" });
+    const tabStyle = document.createElement("style");
     tabStyle.textContent = [
       ":host { position:fixed; top:50%; z-index:2147483644; background:" + accent + "; color:#fff;",
       "padding:10px 6px; border-radius:6px 0 0 6px; cursor:pointer; font:12px system-ui,sans-serif;",
@@ -524,7 +525,7 @@
       ":host(:hover) { filter:brightness(1.1); }",
       ":host(.open) { right:" + (width + 8) + "px; transform:translateY(-50%) translateX(0); }"
     ].join("");
-    var tabSpan = document.createElement("span");
+    const tabSpan = document.createElement("span");
     tabSpan.textContent = title;
     tabRoot.appendChild(tabStyle);
     tabRoot.appendChild(tabSpan);
@@ -549,7 +550,7 @@
       if (isOpen) close();
       else open();
     }
-    var dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
+    let dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
     header.addEventListener("mousedown", function(e) {
       if (e.target === closeBtn) return;
       dragging = true;
@@ -586,13 +587,13 @@
       }
     };
   }
-  var crcTable = null;
+  let crcTable = null;
   function buildCRCTable() {
     if (crcTable) return crcTable;
     crcTable = new Uint32Array(256);
-    for (var i = 0; i < 256; i++) {
-      var c = i;
-      for (var j = 0; j < 8; j++) {
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let j = 0; j < 8; j++) {
         c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
       }
       crcTable[i] = c;
@@ -600,27 +601,27 @@
     return crcTable;
   }
   function crc32(data) {
-    var table = buildCRCTable();
-    var crc = 4294967295;
-    for (var i = 0; i < data.length; i++) {
+    const table = buildCRCTable();
+    let crc = 4294967295;
+    for (let i = 0; i < data.length; i++) {
       crc = table[(crc ^ data[i]) & 255] ^ crc >>> 8;
     }
     return (crc ^ 4294967295) >>> 0;
   }
-  var encoder = new TextEncoder();
+  const encoder = new TextEncoder();
   function buildStoreZip(files) {
-    var localHeaders = [];
-    var centralEntries = [];
-    var offsets = [];
-    var offset = 0;
-    for (var f = 0; f < files.length; f++) {
-      var nameBytes = encoder.encode(files[f].name);
-      var data = files[f].data;
-      var crc = crc32(data);
-      var nameLen = nameBytes.length;
-      var dataLen = data.length;
-      var lh = new ArrayBuffer(30 + nameLen);
-      var lv = new DataView(lh);
+    const localHeaders = [];
+    const centralEntries = [];
+    const offsets = [];
+    let offset = 0;
+    for (let f = 0; f < files.length; f++) {
+      const nameBytes = encoder.encode(files[f].name);
+      const data = files[f].data;
+      const crc = crc32(data);
+      const nameLen = nameBytes.length;
+      const dataLen = data.length;
+      const lh = new ArrayBuffer(30 + nameLen);
+      const lv = new DataView(lh);
       lv.setUint32(0, 67324752, true);
       lv.setUint16(4, 20, true);
       lv.setUint16(6, 2048, true);
@@ -632,19 +633,19 @@
       lv.setUint32(22, dataLen, true);
       lv.setUint16(26, nameLen, true);
       lv.setUint16(28, 0, true);
-      var lhBytes = new Uint8Array(lh);
+      const lhBytes = new Uint8Array(lh);
       lhBytes.set(nameBytes, 30);
       localHeaders.push(lhBytes);
       offsets.push(offset);
       offset += lhBytes.length + dataLen;
     }
-    var total = offset;
-    var cdOffset = total;
-    for (f = 0; f < files.length; f++) {
-      var cdNameBytes = encoder.encode(files[f].name);
-      var cdNameLen = cdNameBytes.length;
-      var cd = new ArrayBuffer(46 + cdNameLen);
-      var cv = new DataView(cd);
+    let cdTotal = 0;
+    const cdOffset = offset;
+    for (let f = 0; f < files.length; f++) {
+      const cdNameBytes = encoder.encode(files[f].name);
+      const cdNameLen = cdNameBytes.length;
+      const cd = new ArrayBuffer(46 + cdNameLen);
+      const cv = new DataView(cd);
       cv.setUint32(0, 33639248, true);
       cv.setUint16(4, 20, true);
       cv.setUint16(6, 20, true);
@@ -662,34 +663,31 @@
       cv.setUint16(36, 0, true);
       cv.setUint32(38, 0, true);
       cv.setUint32(42, offsets[f], true);
-      var cdBytes = new Uint8Array(cd);
+      const cdBytes = new Uint8Array(cd);
       cdBytes.set(cdNameBytes, 46);
       centralEntries.push(cdBytes);
-      total += cdBytes.length;
+      cdTotal += cdBytes.length;
     }
-    var cdSize = centralEntries.reduce(function(s, e) {
-      return s + e.length;
-    }, 0);
-    total += 22;
-    var out = new Uint8Array(total);
-    var pos = 0;
-    for (f = 0; f < files.length; f++) {
+    const totalSize = offset + cdTotal + 22;
+    const out = new Uint8Array(totalSize);
+    let pos = 0;
+    for (let f = 0; f < files.length; f++) {
       out.set(localHeaders[f], pos);
       pos += localHeaders[f].length;
       out.set(files[f].data, pos);
       pos += files[f].data.length;
     }
-    for (f = 0; f < centralEntries.length; f++) {
+    for (let f = 0; f < centralEntries.length; f++) {
       out.set(centralEntries[f], pos);
       pos += centralEntries[f].length;
     }
-    var eocd = new DataView(out.buffer, pos, 22);
+    const eocd = new DataView(out.buffer, pos, 22);
     eocd.setUint32(0, 101010256, true);
     eocd.setUint16(4, 0, true);
     eocd.setUint16(6, 0, true);
     eocd.setUint16(8, files.length, true);
     eocd.setUint16(10, files.length, true);
-    eocd.setUint32(12, cdSize, true);
+    eocd.setUint32(12, cdTotal, true);
     eocd.setUint32(16, cdOffset, true);
     eocd.setUint16(20, 0, true);
     return out;

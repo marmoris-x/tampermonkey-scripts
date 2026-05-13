@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.0
+// @version      1.7.1
 // @author       marmoris-x
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
 // @license      MIT
@@ -21,113 +21,45 @@
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
-  function createLogger(prefix, debugMode) {
-    debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+  
+  function createLogger(prefix, debugMode = false) {
+    const tag = "[" + prefix + "]";
     return {
       log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
       },
       warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.warn.apply(console, args);
       },
       error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.error.apply(console, args);
       },
       info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.info.apply(console, args);
       },
       debug: function() {
         if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
           console.debug.apply(console, args);
         }
       }
     };
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.dom = {
-    waitForElement,
-    debounce,
-    throttle,
-    observeMutations
-  };
-  function waitForElement(selector, timeout, root) {
-    timeout = timeout || 1e4;
-    root = root || document.body;
-    return new Promise(function(resolve, reject) {
-      var existing = root.querySelector(selector);
-      if (existing) return resolve(existing);
-      var timer;
-      var observer = new MutationObserver(function(mutations) {
-        for (var m = 0; m < mutations.length; m++) {
-          var nodes = mutations[m].addedNodes;
-          for (var i = 0; i < nodes.length; i++) {
-            if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
-            if (nodes[i].matches && nodes[i].matches(selector)) {
-              cleanup();
-              return resolve(nodes[i]);
-            }
-            var child = nodes[i].querySelector && nodes[i].querySelector(selector);
-            if (child) {
-              cleanup();
-              return resolve(child);
-            }
-          }
-        }
-      });
-      function cleanup() {
-        observer.disconnect();
-        if (timer) clearTimeout(timer);
-      }
-      observer.observe(root, { childList: true, subtree: true });
-      if (timeout > 0) {
-        timer = setTimeout(function() {
-          cleanup();
-          reject(new Error("waitForElement timeout: " + selector));
-        }, timeout);
-      }
-    });
-  }
-  function debounce(fn, ms) {
-    ms = ms || 200;
-    var timer = 0;
-    return function() {
-      var ctx = this, args = arguments;
-      clearTimeout(timer);
-      timer = setTimeout(function() {
-        fn.apply(ctx, args);
-      }, ms);
-    };
-  }
-  function throttle(fn, ms) {
-    ms = ms || 200;
-    var last = 0;
-    return function() {
-      var now = Date.now();
-      if (now - last >= ms) {
-        last = now;
-        fn.apply(this, arguments);
-      }
-    };
-  }
   function observeMutations(callback, root) {
     root = root || document.body;
-    var observer = new MutationObserver(function(mutations) {
-      for (var m = 0; m < mutations.length; m++) {
-        var nodes = mutations[m].addedNodes;
-        for (var i = 0; i < nodes.length; i++) {
+    const observer = new MutationObserver(function(mutations) {
+      for (let m = 0; m < mutations.length; m++) {
+        const nodes = mutations[m].addedNodes;
+        for (let i = 0; i < nodes.length; i++) {
           if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
         }
       }
@@ -135,7 +67,6 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  
   const log = createLogger("FlameComics Advanced Sort");
   log.log("Script loaded");
   const styles = `

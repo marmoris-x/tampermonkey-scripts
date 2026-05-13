@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.0
+// @version      1.7.1
 // @author       marmoris-x
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @license      MIT
@@ -13,7 +13,6 @@
 // @sandbox      JavaScript
 // @grant        GM.getValue
 // @grant        GM.setValue
-// @grant        GM.setValues
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @inject-into  content
@@ -25,36 +24,34 @@
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
   function createLogger(prefix, debugMode) {
     debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+    const tag = "[" + prefix + "]";
     return {
       log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
       },
       warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.warn.apply(console, args);
       },
       error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.error.apply(console, args);
       },
       info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.info.apply(console, args);
       },
       debug: function() {
         if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
           console.debug.apply(console, args);
         }
       }
@@ -144,16 +141,9 @@
       setTimeout(force, 100);
     }, { once: true });
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.storage = {
-    loadSetting,
-    saveSetting,
-    loadSettings,
-    saveSettings
-  };
   async function loadSetting(key, defaultValue) {
     try {
-      var raw = await GM.getValue(key);
+      const raw = await GM.getValue(key);
       if (raw === void 0 || raw === null) return defaultValue;
       return raw;
     } catch (e) {
@@ -163,89 +153,12 @@
   async function saveSetting(key, value) {
     await GM.setValue(key, value);
   }
-  async function loadSettings(defaults) {
-    var keys = Object.keys(defaults);
-    var result = {};
-    for (var i = 0; i < keys.length; i++) {
-      result[keys[i]] = await loadSetting(keys[i], defaults[keys[i]]);
-    }
-    return result;
-  }
-  async function saveSettings(obj) {
-    await GM.setValues(obj);
-  }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.dom = {
-    waitForElement,
-    debounce,
-    throttle,
-    observeMutations
-  };
-  function waitForElement(selector, timeout, root) {
-    timeout = timeout || 1e4;
-    root = root || document.body;
-    return new Promise(function(resolve, reject) {
-      var existing = root.querySelector(selector);
-      if (existing) return resolve(existing);
-      var timer;
-      var observer = new MutationObserver(function(mutations) {
-        for (var m = 0; m < mutations.length; m++) {
-          var nodes = mutations[m].addedNodes;
-          for (var i = 0; i < nodes.length; i++) {
-            if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
-            if (nodes[i].matches && nodes[i].matches(selector)) {
-              cleanup();
-              return resolve(nodes[i]);
-            }
-            var child = nodes[i].querySelector && nodes[i].querySelector(selector);
-            if (child) {
-              cleanup();
-              return resolve(child);
-            }
-          }
-        }
-      });
-      function cleanup() {
-        observer.disconnect();
-        if (timer) clearTimeout(timer);
-      }
-      observer.observe(root, { childList: true, subtree: true });
-      if (timeout > 0) {
-        timer = setTimeout(function() {
-          cleanup();
-          reject(new Error("waitForElement timeout: " + selector));
-        }, timeout);
-      }
-    });
-  }
-  function debounce(fn, ms) {
-    ms = ms || 200;
-    var timer = 0;
-    return function() {
-      var ctx = this, args = arguments;
-      clearTimeout(timer);
-      timer = setTimeout(function() {
-        fn.apply(ctx, args);
-      }, ms);
-    };
-  }
-  function throttle(fn, ms) {
-    ms = ms || 200;
-    var last = 0;
-    return function() {
-      var now = Date.now();
-      if (now - last >= ms) {
-        last = now;
-        fn.apply(this, arguments);
-      }
-    };
-  }
   function observeMutations(callback, root) {
     root = root || document.body;
-    var observer = new MutationObserver(function(mutations) {
-      for (var m = 0; m < mutations.length; m++) {
-        var nodes = mutations[m].addedNodes;
-        for (var i = 0; i < nodes.length; i++) {
+    const observer = new MutationObserver(function(mutations) {
+      for (let m = 0; m < mutations.length; m++) {
+        const nodes = mutations[m].addedNodes;
+        for (let i = 0; i < nodes.length; i++) {
           if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
         }
       }
@@ -253,25 +166,16 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.i18n = {
-    normalizeText,
-    matchAnyTerm,
-    matchTerm
-  };
   function normalizeText(str) {
     if (!str) return "";
     return str.toLowerCase().replace(/[äæ]/g, "ae").replace(/[öœ]/g, "oe").replace(/[ü]/g, "ue").replace(/ß/g, "ss").replace(/[àáâãå]/g, "a").replace(/[èéêë]/g, "e").replace(/[ìíîï]/g, "i").replace(/[òóôõ]/g, "o").replace(/[ùúû]/g, "u").replace(/[ñ]/g, "n").replace(/[ç]/g, "c").replace(/[-_.:]+/g, " ").replace(/\s+/g, " ").trim();
   }
   function matchAnyTerm(text, terms) {
-    var n = normalizeText(text);
-    for (var i = 0; i < terms.length; i++) {
+    const n = normalizeText(text);
+    for (let i = 0; i < terms.length; i++) {
       if (n.indexOf(normalizeText(terms[i])) !== -1) return true;
     }
     return false;
-  }
-  function matchTerm(text, term) {
-    return normalizeText(text) === normalizeText(term);
   }
   var log$1 = createLogger("YouTube Enhanced");
   function roundSpeed(v) {

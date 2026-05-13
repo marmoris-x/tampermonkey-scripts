@@ -2,7 +2,7 @@
 // Provides constants, utility functions, storage operations, and deal merging/ranking logic.
 // Consumers: Marketplace Deal Finder entry file, scraper modules
 
-import { loadSetting, saveSetting } from '../shared/storage-utils.js';
+import { loadSetting, saveSetting } from './_storage.js';
 import { callGeminiAPI } from './api-gemini.js';
 
 /* ─── Constants ─── */

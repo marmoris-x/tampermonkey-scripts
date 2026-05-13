@@ -6,10 +6,10 @@
 // UI follows YouTube's native panel structure (ytp-panel) for seamless
 // integration with existing animations and navigation.
 
-import { createLogger } from '../shared/logging-utils.js';
-import { loadSetting, saveSetting } from '../shared/storage-utils.js';
-import { observeMutations } from '../shared/dom-utils.js';
-import { matchAnyTerm } from '../shared/i18n-utils.js';
+import { createLogger } from './_logger.js';
+import { loadSetting, saveSetting } from './_storage.js';
+import { observeMutations } from './_dom.js';
+import { matchAnyTerm } from './_i18n.js';
 
 var log = createLogger('YouTube Enhanced');
 

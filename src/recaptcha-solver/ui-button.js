@@ -4,7 +4,7 @@
 // and observing for re-injection when the DOM resets.
 // Consumers: Recaptcha Solver (entry file, solver-engine)
 
-import { createLogger } from '../shared/logging-utils.js';
+import { createLogger } from './_logger.js';
 import { state, solverInterval } from './solver-engine.js';
 import { startSolver } from './solver-engine.js';
 

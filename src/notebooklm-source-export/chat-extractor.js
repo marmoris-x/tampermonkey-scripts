@@ -180,6 +180,65 @@ export function extractChatToMarkdown(htmlToMarkdown) {
 }
 
 /**
+ * Extracts all chat messages as plain text (no markdown syntax).
+ * Uses the same selectors and metadata extraction as the markdown path.
+ *
+ * @returns {string} Plain text conversation, or empty string if no chat found
+ */
+export function extractChatToText() {
+  const container = document.querySelector(SELECTORS.chatContainer);
+  if (!container) return '';
+
+  const pairs = container.querySelectorAll(SELECTORS.messagePair);
+  if (!pairs || pairs.length === 0) return '';
+
+  const meta = extractMetadata();
+  const lines = [
+    'NotebookLM Chat Export',
+    'Title: ' + meta.title,
+    'Date: ' + meta.dateStr,
+    'Platform: NotebookLM'
+  ];
+  if (meta.sourceInfo) lines.push('Sources: ' + meta.sourceInfo);
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
+
+    let userEl = pair.querySelector(SELECTORS.userContent);
+    if (!userEl) userEl = queryFirst(pair, [FALLBACK_SELECTORS.userContent]);
+
+    let aiEl = pair.querySelector(SELECTORS.aiContent);
+    if (!aiEl) aiEl = queryFirst(pair, [FALLBACK_SELECTORS.aiContent]);
+
+    const hasAiResponse = aiEl && aiEl.textContent.trim().length > 0;
+    if (!hasAiResponse) continue;
+
+    // User message
+    lines.push('User:');
+    if (userEl && userEl.textContent.trim().length > 0) {
+      lines.push(userEl.textContent.trim());
+    } else {
+      lines.push('[non-text message]');
+    }
+    lines.push('');
+
+    // AI response
+    lines.push('NotebookLM:');
+    const aiClone = aiEl.cloneNode(true);
+    removeCitations(aiClone);
+    lines.push(aiClone.textContent.trim());
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Extracts raw chat message data from the NotebookLM chat DOM.
  * Does NOT perform markdown conversion — returns DOM outerHTML.
  * This is used by HTML and PDF export paths.

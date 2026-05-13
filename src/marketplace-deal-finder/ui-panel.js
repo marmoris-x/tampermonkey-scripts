@@ -2,7 +2,7 @@
 // Provides modal, settings/results views, progress display, export functions, and floating button.
 // Consumers: Marketplace Deal Finder entry file
 
-import { createToast, createStatusBar } from '../shared/ui-components.js';
+import { createToast, createStatusBar } from './_ui.js';
 
 /* ─── Internal Helpers ─── */
 

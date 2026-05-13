@@ -1,29 +1,32 @@
 // src/crunchyroll-enhanced/scanner.js — Card scanning, data extraction, badges, and observer
-// Provides: scanCards, extractInfo, triggerHover, retryNoData, addBadges,
+// Provides: scanCards, extractInfo, triggerHover, retryNoData, addBadges, mkBadge, createSpinner,
 //           updateBadgeVisibility, startObserver, ingestNewCards, withData, fmtNum
-// Consumers: Crunchyroll Enhanced (entry orchestrator), ui-panel.js, exporter.js
+// Consumers: app.js (orchestrator), ui-panel.js (badge vis), exporter.js (fmtNum)
+
+'use strict';
 
 /**
  * Main scan loop — iterates all .browse-card elements, extracts data, adds badges.
- * @param {object} ctx - Class instance with cards, origOrder, showBadges, sidebar, etc.
+ * @param {object} ctx - Context with cards, origOrder, showBadges, sidebar, _$, log, _status, _updateStats, _sleep, _apply
  */
 export async function scanCards(ctx) {
   if (ctx.isScanning) return;
   ctx.isScanning = true;
 
-  var btn = ctx._$('cr-btn-scan');
+  const btn = ctx._$('cr-btn-scan');
   btn.disabled = true;
-  btn.innerHTML = '<span class="cr-spin"></span> Scannen…';
+  btn.textContent = '';
+  btn.append(createSpinner(), document.createTextNode(' Scanning…'));
   ctx._status('Scanning cards…');
   ctx._$('cr-prog').style.display = 'block';
 
   ctx.cards.clear();
-  ctx.origOrder = [];
+  ctx.origOrder.length = 0;
 
-  var all = Array.from(document.querySelectorAll('.browse-card'));
+  const all = document.querySelectorAll('.browse-card');
 
   // Force hover panels visible via CSS
-  var forceStyle = document.createElement('style');
+  const forceStyle = document.createElement('style');
   forceStyle.id = 'cr-force-hover';
   forceStyle.textContent = [
     '[class*="browse-card-hover"] {',
@@ -33,16 +36,23 @@ export async function scanCards(ctx) {
     '}'
   ].join('');
   document.head.appendChild(forceStyle);
-  all.forEach(function (c) { c.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); });
+
+  for (const card of all) {
+    card.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  }
   await ctx._sleep(600);
 
-  for (var i = 0; i < all.length; i++) {
-    var card = all[i];
-    var info = extractInfo(card, i);
-    ctx.cards.set(card, info);
-    ctx.origOrder.push(card);
+  for (let i = 0; i < all.length; i++) {
+    try {
+      const card = all[i];
+      const info = extractInfo(card, i);
+      ctx.cards.set(card, info);
+      ctx.origOrder.push(card);
 
-    if (ctx.showBadges) addBadges(card, info);
+      if (ctx.showBadges) addBadges(card, info);
+    } catch (err) {
+      ctx.log.warn('Scan error on card', i, err);
+    }
 
     ctx._$('cr-prog-fill').style.width =
       Math.round((i + 1) / all.length * 100) + '%';
@@ -50,12 +60,12 @@ export async function scanCards(ctx) {
     if ((i + 1) % 30 === 0) await ctx._sleep(0);
   }
 
-  var fh = document.getElementById('cr-force-hover');
+  const fh = document.getElementById('cr-force-hover');
   if (fh) fh.remove();
   ctx._$('cr-prog').style.display = 'none';
 
   // Retry pass for cards without data
-  var noData = Array.from(ctx.cards.entries())
+  const noData = [...ctx.cards.entries()]
     .filter(function (e) { return !e[1].hasData; })
     .map(function (e) { return e[0]; });
 
@@ -63,13 +73,14 @@ export async function scanCards(ctx) {
     retryNoData(ctx, noData);
   }
 
-  var wd = withData(ctx.cards);
-  ctx._status('✅ ' + all.length + ' scanned, ' + wd + ' with real data');
+  const wd = withData(ctx.cards);
+  ctx._status('✅ ' + all.length + ' scanned, ' + wd + ' with data');
   ctx._updateStats(all.length, all.length, wd);
 
   ctx.isScanning = false;
   btn.disabled = false;
-  btn.innerHTML = '<span>🔄</span> Scannen';
+  btn.textContent = '';
+  btn.innerHTML = '<span>\u{1F504}</span> Scan';
 
   ctx._apply();
   startObserver(ctx);
@@ -77,70 +88,88 @@ export async function scanCards(ctx) {
 
 /**
  * Extracts anime info from a single card element.
+ * Falls back through multiple selectors for Crunchyroll UI resilience.
  * @param {Element} card - The .browse-card element
  * @param {number} index - Position in the original card order
- * @returns {object} Extracted card data
+ * @returns {object} Extracted card data with title, description, rating, votes, etc.
  */
 export function extractInfo(card, index) {
-  var titleEl = card.querySelector('h3[data-t="title"] a') ||
-                card.querySelector('[class*="browse-card__title"] a');
-  var title = titleEl ? titleEl.textContent.trim() : '';
-  var link  = titleEl ? titleEl.href : '';
-  var seriesId = link.match(/series\/([A-Z0-9]+)/) ? link.match(/series\/([A-Z0-9]+)/)[1] : '';
+  const titleEl =
+    card.querySelector('h3[data-t="title"] a') ||
+    card.querySelector('[class*="browse-card__title"] a') ||
+    card.querySelector('[data-testid="card-title"] a') ||
+    card.querySelector('a[class*="title"]') ||
+    card.querySelector('a[href*="/series/"]');
+  const title = titleEl ? titleEl.textContent.trim() : '';
+  const link  = titleEl ? titleEl.href : '';
+  const seriesId = link.match(/series\/([A-Z0-9]+)/)
+    ? link.match(/series\/([A-Z0-9]+)/)[1]
+    : '';
 
-  var descEl = card.querySelector('p[data-t="description"]');
-  var description = descEl ? descEl.textContent.trim() : '';
+  const descEl =
+    card.querySelector('p[data-t="description"]') ||
+    card.querySelector('[class*="browse-card__description"]') ||
+    card.querySelector('[data-testid="card-description"]') ||
+    card.querySelector('[class*="description"]');
+  const description = descEl ? descEl.textContent.trim() : '';
 
-  var ratingEl = card.querySelector('p[class*="star-rating-short-static__rating"]') ||
-                 card.querySelector('[data-t="star-rating-short-static"] [class*="rating"]');
-  var rating = ratingEl ? (parseFloat(ratingEl.textContent.trim()) || null) : null;
+  const ratingEl =
+    card.querySelector('p[class*="star-rating-short-static__rating"]') ||
+    card.querySelector('[data-t="star-rating-short-static"] [class*="rating"]') ||
+    card.querySelector('[class*="rating"][data-t]') ||
+    card.querySelector('[class*="star-rating"] [class*="rating"]') ||
+    card.querySelector('[class*="rating"]');
+  const rating = ratingEl ? (parseFloat(ratingEl.textContent.trim()) || null) : null;
 
-  var votesEl = card.querySelector('p[data-t="rating-count"]') ||
-                card.querySelector('[class*="votes-count"]') ||
-                card.querySelector('[class*="star-rating-short-static__votes"]');
-  var votes = null;
+  const votesEl =
+    card.querySelector('p[data-t="rating-count"]') ||
+    card.querySelector('[class*="votes-count"]') ||
+    card.querySelector('[class*="star-rating-short-static__votes"]') ||
+    card.querySelector('[class*="rating-count"]');
+  let votes = null;
   if (votesEl) {
-    var m = votesEl.textContent.match(/([\d,.]+)\s*([kKmM]?)/);
+    const m = votesEl.textContent.match(/([\d,.]+)\s*([kKmM]?)/);
     if (m) {
-      var n = parseFloat(m[1].replace(',', '.'));
-      var s = m[2].toLowerCase();
+      let n = parseFloat(m[1].replace(',', '.'));
+      const s = m[2].toLowerCase();
       if (s === 'k') n *= 1000;
       else if (s === 'm') n *= 1000000;
       votes = Math.round(n);
     }
   }
 
-  var metaEl = card.querySelector('[class*="browse-card-hover__series-meta"]');
-  var seasons = null, episodes = null;
+  const metaEl = card.querySelector('[class*="browse-card-hover__series-meta"]') ||
+                 card.querySelector('[class*="series-meta"]');
+  let seasons = null, episodes = null;
   if (metaEl) {
-    metaEl.querySelectorAll('span').forEach(function (span) {
-      var t = span.textContent.trim();
-      var ep = t.match(/(\d+)\s*(?:Episode[ns]?|Folge[n]?)/i);
-      var se = t.match(/(\d+)\s*(?:Staffel[n]?|Season[s]?)/i);
+    for (const span of metaEl.querySelectorAll('span')) {
+      const t = span.textContent.trim();
+      const ep = t.match(/(\d+)\s*(?:Episode[ns]?|Folge[n]?)/i);
+      const se = t.match(/(\d+)\s*(?:Staffel[n]?|Season[s]?)/i);
       if (ep) episodes = parseInt(ep[1], 10);
       if (se) seasons  = parseInt(se[1], 10);
-    });
+    }
   }
 
-  var hasSub = false, hasDub = false;
-  card.querySelectorAll('[class*="meta-tags"] span, [class*="meta-tag"] span').forEach(function (el) {
-    var t = el.textContent.toLowerCase();
-    if (t.indexOf('untertitel') !== -1 || t.indexOf('sub') !== -1) hasSub = true;
-    if (t.indexOf('synchro') !== -1    || t.indexOf('dub') !== -1) hasDub = true;
-  });
+  let hasSub = false, hasDub = false;
+  for (const el of card.querySelectorAll('[class*="meta-tags"] span, [class*="meta-tag"] span')) {
+    const t = el.textContent.toLowerCase();
+    if (t.includes('untertitel') || t.includes('sub')) hasSub = true;
+    if (t.includes('synchro') || t.includes('dub')) hasDub = true;
+  }
 
-  var onWatchlist = !!card.querySelector(
+  const onWatchlist = !!card.querySelector(
     '[class*="card-watchlist-label"], [class*="watchlist-label"]'
   );
 
-  var hasData = rating !== null || votes !== null ||
-                episodes !== null || seasons !== null;
+  const hasData = rating !== null || votes !== null ||
+                  episodes !== null || seasons !== null;
 
-  return { title: title, description: description, link: link,
-           seriesId: seriesId, rating: rating, votes: votes,
-           episodes: episodes, seasons: seasons,
-           hasSub: hasSub, hasDub: hasDub, onWatchlist: onWatchlist,
-           hasData: hasData, index: index };
+  return { title, description, link,
+           seriesId, rating, votes,
+           episodes, seasons,
+           hasSub, hasDub, onWatchlist,
+           hasData, index };
 }
 
 /**
@@ -148,7 +177,7 @@ export function extractInfo(card, index) {
  * @param {Element[]} cards - Array of card elements
  */
 export function triggerHover(cards) {
-  var style = document.createElement('style');
+  const style = document.createElement('style');
   style.id = 'cr-force-hover';
   style.textContent = [
     '[class*="browse-card-hover"] {',
@@ -158,12 +187,14 @@ export function triggerHover(cards) {
     '}'
   ].join('');
   document.head.appendChild(style);
-  cards.forEach(function (c) { c.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); });
+  for (const c of cards) {
+    c.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  }
 }
 
 /**
  * Retry pass for cards that failed to load data on first scan.
- * @param {object} ctx - Class instance
+ * @param {object} ctx - Context with cards map, _$, log, _sleep, _status
  * @param {Element[]} noDataCards - Cards without extracted data
  */
 export async function retryNoData(ctx, noDataCards) {
@@ -172,18 +203,23 @@ export async function retryNoData(ctx, noDataCards) {
   triggerHover(noDataCards);
   await ctx._sleep(1000);
 
-  var improved = 0;
-  noDataCards.forEach(function (card) {
-    var old = ctx.cards.get(card);
-    var fresh = extractInfo(card, old.index);
-    if (fresh.hasData) {
-      ctx.cards.set(card, fresh);
-      if (ctx.showBadges) addBadges(card, fresh);
-      improved++;
+  let improved = 0;
+  for (const card of noDataCards) {
+    try {
+      const old = ctx.cards.get(card);
+      if (!old) continue;
+      const fresh = extractInfo(card, old.index);
+      if (fresh.hasData) {
+        ctx.cards.set(card, fresh);
+        if (ctx.showBadges) addBadges(card, fresh);
+        improved++;
+      }
+    } catch (err) {
+      ctx.log.warn('Retry error on card', err);
     }
-  });
+  }
 
-  var fh = document.getElementById('cr-force-hover');
+  const fh = document.getElementById('cr-force-hover');
   if (fh) fh.remove();
 
   ctx._status('Retry: +' + improved + ' of ' + noDataCards.length + ' upgraded');
@@ -196,13 +232,17 @@ export async function retryNoData(ctx, noDataCards) {
  * @param {object} info - Extracted card data
  */
 export function addBadges(card, info) {
-  var existing = card.querySelector('.cr-overlay');
+  const existing = card.querySelector('.cr-overlay');
   if (existing) existing.remove();
 
-  var anchor = card.querySelector('[class*="browse-card__poster"], [class*="content-image"]') || card;
-  if (getComputedStyle(anchor).position === 'static') anchor.style.position = 'relative';
+  const anchor = card.querySelector('[class*="browse-card__poster"], [class*="content-image"]') || card;
 
-  var ov = document.createElement('div');
+  // Batch read: check if anchor needs relative positioning
+  if (getComputedStyle(anchor).position === 'static') {
+    anchor.style.position = 'relative';
+  }
+
+  const ov = document.createElement('div');
   ov.className = 'cr-overlay';
 
   if (info.rating   !== null) ov.appendChild(mkBadge('cr-b-rating',   '⭐ ' + info.rating.toFixed(1)));
@@ -220,13 +260,23 @@ export function addBadges(card, info) {
  * Creates a single badge element.
  * @param {string} cls - CSS class
  * @param {string} text - Badge text
- * @returns {Element}
+ * @returns {HTMLDivElement}
  */
 export function mkBadge(cls, text) {
-  var b = document.createElement('div');
+  const b = document.createElement('div');
   b.className = 'cr-badge ' + cls;
   b.textContent = text;
   return b;
+}
+
+/**
+ * Creates a spinner element for loading states.
+ * @returns {HTMLSpanElement}
+ */
+export function createSpinner() {
+  const span = document.createElement('span');
+  span.className = 'cr-spin';
+  return span;
 }
 
 /**
@@ -234,17 +284,17 @@ export function mkBadge(cls, text) {
  * @param {boolean} show - Whether badges should be visible
  */
 export function updateBadgeVisibility(show) {
-  document.querySelectorAll('.cr-overlay').forEach(function (el) {
+  for (const el of document.querySelectorAll('.cr-overlay')) {
     el.style.display = show ? '' : 'none';
-  });
+  }
 }
 
 /**
  * Starts a MutationObserver on the card container to detect new cards.
- * @param {object} ctx - Class instance
+ * @param {object} ctx - Context with origOrder, cards, showBadges, _$, _observer, _observerPaused, _observerTimer, log
  */
 export function startObserver(ctx) {
-  var target = ctx.origOrder[0] ? ctx.origOrder[0].parentElement : null;
+  const target = ctx.origOrder[0] ? ctx.origOrder[0].parentElement : null;
   if (!target) return;
 
   if (ctx._observer) {
@@ -257,28 +307,28 @@ export function startObserver(ctx) {
   ctx._observer = new MutationObserver(function (mutations) {
     if (ctx._observerPaused || ctx.isScanning) return;
 
-    var newCards = [];
-    mutations.forEach(function (m) {
-      m.addedNodes.forEach(function (node) {
-        if (node.nodeType !== 1) return;
-        if (node.parentElement !== target) return;
+    const newCards = [];
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.parentElement !== target) continue;
         if (node.classList && node.classList.contains('browse-card') && !ctx.cards.has(node)) {
           newCards.push(node);
         }
         if (node.querySelectorAll) {
-          node.querySelectorAll('.browse-card').forEach(function (c) {
+          for (const c of node.querySelectorAll('.browse-card')) {
             if (!ctx.cards.has(c)) newCards.push(c);
-          });
+          }
         }
-      });
-    });
+      }
+    }
 
     if (newCards.length === 0) return;
 
     clearTimeout(ctx._observerTimer);
     ctx._observerTimer = setTimeout(function () {
-      var ready = newCards.filter(function (c) {
-        var t = c.querySelector('h3[data-t="title"] a, [class*="browse-card__title"] a');
+      const ready = newCards.filter(function (c) {
+        const t = c.querySelector('h3[data-t="title"] a, [class*="browse-card__title"] a');
         return t && t.textContent.trim() !== '';
       });
       if (ready.length > 0) ingestNewCards(ctx, ready);
@@ -290,28 +340,36 @@ export function startObserver(ctx) {
 
 /**
  * Processes newly detected cards from the observer.
- * @param {object} ctx - Class instance
+ * @param {object} ctx - Context with cards, origOrder, showBadges, log, _sleep, _status, _updateStats, _apply
  * @param {Element[]} cards - New card elements
  */
 export async function ingestNewCards(ctx, cards) {
-  cards.forEach(function (c) { c.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true })); });
+  for (const c of cards) {
+    c.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  }
   await ctx._sleep(700);
 
-  var added = 0;
-  cards.forEach(function (card) {
-    if (ctx.cards.has(card)) return;
-    var info = extractInfo(card, ctx.origOrder.length);
-    ctx.cards.set(card, info);
-    ctx.origOrder.push(card);
-    if (ctx.showBadges) addBadges(card, info);
-    card.classList.add('cr-new-card');
-    added++;
-  });
+  let added = 0;
+  for (const card of cards) {
+    try {
+      if (ctx.cards.has(card)) continue;
+      const info = extractInfo(card, ctx.origOrder.length);
+      ctx.cards.set(card, info);
+      ctx.origOrder.push(card);
+      if (ctx.showBadges) addBadges(card, info);
+      card.classList.add('cr-new-card');
+      added++;
+    } catch (err) {
+      ctx.log.warn('ingestNewCards error', err);
+    }
+  }
 
   if (added > 0) {
     ctx._status('+' + added + ' new cards detected');
-    var visCount = Array.from(ctx.cards.keys())
-      .filter(function (c) { return !c.classList.contains('cr-hidden'); }).length;
+    let visCount = 0;
+    for (const c of ctx.cards.keys()) {
+      if (!c.classList.contains('cr-hidden')) visCount++;
+    }
     ctx._updateStats(visCount, ctx.cards.size, withData(ctx.cards));
     ctx._apply();
   }
@@ -323,7 +381,11 @@ export async function ingestNewCards(ctx, cards) {
  * @returns {number}
  */
 export function withData(cards) {
-  return Array.from(cards.values()).filter(function (i) { return i.hasData; }).length;
+  let count = 0;
+  for (const info of cards.values()) {
+    if (info.hasData) count++;
+  }
+  return count;
 }
 
 /**

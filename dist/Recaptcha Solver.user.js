@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.11.0
+// @version      2.11.1
 // @author       marmoris-x
 // @description  Recaptcha Solver in Browser | Start button in challenge footer
 // @license      MIT
@@ -26,65 +26,56 @@
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
   function createLogger(prefix, debugMode) {
     debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+    const tag = "[" + prefix + "]";
     return {
       log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
       },
       warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.warn.apply(console, args);
       },
       error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.error.apply(console, args);
       },
       info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.info.apply(console, args);
       },
       debug: function() {
         if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
           console.debug.apply(console, args);
         }
       }
     };
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.dom = {
-    waitForElement,
-    debounce,
-    throttle,
-    observeMutations
-  };
   function waitForElement(selector, timeout, root) {
     timeout = timeout || 1e4;
     root = root || document.body;
     return new Promise(function(resolve, reject) {
-      var existing = root.querySelector(selector);
+      const existing = root.querySelector(selector);
       if (existing) return resolve(existing);
-      var timer;
-      var observer = new MutationObserver(function(mutations) {
-        for (var m = 0; m < mutations.length; m++) {
-          var nodes = mutations[m].addedNodes;
-          for (var i = 0; i < nodes.length; i++) {
+      let timer;
+      const observer = new MutationObserver(function(mutations) {
+        for (let m = 0; m < mutations.length; m++) {
+          const nodes = mutations[m].addedNodes;
+          for (let i = 0; i < nodes.length; i++) {
             if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
             if (nodes[i].matches && nodes[i].matches(selector)) {
               cleanup();
               return resolve(nodes[i]);
             }
-            var child = nodes[i].querySelector && nodes[i].querySelector(selector);
+            const child = nodes[i].querySelector && nodes[i].querySelector(selector);
             if (child) {
               cleanup();
               return resolve(child);
@@ -105,34 +96,12 @@
       }
     });
   }
-  function debounce(fn, ms) {
-    ms = ms || 200;
-    var timer = 0;
-    return function() {
-      var ctx = this, args = arguments;
-      clearTimeout(timer);
-      timer = setTimeout(function() {
-        fn.apply(ctx, args);
-      }, ms);
-    };
-  }
-  function throttle(fn, ms) {
-    ms = ms || 200;
-    var last = 0;
-    return function() {
-      var now = Date.now();
-      if (now - last >= ms) {
-        last = now;
-        fn.apply(this, arguments);
-      }
-    };
-  }
   function observeMutations(callback, root) {
     root = root || document.body;
-    var observer = new MutationObserver(function(mutations) {
-      for (var m = 0; m < mutations.length; m++) {
-        var nodes = mutations[m].addedNodes;
-        for (var i = 0; i < nodes.length; i++) {
+    const observer = new MutationObserver(function(mutations) {
+      for (let m = 0; m < mutations.length; m++) {
+        const nodes = mutations[m].addedNodes;
+        for (let i = 0; i < nodes.length; i++) {
           if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
         }
       }
@@ -140,55 +109,10 @@
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.network = {
-    fetchPage,
-    fetchJSON,
-    fetchBlob
-  };
-  function fetchPage(url, opts) {
-    opts = opts || {};
-    var retries = opts.retries || 0;
-    var timeout = opts.timeout || 15e3;
-    return new Promise(function(resolve, reject) {
-      function attempt(n) {
-        GM_xmlhttpRequest({
-          method: "GET",
-          url,
-          timeout,
-          anonymous: opts.anonymous !== false,
-          onload: function(r) {
-            if (r.status >= 200 && r.status < 300) {
-              try {
-                var parser = new DOMParser();
-                var doc = parser.parseFromString(r.responseText, "text/html");
-                resolve(doc);
-              } catch (e) {
-                reject(new Error("DOMParser failed: " + e.message));
-              }
-            } else if (n < retries) {
-              attempt(n + 1);
-            } else {
-              reject(new Error("HTTP " + r.status + " for " + url));
-            }
-          },
-          onerror: function() {
-            if (n < retries) attempt(n + 1);
-            else reject(new Error("Network error for " + url));
-          },
-          ontimeout: function() {
-            if (n < retries) attempt(n + 1);
-            else reject(new Error("Timeout for " + url));
-          }
-        });
-      }
-      attempt(0);
-    });
-  }
   function fetchJSON(url, opts) {
     opts = opts || {};
-    var retries = opts.retries || 0;
-    var timeout = opts.timeout || 15e3;
+    const retries = opts.retries || 0;
+    const timeout = opts.timeout || 15e3;
     return new Promise(function(resolve, reject) {
       function attempt(n) {
         GM_xmlhttpRequest({
@@ -208,35 +132,6 @@
             } else {
               reject(new Error("HTTP " + r.status + " for " + url));
             }
-          },
-          onerror: function() {
-            if (n < retries) attempt(n + 1);
-            else reject(new Error("Network error for " + url));
-          },
-          ontimeout: function() {
-            if (n < retries) attempt(n + 1);
-            else reject(new Error("Timeout for " + url));
-          }
-        });
-      }
-      attempt(0);
-    });
-  }
-  function fetchBlob(url, opts) {
-    opts = opts || {};
-    var retries = opts.retries || 2;
-    var timeout = opts.timeout || 3e4;
-    return new Promise(function(resolve, reject) {
-      function attempt(n) {
-        GM_xmlhttpRequest({
-          method: "GET",
-          url,
-          timeout,
-          responseType: "blob",
-          onload: function(r) {
-            if (r.status >= 200 && r.status < 300) resolve({ blob: r.response, headers: r.responseHeaders });
-            else if (n < retries) attempt(n + 1);
-            else reject(new Error("HTTP " + r.status + " for " + url));
           },
           onerror: function() {
             if (n < retries) attempt(n + 1);

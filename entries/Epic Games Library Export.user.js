@@ -1,294 +1,323 @@
 // ==UserScript==
 // @name         Epic Games Library Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      6.4.0
-// @description  High-Performance Game Library Exporter. Start via Tampermonkey menu.
+// @version      8.0.0
+// @description  One-click game library export — clipboard (titles) or ZIP (enriched with prices, order IDs, play time)
 // @author       marmoris-x
+// @match        https://accounts.epicgames.com/account/transactions*
 // @match        https://www.epicgames.com/account/transactions*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=epicgames.com
-// @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
+// @grant        GM_notification
+// @grant        GM_xmlhttpRequest
+// @require      https://cdn.jsdelivr.net/npm/jszip@3.9.1/dist/jszip.min.js#sha256-aSPPIlJfSHQ5T7wunbPcp7tM0rlq5dHoUGeN8O5odMg=
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @run-at       document-idle
 // @sandbox      JavaScript
-// @inject-into  content
 // @noframes
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
-import { createSidebar } from '../src/shared/ui-components.js';
+(function () {
+  'use strict';
 
-var { log } = createLogger('Epic Games Library Export');
+  // ═══ Configuration ═══════════════════════════════════════════════════
 
-    GM_registerMenuCommand('Epic Library Export', run);
+  const IGNORE_LIST = ['Standard Edition', 'Add-On', 'Season Pass', 'Saisonpass', 'Demo', 'Free', 'Kostenlos'];
 
-    var CONFIG = {
-        selector: '.am-hoct6b',
-        ignoreList: ['Standard Edition', 'Add-On', 'Season Pass', 'Saisonpass', 'Demo', 'Free', 'Kostenlos']
+  let isRunning = false;
+
+  // ═══ Logger ═════════════════════════════════════════════════════════
+
+  const log = (...args) => console.log('[Epic Games Library Export]', ...args);
+
+  // ═══ Self-Destructing Mini Overlay ═══════════════════════════════════
+
+  function createFloater() {
+    const el = document.createElement('div');
+    el.textContent = 'Scanning...';
+    Object.assign(el.style, {
+      position: 'fixed',
+      bottom: '20px',
+      right: '20px',
+      zIndex: '2147483647',
+      background: 'linear-gradient(135deg, #7c5cfc, #6050dc)',
+      color: '#fff',
+      padding: '10px 18px',
+      borderRadius: '8px',
+      font: '600 13px/1.4 system-ui, -apple-system, sans-serif',
+      letterSpacing: '0.02em',
+      boxShadow: '0 4px 16px rgba(124, 92, 252, 0.35)',
+      opacity: '0',
+      transform: 'translateY(10px)',
+      transition: 'opacity 250ms ease, transform 250ms ease',
+      pointerEvents: 'none',
+    });
+    document.body.appendChild(el);
+    requestAnimationFrame(() => {
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    });
+
+    return {
+      update: (text) => { el.textContent = text; },
+      done: (text) => {
+        el.textContent = text;
+        el.style.background = 'linear-gradient(135deg, #26d98b, #1aad6b)';
+        el.style.boxShadow = '0 4px 16px rgba(38, 217, 139, 0.35)';
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(10px)';
+          setTimeout(() => el.remove(), 300);
+        }, 2500);
+      },
+      error: (text) => {
+        el.textContent = text;
+        el.style.background = 'linear-gradient(135deg, #ff4d6a, #d63447)';
+        el.style.boxShadow = '0 4px 16px rgba(255, 77, 106, 0.35)';
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(10px)';
+          setTimeout(() => el.remove(), 300);
+        }, 3000);
+      },
     };
+  }
 
-    function run() {
-        if (document.getElementById('ep-export-sidebar')) {
-            log('Panel already open');
-            return;
-        }
+  // ═══ Enriched Scraping Engine (für ZIP) ═════════════════════════════
 
-        var sidebar = createSidebar({
-            title: 'Epic Turbo Export',
-            width: 320,
-            accentColor: '#f1c40f'
-        });
-        sidebar.host.id = 'ep-export-sidebar';
-        sidebar.open();
+  // DOM-basierte Expansion entfernt — verwendet jetzt API (ajaxGetOrderHistory)
 
-        var body = sidebar.bodyEl;
-        body.style.padding = '16px';
-        body.style.fontSize = '13px';
-        body.style.color = '#e0e0e0';
-        body.style.fontFamily = 'system-ui, sans-serif';
+  // ═══ Export Helpers ═════════════════════════════════════════════════
 
-        var isRunning = false;
-        var gamesSet = new Set();
-        var sortedGames = [];
-
-        // ── UI construction ──
-
-        /**
-         * Creates a labeled stats display row for the sidebar panel.
-         * @param {string} label - The label text
-         * @param {string|number} initial - Initial value
-         * @returns {{ host: HTMLElement, val: HTMLElement }} Row container and value element
-         */
-        function statRow(label, initial) {
-            var row = document.createElement('div');
-            row.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:6px;color:#888;font-size:12px;';
-            var lbl = document.createElement('span');
-            lbl.textContent = label;
-            var val = document.createElement('b');
-            val.style.cssText = 'color:#fff;font-weight:600;font-family:monospace;font-size:13px;';
-            val.textContent = initial;
-            row.appendChild(lbl);
-            row.appendChild(val);
-            return { host: row, val: val };
-        }
-
-        var statusRow = statRow('STATUS', 'Ready');
-        var gamesRow  = statRow('GAMES', '0');
-        var pageRow   = statRow('PAGE', '1');
-
-        var barWrap = document.createElement('div');
-        barWrap.style.cssText = 'height:4px;background:#333;margin:16px 0;border-radius:2px;overflow:hidden;';
-        var barFill = document.createElement('div');
-        barFill.style.cssText = 'height:100%;width:0%;background:#f1c40f;transition:width 0.2s linear;';
-        barWrap.appendChild(barFill);
-
-        /**
-         * Creates a styled button element.
-         * @param {string} text - Button label
-         * @param {string} bg - CSS background value
-         * @returns {HTMLButtonElement}
-         */
-        function makeBtn(text, bg) {
-            var btn = document.createElement('button');
-            btn.textContent = text;
-            btn.style.cssText = [
-                'flex:1;padding:10px;border:none;border-radius:6px;cursor:pointer;font-weight:600;',
-                'font-size:11px;text-transform:uppercase;color:white;background:' + bg + ';',
-                'box-shadow:0 2px 5px rgba(0,0,0,0.2);transition:all 0.1s;'
-            ].join('');
-            btn.onmouseenter = function () { btn.style.filter = 'brightness(1.15)'; };
-            btn.onmouseleave = function () { btn.style.filter = ''; };
-            return btn;
-        }
-
-        var btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:8px;margin-top:12px;';
-        var startBtn = makeBtn('Start', 'linear-gradient(135deg,#0078f2,#095fb5)');
-        var stopBtn  = makeBtn('Stop', 'linear-gradient(135deg,#d63031,#c0392b)');
-        stopBtn.style.display = 'none';
-        btnRow.appendChild(startBtn);
-        btnRow.appendChild(stopBtn);
-
-        var exportArea = document.createElement('div');
-        exportArea.style.cssText = 'display:none;border-top:1px solid #333;margin-top:16px;padding-top:16px;';
-
-        var exportTitle = document.createElement('div');
-        exportTitle.style.cssText = 'font-weight:700;color:#ccc;font-size:11px;text-transform:uppercase;margin-bottom:10px;';
-        exportTitle.textContent = 'EXPORT';
-        exportArea.appendChild(exportTitle);
-
-        var expBtnRow = document.createElement('div');
-        expBtnRow.style.cssText = 'display:flex;gap:8px;';
-        var txtBtn = makeBtn('TXT', '#2d3436');
-        var csvBtn = makeBtn('CSV', '#2d3436');
-        expBtnRow.appendChild(txtBtn);
-        expBtnRow.appendChild(csvBtn);
-        exportArea.appendChild(expBtnRow);
-
-        var copyWrap = document.createElement('div');
-        copyWrap.style.cssText = 'margin-top:8px;';
-        var copyBtn = makeBtn('Copy', 'linear-gradient(135deg,#00b894,#00a884)');
-        copyWrap.appendChild(copyBtn);
-        exportArea.appendChild(copyWrap);
-
-        var msgEl = document.createElement('div');
-        msgEl.style.cssText = 'font-size:10px;color:#666;margin-top:10px;text-align:center;height:14px;';
-
-        body.appendChild(statusRow.host);
-        body.appendChild(gamesRow.host);
-        body.appendChild(pageRow.host);
-        body.appendChild(barWrap);
-        body.appendChild(btnRow);
-        body.appendChild(exportArea);
-        body.appendChild(copyWrap);
-        body.appendChild(msgEl);
-
-        // ── Core logic ──
-
-        /**
-         * Promise-based delay.
-         * @param {number} ms - Milliseconds to wait
-         * @returns {Promise<void>}
-         */
-        function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-
-        /**
-         * Extracts game titles from the current page's transaction rows.
-         * Filters out items matching CONFIG.ignoreList.
-         */
-        function scrapePage() {
-            var nodes = document.querySelectorAll(CONFIG.selector);
-            for (var i = 0; i < nodes.length; i++) {
-                var txt = nodes[i].innerText.trim();
-                if (txt && !CONFIG.ignoreList.some(function (bad) { return txt.includes(bad); })) {
-                    gamesSet.add(txt);
-                }
-            }
-        }
-
-        /**
-         * Completes the scan, updates UI to show export options and final stats.
-         */
-        function finishScan() {
-            isRunning = false;
-            stopBtn.style.display = 'none';
-            startBtn.textContent = 'Restart';
-            startBtn.style.display = 'block';
-            barFill.style.width = '100%';
-            barFill.style.background = '#26bb26';
-
-            if (gamesSet.size > 0) {
-                sortedGames = Array.from(gamesSet).sort(function (a, b) { return a.localeCompare(b); })
-                    .map(function (title, i) { return (i + 1) + '. ' + title; });
-                exportArea.style.display = 'block';
-                statusRow.val.textContent = 'DONE';
-                statusRow.val.style.color = '#26bb26';
-                msgEl.textContent = gamesSet.size + ' games captured.';
-            }
-            log('Scan finished: ' + gamesSet.size + ' games found');
-        }
-
-        /**
-         * Main pagination loop — iterates through transaction history pages
-         * until the Next button is disabled or the user hits Stop.
-         */
-        async function processLoop() {
-            if (isRunning) return;
-            isRunning = true;
-            gamesSet = new Set();
-            sortedGames = [];
-            var pageNum = 1;
-
-            exportArea.style.display = 'none';
-            startBtn.style.display = 'none';
-            stopBtn.style.display = 'block';
-            barFill.style.background = '#f1c40f';
-            barFill.style.width = '0%';
-            statusRow.val.textContent = 'SCANNING...';
-            statusRow.val.style.color = '#f0f0f0';
-            msgEl.textContent = '';
-
-            while (isRunning) {
-                scrapePage();
-                gamesRow.val.textContent = gamesSet.size;
-                pageRow.val.textContent = pageNum;
-                barFill.style.width = (pageNum % 2 === 0) ? '60%' : '90%';
-
-                var nextBtn = document.querySelector('button[aria-label="Next Page"], #next-btn');
-                var isDisabled = nextBtn && (nextBtn.disabled || nextBtn.classList.contains('Mui-disabled'));
-
-                if (nextBtn && !isDisabled) {
-                    var prevFirstText = (function () { var e = document.querySelector(CONFIG.selector); return e ? e.innerText : ''; })();
-                    nextBtn.click();
-                    pageNum++;
-                    for (var waited = 0; waited < 5000; waited += 100) {
-                        await sleep(100);
-                        var newFirstText = (function () { var e = document.querySelector(CONFIG.selector); return e ? e.innerText : ''; })();
-                        if (newFirstText && newFirstText !== prevFirstText) break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            if (isRunning) finishScan();
-        }
-
-        /**
-         * Triggers a browser file download from a string.
-         * @param {string} content - File content
-         * @param {string} filename - Output filename
-         * @param {string} type - MIME type (e.g. 'text/plain', 'text/csv')
-         */
-        function downloadFile(content, filename, type) {
-            var blob = new Blob([content], { type: type });
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-            msgEl.textContent = 'Saved!';
-        }
-
-        // ── Button handlers ──
-
-        startBtn.onclick = processLoop;
-
-        stopBtn.onclick = function () {
-            isRunning = false;
-            statusRow.val.textContent = 'STOPPED';
-            log('Scan stopped by user');
-        };
-
-        txtBtn.onclick = function () {
-            downloadFile(sortedGames.join('\n'), 'EpicGames_Export.txt', 'text/plain');
-            log('TXT export: ' + sortedGames.length + ' games');
-        };
-
-        csvBtn.onclick = function () {
-            var csv = 'Nr;Spiel\n';
-            for (var i = 0; i < sortedGames.length; i++) {
-                var idx = sortedGames[i].indexOf('. ');
-                csv += sortedGames[i].substring(0, idx) + ';"' + sortedGames[i].substring(idx + 2) + '"\n';
-            }
-            downloadFile(csv, 'EpicGames_Export.csv', 'text/csv');
-            log('CSV export: ' + sortedGames.length + ' games');
-        };
-
-        var copyTimer;
-        copyBtn.onclick = function () {
-            GM_setClipboard(sortedGames.join('\n'));
-            copyBtn.textContent = 'Copied';
-            clearTimeout(copyTimer);
-            copyTimer = setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1000);
-            msgEl.textContent = 'Copied to clipboard';
-            log('Copied ' + sortedGames.length + ' games to clipboard');
-        };
-
-        log('Panel initialized');
+  function makeCsv(games) {
+    const BOM = '﻿';
+    let csv = 'Number;Title;Price;Currency;Order_ID;Acquired_Date;Marketplace;Quantity;Namespace;Total_Paid_Cents;Is_Promotion;Savings_Price;Discount_Pct;Tax_Cents;Gift_Recipient\n';
+    for (let i = 0; i < games.length; i++) {
+      const g = games[i];
+      csv += `${i + 1};${csvEsc(g.title)};${csvEsc(g.price)};${csvEsc(g.currency)};${csvEsc(g.orderId)};${csvEsc(g.acquiredDate)};${csvEsc(g.marketplace)};${g.quantity};${csvEsc(g.namespace)};${g.totalPaidCents};${g.isPromotion};${String(g.savingsPrice).replace('.', ',')};${String(g.discountPct).replace('.', ',')};${g.taxCents};${csvEsc(g.giftRecipient)}\n`;
     }
+    return BOM + csv;
+  }
+
+  function csvEsc(str) {
+    const s = String(str || '');
+    if (s.includes(';') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function makeJson(games) {
+    const now = new Date();
+    return JSON.stringify({
+      export_metadata: {
+        script: 'Epic Games Library Export',
+        version: '8.0.0',
+        exported_at: now.toISOString(),
+        source_url: 'https://www.epicgames.com/account/transactions',
+        game_count: games.length,
+      },
+      games: games.map((g, i) => ({
+        number: i + 1,
+        title: g.title || '',
+        price: g.price || '',
+        currency: g.currency || '',
+        order_id: g.orderId || '',
+        acquired_date: g.acquiredDate || '',
+        marketplace: g.marketplace || '',
+        quantity: g.quantity,
+        namespace: g.namespace || '',
+        total_paid_cents: g.totalPaidCents,
+        is_promotion: g.isPromotion,
+        savings_price: g.savingsPrice,
+        discount_pct: g.discountPct,
+        tax_cents: g.taxCents,
+        gift_recipient: g.giftRecipient || '',
+      })),
+    }, null, 2);
+  }
+
+  function downloadFile(content, filename, type) {
+    const blob = content instanceof Blob ? content : new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
+
+  // ═══ API-based Fetch Engine (schnell — kein DOM-Klicken) ════════════
+
+  const API_BASE = 'https://www.epicgames.com/account/v2/payment';
+
+  function apiFetch(url) {
+    return new Promise((resolve, reject) => {
+      GM.xmlHttpRequest({
+        method: 'GET',
+        url,
+        onload: resolve,
+        onerror: reject,
+        ontimeout: () => reject(new Error('API timeout')),
+        timeout: 15000,
+      });
+    });
+  }
+
+  async function fetchAllOrdersApi(floater) {
+    const games = [];
+    let pageToken = '';
+    let pageNum = 1;
+
+    while (true) {
+      const params = new URLSearchParams({ sortDir: 'DESC', sortBy: 'DATE', locale: navigator.language || 'en-US' });
+      if (pageToken) params.set('nextPageToken', pageToken);
+
+      floater.update(`API page ${pageNum}...`);
+
+      let data;
+      try {
+        const res = await apiFetch(`${API_BASE}/ajaxGetOrderHistory?${params}`);
+        data = JSON.parse(res.responseText);
+      } catch (err) {
+        floater.error(`API failed: ${err.message || 'unknown'}`);
+        throw err;
+      }
+
+      for (const order of data.orders || []) {
+        for (const item of order.items || []) {
+          const title = item.description || '';
+          if (title && !IGNORE_LIST.some((bad) => title.includes(bad))) {
+            // amount is in cents (e.g. 1799 = 17,99 €)
+            const cents = typeof item.amount === 'number' ? item.amount : 0;
+            const priceNum = cents > 0 ? cents / 100 : (order.total?.amount > 0 ? order.total.amount / 100 : 0);
+            const priceFormatted = String(priceNum).replace('.', ',');
+
+            const promo = order.promotions?.[0];
+            const discountPct = promo && cents > 0
+              ? Math.round((Number(promo.amount) / cents) * 1000) / 10
+              : 0;
+
+            games.push({
+              orderId: order.orderId || '',
+              title,
+              price: priceFormatted,
+              currency: item.currency || order.total?.currency || '',
+              acquiredDate: order.createdAtMillis
+                ? new Date(order.createdAtMillis).toISOString().slice(0, 10)
+                : '',
+              marketplace: order.marketplaceName || '',
+              quantity: item.quantity || 1,
+              namespace: item.namespace || '',
+              totalPaidCents: order.total?.amount ?? cents,
+              isPromotion: !!promo,
+              savingsPrice: promo ? (promo.amount || 0) / 100 : 0,
+              discountPct,
+              taxCents: order.tax?.amount ?? 0,
+              giftRecipient: item.giftRecipient || '',
+            });
+          }
+        }
+      }
+
+      floater.update(`API page ${pageNum} — ${games.length} games`);
+
+      if (!data.nextPageToken) break;
+      pageToken = data.nextPageToken;
+      pageNum++;
+    }
+
+    games.sort((a, b) => a.title.localeCompare(b.title));
+    return games;
+  }
+
+  // ═══ Export Commands ════════════════════════════════════════════════
+
+  async function exportToClipboard() {
+    if (isRunning) return;
+    isRunning = true;
+    const floater = createFloater();
+
+    try {
+      const games = await fetchAllOrdersApi(floater);
+      if (games.length === 0) {
+        floater.error('No games found');
+        isRunning = false;
+        return;
+      }
+
+      const text = games.map((g, i) => `${i + 1}. ${g.title}`).join('\n');
+      await GM.setClipboard(text);
+      const msg = `${games.length} games copied to clipboard`;
+      floater.done(msg);
+      GM.notification({ title: 'Epic Library Export', text: msg, timeout: 3000 });
+      log(`Clipboard export: ${games.length} games`);
+    } catch (err) {
+      floater.error(`Error: ${err.message || 'unknown'}`);
+      log(`Clipboard export failed: ${err}`);
+    }
+
+    isRunning = false;
+  }
+
+  async function exportAsZipApi() {
+    if (isRunning) return;
+    isRunning = true;
+    const floater = createFloater();
+
+    try {
+      const games = await fetchAllOrdersApi(floater);
+      if (games.length === 0) {
+        floater.error('No games found via API');
+        isRunning = false;
+        return;
+      }
+
+      const JSZip = /** @type {*} */ (window.JSZip);
+      const zip = new JSZip();
+
+      const text = games.map((g, i) => `${i + 1}. ${g.title}`).join('\n');
+      zip.file('games.txt', text);
+      zip.file('games.csv', makeCsv(games));
+      zip.file('games.json', makeJson(games));
+
+      floater.update(`Zipping ${games.length} games...`);
+      const blob = await zip.generateAsync({ type: 'blob' }, (meta) => {
+        if (meta.percent !== undefined) {
+          const pct = Math.round(meta.percent);
+          if (pct % 10 === 0) floater.update(`Zipping... ${pct}%`);
+        }
+      });
+
+      const date = new Date().toISOString().slice(0, 10);
+      downloadFile(blob, `EpicGames_Library_${date}.zip`, 'application/zip');
+
+      const msg = `${games.length} games exported via API`;
+      floater.done(msg);
+      GM.notification({ title: 'Epic Library Export', text: msg, timeout: 3000 });
+      log(`API export: ${games.length} games`);
+    } catch (err) {
+      floater.error(`API error: ${err.message || 'unknown'}`);
+      log(`API export failed: ${err}`);
+    }
+
+    isRunning = false;
+  }
+
+  // ═══ Bootstrap ══════════════════════════════════════════════════════
+
+  GM.registerMenuCommand('Export Epic Library to Clipboard', exportToClipboard);
+  GM.registerMenuCommand('Export Epic Library as ZIP', exportAsZipApi);
+  log('Ready — menu commands registered');
+})();

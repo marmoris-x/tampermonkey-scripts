@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.0
+// @version      1.7.1
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @author       marmoris-x
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=youtube.com
@@ -31,7 +31,7 @@
  * This entry file imports from all three and bootstraps.
  */
 
-import { createLogger } from '../src/shared/logging-utils.js';
+import { createLogger } from '../src/youtube-enhanced/_logger.js';
 import { CFG, patchQuality, resetHDTrackers } from '../src/youtube-enhanced/auto-hd.js';
 import { loadSpeedData, initSpeed, cleanupSpeed } from '../src/youtube-enhanced/channel-speed.js';
 import { initAutoStop, cleanupAutoStop, resetStopTrackers } from '../src/youtube-enhanced/auto-stop.js';

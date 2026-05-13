@@ -1,0 +1,4 @@
+[     230ms] [WARNING] Manifest: scope_extensions entry ignored, required properties 'type' and 'origin' are missing. @ https://www.crunchyroll.com/manifest.json:0
+[     230ms] [WARNING] Manifest: scope_extensions entry ignored, required properties 'type' and 'origin' are missing. @ https://www.crunchyroll.com/manifest.json:0
+[     633ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://www.crunchyroll.com/auth/v1/token:0
+[    3649ms] [LOG] [CR-DEBUG] GM APIs mocked @ :15

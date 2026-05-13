@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marketplace Deal Finder
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      30.0
+// @version      30.0.1
 // @author       marmoris
 // @description  Cross-platform deal aggregator for Willhaben and Kleinanzeigen with AI-powered price analysis. Multi-page crawling with Gemini AI.
 // @license      MIT
@@ -18,7 +18,6 @@
 // @connect      generativelanguage.googleapis.com
 // @grant        GM.getValue
 // @grant        GM.setValue
-// @grant        GM.setValues
 // @grant        GM_xmlhttpRequest
 // @inject-into  content
 // @run-at       document-idle
@@ -29,51 +28,42 @@
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
   function createLogger(prefix, debugMode) {
     debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+    const tag = "[" + prefix + "]";
     return {
       log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.log.apply(console, args);
       },
       warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.warn.apply(console, args);
       },
       error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.error.apply(console, args);
       },
       info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+        const args = [tag];
+        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
         console.info.apply(console, args);
       },
       debug: function() {
         if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
+          const args = [tag];
+          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
           console.debug.apply(console, args);
         }
       }
     };
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.storage = {
-    loadSetting,
-    saveSetting,
-    loadSettings: loadSettings$1,
-    saveSettings
-  };
   async function loadSetting(key, defaultValue) {
     try {
-      var raw = await GM.getValue(key);
+      const raw = await GM.getValue(key);
       if (raw === void 0 || raw === null) return defaultValue;
       return raw;
     } catch (e) {
@@ -83,41 +73,23 @@
   async function saveSetting(key, value) {
     await GM.setValue(key, value);
   }
-  async function loadSettings$1(defaults) {
-    var keys = Object.keys(defaults);
-    var result = {};
-    for (var i = 0; i < keys.length; i++) {
-      result[keys[i]] = await loadSetting(keys[i], defaults[keys[i]]);
-    }
-    return result;
-  }
-  async function saveSettings(obj) {
-    await GM.setValues(obj);
-  }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.dom = {
-    waitForElement,
-    debounce,
-    throttle,
-    observeMutations
-  };
   function waitForElement(selector, timeout, root) {
     timeout = timeout || 1e4;
     root = root || document.body;
     return new Promise(function(resolve, reject) {
-      var existing = root.querySelector(selector);
+      const existing = root.querySelector(selector);
       if (existing) return resolve(existing);
-      var timer;
-      var observer = new MutationObserver(function(mutations) {
-        for (var m = 0; m < mutations.length; m++) {
-          var nodes = mutations[m].addedNodes;
-          for (var i = 0; i < nodes.length; i++) {
+      let timer;
+      const observer = new MutationObserver(function(mutations) {
+        for (let m = 0; m < mutations.length; m++) {
+          const nodes = mutations[m].addedNodes;
+          for (let i = 0; i < nodes.length; i++) {
             if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
             if (nodes[i].matches && nodes[i].matches(selector)) {
               cleanup();
               return resolve(nodes[i]);
             }
-            var child = nodes[i].querySelector && nodes[i].querySelector(selector);
+            const child = nodes[i].querySelector && nodes[i].querySelector(selector);
             if (child) {
               cleanup();
               return resolve(child);
@@ -137,41 +109,6 @@
         }, timeout);
       }
     });
-  }
-  function debounce(fn, ms) {
-    ms = ms || 200;
-    var timer = 0;
-    return function() {
-      var ctx = this, args = arguments;
-      clearTimeout(timer);
-      timer = setTimeout(function() {
-        fn.apply(ctx, args);
-      }, ms);
-    };
-  }
-  function throttle(fn, ms) {
-    ms = ms || 200;
-    var last = 0;
-    return function() {
-      var now = Date.now();
-      if (now - last >= ms) {
-        last = now;
-        fn.apply(this, arguments);
-      }
-    };
-  }
-  function observeMutations(callback, root) {
-    root = root || document.body;
-    var observer = new MutationObserver(function(mutations) {
-      for (var m = 0; m < mutations.length; m++) {
-        var nodes = mutations[m].addedNodes;
-        for (var i = 0; i < nodes.length; i++) {
-          if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
-        }
-      }
-    });
-    observer.observe(root, { childList: true, subtree: true });
-    return observer;
   }
   var GEMINI_MODELS = {
     flash: {
@@ -1033,12 +970,12 @@
   }
   function createShadowContainer(opts) {
     opts = opts || {};
-    var host = document.createElement(opts.tag || "div");
+    const host = document.createElement(opts.tag || "div");
     if (opts.id) host.id = opts.id;
     if (opts.className) host.className = opts.className;
-    var root = host.attachShadow({ mode: "closed" });
+    const root = host.attachShadow({ mode: "closed" });
     if (opts.styles) {
-      var style = document.createElement("style");
+      const style = document.createElement("style");
       style.textContent = opts.styles;
       root.appendChild(style);
     }
@@ -1047,12 +984,12 @@
   }
   function createToast(message, opts) {
     opts = opts || {};
-    var duration = opts.duration || 3e3;
-    var type = opts.type || "info";
-    var colors = { info: "#2196F3", success: "#4CAF50", error: "#F44336", warn: "#FF9800" };
-    var toast = document.createElement("div");
-    var root = toast.attachShadow({ mode: "closed" });
-    var style = document.createElement("style");
+    const duration = opts.duration || 3e3;
+    const type = opts.type || "info";
+    const colors = { info: "#2196F3", success: "#4CAF50", error: "#F44336", warn: "#FF9800" };
+    const toast = document.createElement("div");
+    const root = toast.attachShadow({ mode: "closed" });
+    const style = document.createElement("style");
     style.textContent = [
       ":host { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:2147483647;",
       "background:" + (colors[type] || colors.info) + "; color:#fff; padding:10px 20px; border-radius:6px;",
@@ -1060,7 +997,7 @@
       "opacity:0; transition:opacity 0.3s ease; pointer-events:none; max-width:80vw; }",
       ":host(.show) { opacity:1; }"
     ].join("");
-    var span = document.createElement("span");
+    const span = document.createElement("span");
     span.textContent = message;
     root.appendChild(style);
     root.appendChild(span);
@@ -1078,8 +1015,8 @@
   }
   function createStatusBar(opts) {
     opts = opts || {};
-    var accent = opts.accentColor || "#2196F3";
-    var container = createShadowContainer({
+    const accent = opts.accentColor || "#2196F3";
+    const container = createShadowContainer({
       styles: [
         ":host { position:fixed; bottom:0; right:0; z-index:2147483646;",
         "background:#1e1e1e; color:#e0e0e0; font:12px system-ui,sans-serif;",
@@ -1090,11 +1027,11 @@
         ".fill { height:100%; width:0%; background:" + accent + "; transition:width 0.3s ease; }"
       ].join("")
     });
-    var textEl = document.createElement("div");
+    const textEl = document.createElement("div");
     textEl.className = "text";
-    var fillEl = document.createElement("div");
+    const fillEl = document.createElement("div");
     fillEl.className = "fill";
-    var barEl = document.createElement("div");
+    const barEl = document.createElement("div");
     barEl.className = "bar";
     barEl.appendChild(fillEl);
     container.root.appendChild(textEl);

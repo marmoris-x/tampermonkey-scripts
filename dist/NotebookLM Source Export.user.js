@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         NotebookLM Source Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.18
+// @version      6.0
 // @author       marmoris-x
-// @description  Export NotebookLM sources as organized ZIP with markdown conversion
+// @description  Export NotebookLM sources and chat as ZIP archives
 // @license      MIT
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=notebooklm.google.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
@@ -12,6 +12,8 @@
 // @match        https://notebooklm.google.com/*
 // @sandbox      JavaScript
 // @grant        GM_addElement
+// @grant        GM_download
+// @grant        GM_notification
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @run-at       document-idle
@@ -315,499 +317,6 @@
       }
     };
   }
-  const log = createLogger("NotebookLM Source Export");
-  const CONFIG = {
-    audio: { enabled: true, vol: 0.15 },
-selectors: {
-closeBtn: 'button[mattooltip*="schließen"], button[mattooltip*="close"], button[aria-label*="Close"], button[aria-label*="Schließen"]',
-content: ".elements-container labs-tailwind-structural-element-view-v2",
-notebookTitle: ".title-label-inner.mat-title-large",
-sourceContainer: ".single-source-container",
-sourceTitle: ".source-title"
-    }
-  };
-  const LOG_LEVEL = { INFO: "info", SUCCESS: "success", WARN: "warn", ERROR: "error" };
-  const TIMING = {
-    CONTENT_POLL_ATTEMPTS: 30,
-    CONTENT_POLL_INTERVAL_MS: 100,
-    CONTENT_STABLE_POLLS: 2,
-    CONTENT_GONE_ATTEMPTS: 5,
-MIN_CONTENT_LENGTH_CHARS: 20,
-    KEEP_ALIVE_VOLUME: 1e-3,
-    LOG_MAX_ENTRIES: 50,
-    AUDIO_NOTE_DELAYS_MS: [0, 100, 200]
-  };
-  const STATE = {
-    isCancelled: false,
-    keepAliveAudio: null,
-    menuStartId: null,
-    menuStopId: null,
-soundFXCloseTimer: null
-  };
-  const SoundFX = {
-    _ctx: null,
-    get ctx() {
-      if (!this._ctx && CONFIG.audio.enabled) {
-        try {
-          this._ctx = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) {
-          log.warn("AudioContext creation failed: " + e.message);
-        }
-      }
-      if (this._ctx && this._ctx.state === "suspended") {
-        this._ctx.resume().catch(function() {
-        });
-      }
-      return this._ctx;
-    },
-playTone: function(freq, type, duration, vol) {
-      vol = vol || CONFIG.audio.vol;
-      try {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-        gain.gain.setValueAtTime(vol, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(1e-3, this.ctx.currentTime + duration);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + duration);
-      } catch (_) {
-      }
-    },
-    playStart: function() {
-      this.playTone(600, "sine", 0.15);
-    },
-    playError: function() {
-      this.playTone(150, "sawtooth", 0.3);
-    },
-playComplete: function() {
-      const delays = TIMING.AUDIO_NOTE_DELAYS_MS;
-      const notes = [
-        { freq: 440, duration: 0.6, delay: delays[0] },
-        { freq: 554, duration: 0.6, delay: delays[1] },
-        { freq: 659, duration: 0.8, delay: delays[2] }
-      ];
-      notes.forEach((n) => {
-        setTimeout(() => {
-          this.playTone(n.freq, "sine", n.duration);
-        }, n.delay);
-      });
-    },
-close: function() {
-      if (this._ctx) {
-        try {
-          this._ctx.close();
-        } catch (_) {
-        }
-        this._ctx = null;
-      }
-    },
-ensureReady: async function() {
-      try {
-        const c = this.ctx;
-        if (c && c.state === "suspended") {
-          await c.resume();
-        }
-      } catch (_) {
-      }
-    }
-  };
-  function wait(ms) {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-  function waitForContent(selector, timeoutMs) {
-    return new Promise((resolve) => {
-      let stabilityTimer = null;
-      let contentObserver = null;
-      const rootObserver = new MutationObserver(checkAppear);
-      function cleanup() {
-        if (contentObserver) {
-          contentObserver.disconnect();
-          contentObserver = null;
-        }
-        if (stabilityTimer) {
-          clearTimeout(stabilityTimer);
-          stabilityTimer = null;
-        }
-        rootObserver.disconnect();
-      }
-      function done(el) {
-        cleanup();
-        resolve(el || null);
-      }
-      function watchStability(el) {
-        let lastText = el.textContent;
-        contentObserver = new MutationObserver(() => {
-          const cur = el.textContent;
-          if (cur !== lastText) {
-            lastText = cur;
-            if (stabilityTimer) clearTimeout(stabilityTimer);
-            if (cur.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
-              stabilityTimer = setTimeout(() => done(el), 300);
-            }
-          }
-        });
-        contentObserver.observe(el, { childList: true, subtree: true, characterData: true });
-        if (el.textContent.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
-          stabilityTimer = setTimeout(() => done(el), 300);
-        }
-      }
-      function checkAppear() {
-        const el = document.querySelector(selector);
-        if (!el) return;
-        rootObserver.disconnect();
-        watchStability(el);
-      }
-      checkAppear();
-      if (!contentObserver) {
-        rootObserver.observe(document.documentElement, { childList: true, subtree: true });
-      }
-      setTimeout(() => done(null), timeoutMs);
-    });
-  }
-  function waitForContentGone(selector, timeoutMs) {
-    return new Promise((resolve) => {
-      if (!document.querySelector(selector)) {
-        resolve(true);
-        return;
-      }
-      let observeTarget = document.querySelector(".elements-container");
-      if (observeTarget) {
-        observeTarget = observeTarget.parentElement || observeTarget;
-      } else {
-        const el = document.querySelector(selector);
-        observeTarget = el && el.parentElement || document.documentElement;
-      }
-      const observer = new MutationObserver(() => {
-        if (!document.querySelector(selector)) {
-          observer.disconnect();
-          resolve(true);
-        }
-      });
-      observer.observe(observeTarget, { childList: true, subtree: true });
-      setTimeout(() => {
-        observer.disconnect();
-        let pollAttempts = 0;
-        const pollTimer = setInterval(() => {
-          if (!document.querySelector(selector)) {
-            clearInterval(pollTimer);
-            resolve(true);
-            return;
-          }
-          pollAttempts++;
-          if (pollAttempts >= 5) {
-            clearInterval(pollTimer);
-            resolve(false);
-          }
-        }, 100);
-      }, timeoutMs);
-    });
-  }
-  function startKeepAlive() {
-    STATE.keepAliveAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAgZGF0YQAAAAEA");
-    STATE.keepAliveAudio.loop = true;
-    STATE.keepAliveAudio.volume = TIMING.KEEP_ALIVE_VOLUME;
-    STATE.keepAliveAudio.play().catch(() => {
-      log.warn("Keep-alive audio blocked by browser. Background tab may throttle timers.");
-    });
-  }
-  function stopKeepAlive() {
-    if (STATE.keepAliveAudio) {
-      STATE.keepAliveAudio.pause();
-      STATE.keepAliveAudio = null;
-    }
-  }
-  function registerMenuStart(onStart, label) {
-    const opts = STATE.menuStartId ? { id: STATE.menuStartId } : {};
-    STATE.menuStartId = GM_registerMenuCommand(label || "Start Export", onStart, opts);
-  }
-  function registerMenuStop() {
-    STATE.menuStopId = GM_registerMenuCommand("Stop Export", () => {
-      STATE.isCancelled = true;
-      log.warn("Stop requested via menu.");
-    });
-  }
-  async function attemptClose() {
-    async function tryStrategy(description, actionFn) {
-      actionFn();
-      const gone = await waitForContentGone(CONFIG.selectors.content, 300);
-      if (gone) {
-        log.log("[Close] " + description + " — panel closed.");
-        return true;
-      }
-      return false;
-    }
-    const closeIcons = ["close", "cancel", "arrow_back", "chevron_left"];
-    const buttons = document.querySelectorAll("button");
-    for (let i = 0; i < buttons.length; i++) {
-      const txt = buttons[i].textContent || "";
-      for (let j = 0; j < closeIcons.length; j++) {
-        if (txt.indexOf(closeIcons[j]) !== -1) {
-          const btn = buttons[i];
-          if (await tryStrategy('Strategy 1: icon "' + closeIcons[j] + '"', function() {
-            btn.click();
-          })) return true;
-        }
-      }
-    }
-    const localizedBtn = document.querySelector(CONFIG.selectors.closeBtn);
-    if (localizedBtn) {
-      if (await tryStrategy("Strategy 2: tooltip-based button", function() {
-        localizedBtn.click();
-      })) return true;
-    }
-    const panelHeaderBtns = document.querySelectorAll('[class*="panel"] button, [class*="dialog"] button, [class*="drawer"] button, [class*="sidebar"] button');
-    for (let k = 0; k < panelHeaderBtns.length; k++) {
-      const btn = panelHeaderBtns[k];
-      const aria = btn.getAttribute("aria-label") || "";
-      if (aria.toLowerCase().indexOf("close") !== -1 || aria.toLowerCase().indexOf("schließen") !== -1) {
-        if (await tryStrategy("Strategy 3: panel header button", function() {
-          btn.click();
-        })) return true;
-      }
-    }
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-    log.log("[Close] Strategy 4: Escape key dispatched.");
-    return true;
-  }
-  const uiCallbacks = {
-addLog: null,
-updateProgress: null,
-setStatusText: null,
-setStartBtnState: null,
-setStopBtnVisible: null,
-restartUI: null
-  };
-  function cleanupRun() {
-    stopKeepAlive();
-    STATE.soundFXCloseTimer = setTimeout(() => {
-      SoundFX.close();
-      STATE.soundFXCloseTimer = null;
-    }, 2e3);
-    GM_unregisterMenuCommand(STATE.menuStopId);
-    registerMenuStart(() => {
-      if (typeof uiCallbacks.restartUI === "function") uiCallbacks.restartUI();
-    });
-  }
-  async function runProcess() {
-    var _a;
-    if (STATE.soundFXCloseTimer) {
-      clearTimeout(STATE.soundFXCloseTimer);
-      STATE.soundFXCloseTimer = null;
-      SoundFX.close();
-    }
-    STATE.isCancelled = false;
-    uiCallbacks.updateProgress && uiCallbacks.updateProgress(0, 1);
-    uiCallbacks.setStartBtnState && uiCallbacks.setStartBtnState(true, "Running...");
-    uiCallbacks.setStopBtnVisible && uiCallbacks.setStopBtnVisible(true);
-    registerMenuStop();
-    registerMenuStart(function noop() {
-    }, "Export Running...");
-    if ((_a = navigator.connection) == null ? void 0 : _a.saveData) {
-      log.warn("Save-Data mode active — keep-alive audio disabled.");
-      uiCallbacks.addLog && uiCallbacks.addLog(">> Save-Data mode active — keep-alive disabled.", LOG_LEVEL.WARN);
-    } else {
-      startKeepAlive();
-    }
-    await SoundFX.ensureReady();
-    SoundFX.playStart();
-    const totalSources = document.querySelectorAll(CONFIG.selectors.sourceContainer).length;
-    if (totalSources === 0) {
-      log.error("No sources found.");
-      uiCallbacks.addLog && uiCallbacks.addLog("Error: No sources found.", LOG_LEVEL.ERROR);
-      SoundFX.playError();
-      cleanupRun();
-      uiCallbacks.setStartBtnState && uiCallbacks.setStartBtnState(false, "Retry");
-      return;
-    }
-    log.log("Scan complete. Found " + totalSources + " items.");
-    uiCallbacks.addLog && uiCallbacks.addLog("Scan complete. Found " + totalSources + " items.", LOG_LEVEL.SUCCESS);
-    log.warn("Keep this tab active — background tabs may throttle timers.");
-    uiCallbacks.addLog && uiCallbacks.addLog("Keep this tab active — background tabs may throttle timers.", LOG_LEVEL.WARN);
-    const collectedFiles = [];
-    const usedNames = new Set();
-    let crashed = false;
-    function processContent(text, fileName, linesCount, conversionTimeMs, collectedFiles2) {
-      if (conversionTimeMs > 5e3) {
-        log.warn("Slow conversion (" + Math.round(conversionTimeMs) + "ms for " + linesCount + " elements)");
-      }
-      if (text.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
-        const data = enc.encode(text);
-        collectedFiles2.push({ name: fileName, data });
-        log.log("Queued: " + fileName + " (" + text.length + " chars)");
-        uiCallbacks.addLog && uiCallbacks.addLog(">> Queued: " + fileName + " (" + text.length + " chars)", LOG_LEVEL.SUCCESS);
-      } else {
-        log.warn("Content empty for: " + fileName);
-        uiCallbacks.addLog && uiCallbacks.addLog(">> Warning: Content empty", LOG_LEVEL.WARN);
-      }
-    }
-    try {
-      for (let i = 0; i < totalSources; i++) {
-        if (STATE.isCancelled) break;
-        uiCallbacks.updateProgress && uiCallbacks.updateProgress(i + 1, totalSources);
-        const source = document.querySelectorAll(CONFIG.selectors.sourceContainer)[i];
-        if (!source) {
-          log.error("Source " + (i + 1) + " not found in DOM. Skipping.");
-          uiCallbacks.addLog && uiCallbacks.addLog("Source " + (i + 1) + " not found. Skipping.", LOG_LEVEL.ERROR);
-          continue;
-        }
-        const titleEl = source.querySelector(CONFIG.selectors.sourceTitle);
-        let fileName = (titleEl && titleEl.textContent ? titleEl.textContent.trim() : "Source_" + (i + 1)).replace(/[\\/:*?"<>|]/g, "_").substring(0, 120).trim();
-        if (!fileName.endsWith(".md")) fileName += ".md";
-        if (usedNames.has(fileName)) {
-          const baseName = fileName.replace(/\.md$/, "");
-          let counter = 2;
-          while (usedNames.has(baseName + "_" + counter + ".md")) counter++;
-          fileName = baseName + "_" + counter + ".md";
-        }
-        usedNames.add(fileName);
-        try {
-          log.log("Opening: " + fileName);
-          uiCallbacks.addLog && uiCallbacks.addLog("Opening: " + fileName, LOG_LEVEL.INFO);
-          uiCallbacks.setStatusText && uiCallbacks.setStatusText(i + 1 + "/" + totalSources + ": " + fileName);
-          source.scrollIntoView({ block: "center" });
-          await wait(100);
-          const stretchBtn = source.querySelector(".source-stretched-button");
-          if (stretchBtn) stretchBtn.click();
-          else (titleEl || source).click();
-          const contentEl = await waitForContent(CONFIG.selectors.content, 15e3);
-          if (STATE.isCancelled) {
-            await attemptClose();
-            continue;
-          }
-          if (contentEl) {
-            const container = contentEl.closest(".elements-container");
-            const allInContainer = container ? container.querySelectorAll("labs-tailwind-structural-element-view-v2") : document.querySelectorAll(CONFIG.selectors.content);
-            const lines = Array.from(allInContainer).filter(
-              function(el) {
-                return !el.parentElement.closest(CONFIG.selectors.content);
-              }
-            );
-            const t0 = performance.now();
-            const textLines = lines.map(function(l) {
-              return htmlToMarkdown(l);
-            });
-            const t1 = performance.now();
-            const text = textLines.join("\n\n");
-            processContent(text, fileName, lines.length, t1 - t0, collectedFiles);
-          } else {
-            const panel = document.querySelector(".elements-container");
-            const iframe = panel && panel.querySelector("iframe");
-            if (iframe) {
-              try {
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                if (iframeDoc) {
-                  const iframeLines = iframeDoc.querySelectorAll("labs-tailwind-structural-element-view-v2");
-                  if (iframeLines.length > 0) {
-                    log.log("Content found in iframe — extracting...");
-                    uiCallbacks.addLog && uiCallbacks.addLog(">> Content found in iframe...", LOG_LEVEL.INFO);
-                    const lines = Array.from(iframeLines).filter(
-                      function(el) {
-                        return !el.parentElement.closest("labs-tailwind-structural-element-view-v2");
-                      }
-                    );
-                    const t0 = performance.now();
-                    const textLines = lines.map(function(l) {
-                      return htmlToMarkdown(l);
-                    });
-                    const t1 = performance.now();
-                    const text = textLines.join("\n\n");
-                    processContent(text, fileName, lines.length, t1 - t0, collectedFiles);
-                  } else {
-                    log.error("No content elements found in iframe for: " + fileName);
-                    uiCallbacks.addLog && uiCallbacks.addLog(">> Timeout: Content load failed (iframe empty)", LOG_LEVEL.ERROR);
-                  }
-                } else {
-                  log.error("Cannot access iframe document for: " + fileName);
-                  uiCallbacks.addLog && uiCallbacks.addLog(">> Timeout: Cannot access iframe document", LOG_LEVEL.ERROR);
-                }
-              } catch (_) {
-                log.error("Cross-origin iframe — cannot extract content for: " + fileName);
-                uiCallbacks.addLog && uiCallbacks.addLog(">> Timeout: Cross-origin iframe, cannot extract", LOG_LEVEL.ERROR);
-              }
-            } else {
-              let fallbackText = "";
-              if (panel) {
-                const directChildren = panel.children;
-                for (let b = 0; b < directChildren.length; b++) {
-                  const txt = directChildren[b].textContent.trim();
-                  if (txt.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
-                    fallbackText += txt + "\n\n";
-                  }
-                }
-              }
-              processContent(fallbackText, fileName, 0, 0, collectedFiles);
-            }
-          }
-          await attemptClose();
-          resetLiCache();
-        } catch (sourceErr) {
-          log.error("Error processing source " + (i + 1) + ": " + sourceErr.message);
-          uiCallbacks.addLog && uiCallbacks.addLog("Error: " + sourceErr.message, LOG_LEVEL.ERROR);
-        }
-      }
-    } catch (e) {
-      log.error("Unexpected error: " + e.message);
-      uiCallbacks.addLog && uiCallbacks.addLog("Unexpected error: " + e.message, LOG_LEVEL.ERROR);
-      crashed = true;
-    } finally {
-      cleanupRun();
-    }
-    if (crashed) {
-      uiCallbacks.setStartBtnState && uiCallbacks.setStartBtnState(false, "Retry");
-      return;
-    }
-    if (STATE.isCancelled) {
-      log.warn("Extraction stopped by user.");
-      uiCallbacks.addLog && uiCallbacks.addLog("Extraction stopped by user.", LOG_LEVEL.WARN);
-      uiCallbacks.setStatusText && uiCallbacks.setStatusText("Stopped");
-      uiCallbacks.setStartBtnState && uiCallbacks.setStartBtnState(false, "Start Extraction");
-    } else {
-      uiCallbacks.updateProgress && uiCallbacks.updateProgress(totalSources, totalSources);
-      if (collectedFiles.length > 0) {
-        log.log("Building ZIP with " + collectedFiles.length + " file(s)...");
-        uiCallbacks.addLog && uiCallbacks.addLog("Building ZIP with " + collectedFiles.length + " file(s)...", LOG_LEVEL.INFO);
-        const notebookTitleEl = document.querySelector(CONFIG.selectors.notebookTitle);
-        const notebookTitle = notebookTitleEl ? notebookTitleEl.textContent.trim() : "NotebookLM";
-        const zipName = notebookTitle.replace(/[\\/:*?"<>|]/g, "_").substring(0, 100).trim() + ".zip";
-        let zipBlob;
-        try {
-          zipBlob = buildStoreZip(collectedFiles);
-        } catch (zipErr) {
-          log.error("ZIP build failed: " + zipErr.message);
-          uiCallbacks.addLog && uiCallbacks.addLog("ZIP build failed: " + zipErr.message, LOG_LEVEL.ERROR);
-          uiCallbacks.setStartBtnState && uiCallbacks.setStartBtnState(false, "Retry");
-          return;
-        }
-        const url = URL.createObjectURL(zipBlob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = zipName;
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          a.remove();
-          URL.revokeObjectURL(url);
-        }, 2e3);
-        log.log("ZIP downloaded: " + zipName);
-        uiCallbacks.addLog && uiCallbacks.addLog("ZIP downloaded.", LOG_LEVEL.SUCCESS);
-      } else {
-        log.warn("No files to export.");
-        uiCallbacks.addLog && uiCallbacks.addLog("No files to export.", LOG_LEVEL.WARN);
-      }
-      log.log("Process completed successfully.");
-      uiCallbacks.addLog && uiCallbacks.addLog("Process completed successfully.", LOG_LEVEL.SUCCESS);
-      uiCallbacks.setStatusText && uiCallbacks.setStatusText("Complete");
-      uiCallbacks.setStartBtnState && uiCallbacks.setStartBtnState(false, "Done");
-      SoundFX.playComplete();
-      setTimeout(() => {
-        if (uiCallbacks.removeStatusBar) uiCallbacks.removeStatusBar();
-      }, 3e3);
-    }
-  }
   const SELECTORS = {
     chatContainer: ".chat-panel-content",
     messagePair: ".chat-message-pair",
@@ -908,6 +417,47 @@ restartUI: null
       lines.push("");
       removeCitations(aiEl);
       lines.push(htmlToMarkdown2(aiEl));
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+  function extractChatToText() {
+    const container = document.querySelector(SELECTORS.chatContainer);
+    if (!container) return "";
+    const pairs = container.querySelectorAll(SELECTORS.messagePair);
+    if (!pairs || pairs.length === 0) return "";
+    const meta = extractMetadata();
+    const lines = [
+      "NotebookLM Chat Export",
+      "Title: " + meta.title,
+      "Date: " + meta.dateStr,
+      "Platform: NotebookLM"
+    ];
+    if (meta.sourceInfo) lines.push("Sources: " + meta.sourceInfo);
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    for (let i = 0; i < pairs.length; i++) {
+      const pair = pairs[i];
+      let userEl = pair.querySelector(SELECTORS.userContent);
+      if (!userEl) userEl = queryFirst(pair, [FALLBACK_SELECTORS.userContent]);
+      let aiEl = pair.querySelector(SELECTORS.aiContent);
+      if (!aiEl) aiEl = queryFirst(pair, [FALLBACK_SELECTORS.aiContent]);
+      const hasAiResponse = aiEl && aiEl.textContent.trim().length > 0;
+      if (!hasAiResponse) continue;
+      lines.push("User:");
+      if (userEl && userEl.textContent.trim().length > 0) {
+        lines.push(userEl.textContent.trim());
+      } else {
+        lines.push("[non-text message]");
+      }
+      lines.push("");
+      lines.push("NotebookLM:");
+      const aiClone = aiEl.cloneNode(true);
+      removeCitations(aiClone);
+      lines.push(aiClone.textContent.trim());
+      lines.push("");
+      lines.push("---");
       lines.push("");
     }
     return lines.join("\n");
@@ -1032,678 +582,859 @@ restartUI: null
   function escapeHTML(str) {
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
-  const ui = {
-floatHost: null,
-floatRoot: null,
-overlayHost: null,
-overlayRoot: null
+  const log = createLogger("NotebookLM Source Export");
+  const CONFIG = {
+    audio: { enabled: true, vol: 0.15 },
+    selectors: {
+      closeBtn: 'button[mattooltip*="schließen"], button[mattooltip*="close"], button[aria-label*="Close"], button[aria-label*="Schließen"]',
+      content: ".elements-container labs-tailwind-structural-element-view-v2",
+      notebookTitle: ".title-label-inner.mat-title-large",
+      sourceContainer: ".single-source-container",
+      sourceTitle: ".source-title"
+    }
   };
-  const FLOAT_CSS = [
-    ":host { position:fixed; bottom:24px; right:24px; z-index:2147483645; cursor:pointer; }",
-    ".pill { display:flex; align-items:center; gap:10px; height:48px; padding:0 20px;",
-    "  background:rgba(15,23,42,0.75); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);",
-    "  border:1px solid rgba(255,255,255,0.08); border-radius:24px;",
-    "  box-shadow:0 8px 32px rgba(0,0,0,0.35); transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);",
-    "  font:500 13px/1 system-ui,sans-serif; color:#e2e8f0; white-space:nowrap; user-select:none; }",
-    ".pill:hover { border-color:rgba(99,102,241,0.4); box-shadow:0 8px 40px rgba(99,102,241,0.15); }",
-    ".dot { width:8px; height:8px; border-radius:50%; background:#4ade80;",
-    "  animation:pulse 2s ease-in-out infinite; }",
-    ".dot.active { background:linear-gradient(135deg,#6366f1,#c084fc); animation:none; }",
-    ".dot.error { background:#f87171; animation:none; }",
-    "@keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(0.8); } }",
-    ".label { flex:1; overflow:hidden; text-overflow:ellipsis; color:#94a3b8; }",
-    ".label strong { color:#e2e8f0; font-weight:500; }",
-    ".expand-icon { font-size:16px; color:#64748b; transition:transform 0.3s ease; }",
-    ".pill:hover .expand-icon { transform:translateX(2px); }"
-  ].join("\n");
-  const PANEL_CSS = [
-    ":host { position:fixed; bottom:24px; right:24px; z-index:2147483645; }",
-    ".panel { width:360px; background:rgba(15,23,42,0.85); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);",
-    "  border:1px solid rgba(255,255,255,0.08); border-radius:16px;",
-    "  box-shadow:0 8px 32px rgba(0,0,0,0.4); overflow:hidden;",
-    "  animation:panelIn 0.35s cubic-bezier(0.34,1.56,0.64,1) both; }",
-    "@keyframes panelIn { from { opacity:0; transform:translateY(12px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }",
-    ".progress-row { display:flex; align-items:center; gap:14px; padding:16px 18px 8px; }",
-    ".progress-ring { flex-shrink:0; width:48px; height:48px; }",
-    ".progress-ring circle { transition:stroke-dashoffset 0.4s ease; }",
-    ".meta { flex:1; min-width:0; }",
-    ".meta .count { font:600 20px/1 system-ui,sans-serif; color:#e2e8f0; }",
-    ".meta .count span { color:#64748b; font-weight:400; }",
-    ".meta .file { font:11px/1.3 monospace; color:#94a3b8; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }",
-    ".meta .progress-bar { height:3px; background:rgba(255,255,255,0.06); border-radius:2px; margin-top:8px; overflow:hidden; }",
-    ".meta .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,#6366f1,#c084fc,#f472b6);",
-    "  border-radius:2px; transition:width 0.4s ease; }",
-    ".log-area { padding:0 18px 8px; max-height:72px; overflow:hidden; }",
-    ".log-line { font:11px/1.4 monospace; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }",
-    ".log-line.info { color:#94a3b8; } .log-line.success { color:#4ade80; }",
-    ".log-line.warn { color:#fbbf24; } .log-line.error { color:#f87171; }",
-    ".footer { display:flex; justify-content:flex-end; padding:0 14px 12px; }",
-    ".btn-stop { padding:6px 16px; border-radius:8px; border:1px solid rgba(248,113,113,0.3);",
-    "  background:transparent; color:#f87171; font:500 12px/1 system-ui,sans-serif; cursor:pointer;",
-    "  transition:all 0.2s ease; opacity:0.6; }",
-    ".btn-stop:hover { opacity:1; background:rgba(248,113,113,0.1); border-color:#f87171; }",
-    ".complete { text-align:center; padding:18px; }",
-    ".complete .check { font-size:32px; line-height:1; margin-bottom:6px; }",
-    ".complete .msg { font:500 14px/1 system-ui,sans-serif; color:#4ade80; }",
-    ".complete .sub { font:12px/1 system-ui,sans-serif; color:#64748b; margin-top:4px; }"
-  ].join("\n");
-  const OVERLAY_CSS = [
-    ":host { position:fixed; inset:0; z-index:2147483646; display:flex; align-items:center; justify-content:center; }",
-    ".backdrop { position:absolute; inset:0; background:rgba(0,0,0,0.5); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }",
-    ".card { position:relative; width:480px; max-height:80vh; background:rgba(15,23,42,0.92); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);",
-    "  border:1px solid rgba(255,255,255,0.08); border-radius:20px; box-shadow:0 16px 64px rgba(0,0,0,0.5);",
-    "  display:flex; flex-direction:column; animation:overlayIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both; }",
-    "@keyframes overlayIn { from { opacity:0; transform:scale(0.92) translateY(16px); } to { opacity:1; transform:scale(1) translateY(0); } }",
-    ".header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.06); }",
-    ".header h2 { margin:0; font:600 15px/1 system-ui,sans-serif; color:#e2e8f0; }",
-    ".header h2 span { color:#6366f1; }",
-    ".btn-close { background:none; border:none; color:#64748b; font-size:20px; cursor:pointer; padding:0 4px; line-height:1; }",
-    ".btn-close:hover { color:#e2e8f0; }",
-    ".body { padding:18px 20px; flex:1; overflow-y:auto; }",
-    ".body::-webkit-scrollbar { width:6px; }",
-    ".body::-webkit-scrollbar-track { background:transparent; }",
-    ".body::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:3px; }",
-    ".overlay-progress { display:flex; align-items:center; gap:16px; margin-bottom:18px; }",
-    ".overlay-progress .progress-ring { width:56px; height:56px; flex-shrink:0; }",
-    ".overlay-progress .progress-ring circle { transition:stroke-dashoffset 0.4s ease; }",
-    ".overlay-progress .meta .count { font:600 22px/1 system-ui,sans-serif; color:#e2e8f0; }",
-    ".overlay-progress .meta .file { font:12px/1.3 monospace; color:#94a3b8; margin-top:3px; }",
-    ".overlay-progress .meta .progress-bar { height:4px; margin-top:10px; }",
-    ".overlay-progress .meta .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,#6366f1,#c084fc,#f472b6); border-radius:2px; transition:width 0.4s ease; }",
-    ".terminal { background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:10px;",
-    "  padding:12px; overflow-y:auto; max-height:260px; font:12px/1.5 monospace; color:#94a3b8; }",
-    ".terminal::-webkit-scrollbar { width:4px; }",
-    ".terminal::-webkit-scrollbar-track { background:transparent; }",
-    ".terminal::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }",
-    ".log-entry { margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
-    ".log-entry:last-child { margin-bottom:0; }",
-    ".log-entry.info { color:#94a3b8; } .log-entry.success { color:#4ade80; }",
-    ".log-entry.warn { color:#fbbf24; } .log-entry.error { color:#f87171; }",
-    ".footer-btns { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }",
-    ".btn { padding:8px 20px; border-radius:10px; font:600 13px/1 system-ui,sans-serif; cursor:pointer; transition:all 0.2s ease; }",
-    ".btn-primary { background:linear-gradient(135deg,#6366f1,#a855f7); color:#fff; border:none; }",
-    ".btn-primary:hover { box-shadow:0 4px 20px rgba(99,102,241,0.3); }",
-    ".btn-primary:disabled { opacity:0.4; cursor:not-allowed; box-shadow:none; }",
-    ".btn-stop { background:transparent; color:#f87171; border:1px solid rgba(248,113,113,0.3); }",
-    ".btn-stop:hover { background:rgba(248,113,113,0.1); border-color:#f87171; }",
-    ".tool-selector { display:flex; gap:12px; padding:12px 0; }",
-    ".tool-card { flex:1; padding:20px; border-radius:14px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06);",
-    "  cursor:pointer; text-align:center; transition:all 0.2s ease; }",
-    ".tool-card:hover { background:rgba(99,102,241,0.1); border-color:rgba(99,102,241,0.3); transform:translateY(-2px); }",
-    ".tool-card .icon { font-size:32px; margin-bottom:8px; }",
-    ".tool-card .name { font:500 14px/1 system-ui,sans-serif; color:#e2e8f0; }",
-    ".tool-card .desc { font:12px/1.3 system-ui,sans-serif; color:#64748b; margin-top:4px; }",
-    ".format-selector { display:flex; gap:8px; padding:12px 0; }",
-    ".format-btn { flex:1; padding:8px 6px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);",
-    "  background:rgba(255,255,255,0.02); color:#94a3b8; font:500 12px/1 system-ui,sans-serif; cursor:pointer;",
-    "  text-align:center; transition:all 0.2s ease; }",
-    ".format-btn:hover { border-color:rgba(99,102,241,0.25); color:#cbd5e1; }",
-    ".format-btn.selected { background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(168,85,247,0.1));",
-    "  border-color:rgba(99,102,241,0.4); color:#e2e8f0; }",
-    ".format-btn .ext { font-size:10px; opacity:0.5; display:block; margin-top:2px; }"
-  ].join("\n");
-  const PROGRESS_SVG = [
-    '<svg viewBox="0 0 120 120" class="progress-ring">',
-    "  <defs>",
-    '    <linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%">',
-    '      <stop offset="0%" stop-color="#6366f1"/>',
-    '      <stop offset="50%" stop-color="#c084fc"/>',
-    '      <stop offset="100%" stop-color="#f472b6"/>',
-    "    </linearGradient>",
-    '    <linearGradient id="pgSuccess" x1="0%" y1="0%" x2="100%" y2="0%">',
-    '      <stop offset="0%" stop-color="#4ade80"/>',
-    '      <stop offset="100%" stop-color="#22d3ee"/>',
-    "    </linearGradient>",
-    "  </defs>",
-    '  <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>',
-    '  <circle class="ring-fg" cx="60" cy="60" r="50" fill="none" stroke="url(#pg)" stroke-width="6"',
-    '    stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16"',
-    '    transform="rotate(-90, 60, 60)"/>',
-    '  <path class="checkmark" d="M48,62 L56,70 L74,48" fill="none" stroke="#4ade80" stroke-width="5"',
-    '    stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="50" stroke-dashoffset="50" style="display:none"/>',
-    "</svg>"
-  ].join("\n");
-  const CIRCUMFERENCE = 314.16;
-  function createShadowContainer(styles) {
-    const host = document.createElement("div");
-    const root = host.attachShadow({ mode: "closed" });
-    if (styles) GM_addElement(root, "style", { textContent: styles });
-    document.body.appendChild(host);
-    return { host, root };
-  }
-  let currentState = "idle";
-  let currentTool = null;
-  let selectedFormat = "md";
-  let lastLogLines = [];
-  function createFloatPill() {
-    const { host, root } = createShadowContainer(FLOAT_CSS);
-    ui.floatHost = host;
-    ui.floatRoot = root;
-    const pill = document.createElement("div");
-    pill.className = "pill";
-    const dot = document.createElement("div");
-    dot.className = "dot";
-    pill.appendChild(dot);
-    const label = document.createElement("div");
-    label.className = "label";
-    label.innerHTML = "<strong>NotebookLM</strong> Export";
-    pill.appendChild(label);
-    const expand = document.createElement("div");
-    expand.className = "expand-icon";
-    expand.textContent = "↗";
-    pill.appendChild(expand);
-    root.appendChild(pill);
-    pill.addEventListener("click", function() {
-      if (currentState === "running") {
-        if (!root.querySelector(".panel")) showActivePanel();
-        createOverlay(currentTool || "sources");
-      } else if (currentState === "idle") {
-        currentTool = null;
-        createOverlay(null);
-      } else {
-        createOverlay(currentTool || "sources");
-      }
-    });
-    return { host, root, pill, dot };
-  }
-  function showActivePanel() {
-    if (!ui.floatRoot) return;
-    const root = ui.floatRoot;
-    root.innerHTML = "";
-    GM_addElement(root, "style", { textContent: FLOAT_CSS + "\n" + PANEL_CSS });
-    const panel = document.createElement("div");
-    panel.className = "panel";
-    const progressRow = document.createElement("div");
-    progressRow.className = "progress-row";
-    const svgWrapper = document.createElement("div");
-    svgWrapper.className = "progress-ring";
-    svgWrapper.innerHTML = PROGRESS_SVG;
-    progressRow.appendChild(svgWrapper);
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    const countEl = document.createElement("div");
-    countEl.className = "count";
-    countEl.innerHTML = "0 <span>/ 0</span>";
-    meta.appendChild(countEl);
-    const fileEl = document.createElement("div");
-    fileEl.className = "file";
-    fileEl.textContent = "Waiting...";
-    meta.appendChild(fileEl);
-    const barOuter = document.createElement("div");
-    barOuter.className = "progress-bar";
-    const barFill = document.createElement("div");
-    barFill.className = "progress-fill";
-    barOuter.appendChild(barFill);
-    meta.appendChild(barOuter);
-    progressRow.appendChild(meta);
-    panel.appendChild(progressRow);
-    const logArea = document.createElement("div");
-    logArea.className = "log-area";
-    const recentLogs = lastLogLines.slice(-3);
-    for (let i = 0; i < recentLogs.length; i++) {
-      const line = document.createElement("div");
-      line.className = "log-line " + recentLogs[i].level;
-      line.textContent = recentLogs[i].text;
-      logArea.appendChild(line);
-    }
-    panel.appendChild(logArea);
-    const footer = document.createElement("div");
-    footer.className = "footer";
-    const stopBtn = document.createElement("button");
-    stopBtn.className = "btn-stop";
-    stopBtn.textContent = "■ Stop";
-    stopBtn.onclick = function() {
-      STATE.isCancelled = true;
-      log.warn("Stop requested by user.");
-      addLog("Stop requested by user.", LOG_LEVEL.WARN);
-    };
-    footer.appendChild(stopBtn);
-    panel.appendChild(footer);
-    root.appendChild(panel);
-    ui.floatRoot._countEl = countEl;
-    ui.floatRoot._fileEl = fileEl;
-    ui.floatRoot._barFill = barFill;
-    ui.floatRoot._logArea = logArea;
-    ui.floatRoot._svgWrapper = svgWrapper;
-    ui.floatRoot._stopBtn = stopBtn;
-    ui.floatRoot._panel = panel;
-  }
-  function updateProgressRing(pct) {
-    const svg = ui.floatRoot && ui.floatRoot._svgWrapper;
-    if (svg) {
-      const ring = svg.querySelector(".ring-fg");
-      if (ring) ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct / 100);
-    }
-    if (ui.overlayRoot && ui.overlayRoot._ring) {
-      ui.overlayRoot._ring.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct / 100);
-    }
-  }
-  function showSuccess(totalCount) {
-    if (!ui.floatRoot) return;
-    currentState = "complete";
-    const root = ui.floatRoot;
-    root.innerHTML = "";
-    GM_addElement(root, "style", { textContent: FLOAT_CSS + "\n" + PANEL_CSS });
-    const panel = document.createElement("div");
-    panel.className = "panel";
-    const complete = document.createElement("div");
-    complete.className = "complete";
-    const check = document.createElement("div");
-    check.className = "check";
-    check.textContent = "✓";
-    complete.appendChild(check);
-    const msg = document.createElement("div");
-    msg.className = "msg";
-    msg.textContent = "Extraction Complete!";
-    complete.appendChild(msg);
-    const sub = document.createElement("div");
-    sub.className = "sub";
-    sub.textContent = totalCount + " source" + (totalCount !== 1 ? "s" : "") + " exported";
-    complete.appendChild(sub);
-    panel.appendChild(complete);
-    root.appendChild(panel);
-    setTimeout(function() {
-      if (root._panel) {
-        root._panel.style.opacity = "0";
-        root._panel.style.transform = "scale(0.9)";
-      }
-      setTimeout(function() {
-        currentState = "idle";
-        root.innerHTML = "";
-        GM_addElement(root, "style", { textContent: FLOAT_CSS });
-        createFloatPill();
-      }, 400);
-    }, 6e3);
-  }
-  let overlayLogBuffer = [];
-  function createOverlay(tool) {
-    if (tool !== void 0) currentTool = tool;
-    if (ui.overlayHost) {
-      ui.overlayHost.remove();
-      ui.overlayHost = null;
-      ui.overlayRoot = null;
-    }
-    const { host, root } = createShadowContainer(OVERLAY_CSS);
-    ui.overlayHost = host;
-    ui.overlayRoot = root;
-    const backdrop = document.createElement("div");
-    backdrop.className = "backdrop";
-    backdrop.addEventListener("click", closeOverlay);
-    root.appendChild(backdrop);
-    const card = document.createElement("div");
-    card.className = "card";
-    const header = document.createElement("div");
-    header.className = "header";
-    if (currentTool === null) {
-      const h2 = document.createElement("h2");
-      h2.innerHTML = "<span>NotebookLM</span> Export";
-      header.appendChild(h2);
-    } else {
-      const h2 = document.createElement("h2");
-      h2.innerHTML = "<span>NotebookLM</span> " + (currentTool === "chat" ? "Chat Export" : "Source Export");
-      header.appendChild(h2);
-      const backBtn = document.createElement("button");
-      backBtn.className = "btn-close";
-      backBtn.textContent = "←";
-      backBtn.title = "Back to tool selection";
-      backBtn.addEventListener("click", function() {
-        createOverlay(null);
-      });
-      header.appendChild(backBtn);
-    }
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "btn-close";
-    closeBtn.textContent = "✕";
-    closeBtn.addEventListener("click", closeOverlay);
-    header.appendChild(closeBtn);
-    card.appendChild(header);
-    const body = document.createElement("div");
-    body.className = "body";
-    if (currentTool === null) {
-      const selector = document.createElement("div");
-      selector.className = "tool-selector";
-      const sourcesCard = document.createElement("div");
-      sourcesCard.className = "tool-card";
-      sourcesCard.innerHTML = '<div class="icon">📄</div><div class="name">Export Sources</div><div class="desc">Extract all source files as Markdown</div>';
-      sourcesCard.addEventListener("click", function() {
-        createOverlay("sources");
-      });
-      selector.appendChild(sourcesCard);
-      const chatCard = document.createElement("div");
-      chatCard.className = "tool-card";
-      chatCard.innerHTML = '<div class="icon">💬</div><div class="name">Export Chat</div><div class="desc">Download chat as Markdown, HTML or PDF</div>';
-      chatCard.addEventListener("click", function() {
-        createOverlay("chat");
-      });
-      selector.appendChild(chatCard);
-      body.appendChild(selector);
-      if (overlayLogBuffer.length > 0) {
-        const terminal2 = document.createElement("div");
-        terminal2.className = "terminal";
-        const termLog2 = document.createElement("div");
-        termLog2.className = "terminal-log";
-        for (let i = 0; i < overlayLogBuffer.length; i++) {
-          const entry = overlayLogBuffer[i];
-          const el = document.createElement("div");
-          el.className = "log-entry " + entry.level;
-          el.textContent = entry.text;
-          termLog2.appendChild(el);
+  const TIMING = {
+    CONTENT_POLL_ATTEMPTS: 30,
+    CONTENT_POLL_INTERVAL_MS: 100,
+    CONTENT_STABLE_POLLS: 2,
+    CONTENT_GONE_ATTEMPTS: 5,
+    MIN_CONTENT_LENGTH_CHARS: 20,
+    KEEP_ALIVE_VOLUME: 1e-3,
+    LOG_MAX_ENTRIES: 50,
+    AUDIO_NOTE_DELAYS_MS: [0, 100, 200]
+  };
+  const STATE = {
+    isCancelled: false,
+    keepAliveNode: null,
+    menuStopId: null,
+    soundFXCloseTimer: null
+  };
+  const SoundFX = {
+    _ctx: null,
+    get ctx() {
+      if (!this._ctx && CONFIG.audio.enabled) {
+        try {
+          this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+          log.warn("AudioContext creation failed: " + e.message);
         }
-        terminal2.appendChild(termLog2);
-        terminal2.scrollTop = terminal2.scrollHeight;
-        body.appendChild(terminal2);
       }
-      card.appendChild(body);
-      root.appendChild(card);
-      ui.overlayRoot._card = card;
-      return;
-    }
-    const ovProgress = document.createElement("div");
-    ovProgress.className = "overlay-progress";
-    const ovSvg = document.createElement("div");
-    ovSvg.className = "progress-ring";
-    ovSvg.innerHTML = PROGRESS_SVG;
-    ovProgress.appendChild(ovSvg);
-    const ovMeta = document.createElement("div");
-    ovMeta.className = "meta";
-    const ovCount = document.createElement("div");
-    ovCount.className = "count";
-    ovCount.innerHTML = "0 <span>/ 0</span>";
-    ovMeta.appendChild(ovCount);
-    const ovFile = document.createElement("div");
-    ovFile.className = "file";
-    ovFile.textContent = "";
-    ovMeta.appendChild(ovFile);
-    const ovBarOuter = document.createElement("div");
-    ovBarOuter.className = "progress-bar";
-    const ovBarFill = document.createElement("div");
-    ovBarFill.className = "progress-fill";
-    ovBarOuter.appendChild(ovBarFill);
-    ovMeta.appendChild(ovBarOuter);
-    ovProgress.appendChild(ovMeta);
-    body.appendChild(ovProgress);
-    let fmtStartBtn = null;
-    if (currentTool === "chat") {
-      const fmtSel = document.createElement("div");
-      fmtSel.className = "format-selector";
-      const formats = [
-        { key: "md", label: "Markdown", ext: ".md" },
-        { key: "html", label: "HTML", ext: ".html" },
-        { key: "pdf", label: "PDF (Print)", ext: ".pdf" }
+      if (this._ctx && this._ctx.state === "suspended") {
+        this._ctx.resume().catch(function() {
+        });
+      }
+      return this._ctx;
+    },
+    playTone: function(freq, type, duration, vol) {
+      vol = vol || CONFIG.audio.vol;
+      try {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(1e-3, this.ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+      } catch (_) {
+      }
+    },
+    playStart: function() {
+      this.playTone(600, "sine", 0.15);
+    },
+    playError: function() {
+      this.playTone(150, "sawtooth", 0.3);
+    },
+    playComplete: function() {
+      const delays = TIMING.AUDIO_NOTE_DELAYS_MS;
+      const notes = [
+        { freq: 440, duration: 0.6, delay: delays[0] },
+        { freq: 554, duration: 0.6, delay: delays[1] },
+        { freq: 659, duration: 0.8, delay: delays[2] }
       ];
-      for (let i = 0; i < formats.length; i++) {
-        const btn = document.createElement("button");
-        btn.className = "format-btn" + (formats[i].key === selectedFormat ? " selected" : "");
-        btn.innerHTML = formats[i].label + '<span class="ext">' + formats[i].ext + "</span>";
-        btn.dataset.format = formats[i].key;
-        btn.addEventListener("click", function() {
-          const parent = btn.parentNode;
-          if (!parent) return;
-          const allBtns = parent.querySelectorAll(".format-btn");
-          for (let j = 0; j < allBtns.length; j++) {
-            allBtns[j].className = "format-btn";
-          }
-          btn.className = "format-btn selected";
-          selectedFormat = btn.dataset.format;
-          if (fmtStartBtn && !fmtStartBtn.disabled) {
-            fmtStartBtn.textContent = "▶ Export " + btn.dataset.format.toUpperCase();
+      notes.forEach(function(n) {
+        setTimeout(function() {
+          SoundFX.playTone(n.freq, "sine", n.duration);
+        }, n.delay);
+      });
+    },
+    close: function() {
+      if (this._ctx) {
+        try {
+          this._ctx.close();
+        } catch (_) {
+        }
+        this._ctx = null;
+      }
+    },
+    ensureReady: async function() {
+      try {
+        const c = this.ctx;
+        if (c && c.state === "suspended") {
+          await c.resume();
+        }
+      } catch (_) {
+      }
+    }
+  };
+  function wait(ms) {
+    return new Promise(function(r) {
+      setTimeout(r, ms);
+    });
+  }
+  function waitForContent(selector, timeoutMs) {
+    return new Promise(function(resolve) {
+      let stabilityTimer = null;
+      let contentObserver = null;
+      const rootObserver = new MutationObserver(checkAppear);
+      function cleanup() {
+        if (contentObserver) {
+          contentObserver.disconnect();
+          contentObserver = null;
+        }
+        if (stabilityTimer) {
+          clearTimeout(stabilityTimer);
+          stabilityTimer = null;
+        }
+        rootObserver.disconnect();
+      }
+      function done(el) {
+        cleanup();
+        resolve(el || null);
+      }
+      function watchStability(el) {
+        let lastText = el.textContent;
+        contentObserver = new MutationObserver(function() {
+          const cur = el.textContent;
+          if (cur !== lastText) {
+            lastText = cur;
+            if (stabilityTimer) clearTimeout(stabilityTimer);
+            if (cur.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
+              stabilityTimer = setTimeout(function() {
+                done(el);
+              }, 300);
+            }
           }
         });
-        fmtSel.appendChild(btn);
-      }
-      body.appendChild(fmtSel);
-    }
-    const terminal = document.createElement("div");
-    terminal.className = "terminal";
-    const termLog = document.createElement("div");
-    termLog.className = "terminal-log";
-    terminal.appendChild(termLog);
-    body.appendChild(terminal);
-    const footerBtns = document.createElement("div");
-    footerBtns.className = "footer-btns";
-    const startBtn = document.createElement("button");
-    startBtn.className = "btn btn-primary";
-    if (currentTool === "chat") {
-      fmtStartBtn = startBtn;
-      startBtn.textContent = currentState === "running" ? "Running..." : "▶ Export " + selectedFormat.toUpperCase();
-      startBtn.disabled = currentState === "running";
-      startBtn.onclick = function() {
-        closeOverlay();
-        currentState = "running";
-        showActivePanel();
-        startChatExport(selectedFormat);
-      };
-    } else {
-      startBtn.textContent = currentState === "running" ? "Running..." : "▶ Start Extraction";
-      startBtn.disabled = currentState === "running";
-      startBtn.onclick = function() {
-        closeOverlay();
-        currentState = "running";
-        showActivePanel();
-        runProcess();
-      };
-    }
-    footerBtns.appendChild(startBtn);
-    const stopBtn = document.createElement("button");
-    stopBtn.className = "btn btn-stop";
-    stopBtn.textContent = "■ Stop";
-    stopBtn.style.display = currentState === "running" ? "block" : "none";
-    stopBtn.onclick = function() {
-      STATE.isCancelled = true;
-      log.warn("Stop requested by user.");
-      addLog("Stop requested by user.", LOG_LEVEL.WARN);
-    };
-    footerBtns.appendChild(stopBtn);
-    body.appendChild(footerBtns);
-    card.appendChild(body);
-    root.appendChild(card);
-    ui.overlayRoot._ring = ovSvg.querySelector(".ring-fg");
-    ui.overlayRoot._countEl = ovCount;
-    ui.overlayRoot._fileEl = ovFile;
-    ui.overlayRoot._barFill = ovBarFill;
-    ui.overlayRoot._termLog = termLog;
-    ui.overlayRoot._startBtn = startBtn;
-    ui.overlayRoot._stopBtn = stopBtn;
-    ui.overlayRoot._terminal = terminal;
-    ui.overlayRoot._card = card;
-    for (let i = 0; i < overlayLogBuffer.length; i++) {
-      const entry = overlayLogBuffer[i];
-      const el = document.createElement("div");
-      el.className = "log-entry " + entry.level;
-      el.textContent = entry.text;
-      termLog.appendChild(el);
-    }
-    terminal.scrollTop = terminal.scrollHeight;
-    if (ui.floatRoot && currentState === "running") {
-      const oldCount = ui.floatRoot._countEl;
-      if (oldCount) {
-        ovCount.innerHTML = oldCount.innerHTML;
-      }
-      const oldFile = ui.floatRoot._fileEl;
-      if (oldFile && oldFile.textContent) {
-        ovFile.textContent = oldFile.textContent;
-      }
-      const oldPct = ui.floatRoot._barFill ? ui.floatRoot._barFill.style.width : "0%";
-      ovBarFill.style.width = oldPct;
-    }
-  }
-  function startChatExport(format) {
-    format = format || "md";
-    currentTool = "chat";
-    currentState = "running";
-    showActivePanel();
-    addLog("Starting chat export (" + format.toUpperCase() + ")...", LOG_LEVEL.INFO);
-    try {
-      if (format === "md") {
-        const markdown = extractChatToMarkdown(htmlToMarkdown);
-        if (!markdown) {
-          addLog("No chat messages found.", LOG_LEVEL.ERROR);
-          currentState = "idle";
-          return;
-        }
-        downloadBlob(
-          new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
-          "NotebookLM Chat.md"
-        );
-      } else {
-        const messagesData = extractChatMessages();
-        if (!messagesData || messagesData.messages.length === 0) {
-          addLog("No chat messages found.", LOG_LEVEL.ERROR);
-          currentState = "idle";
-          return;
-        }
-        const html = buildChatHTMLDocument(messagesData, { forPrint: format === "pdf" });
-        if (format === "html") {
-          downloadBlob(
-            new Blob([html], { type: "text/html;charset=utf-8" }),
-            "NotebookLM Chat.html"
-          );
-        } else {
-          const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const printWindow = window.open(url, "_blank");
-          if (!printWindow) {
-            addLog("Popup blocked — downloading HTML instead. Use File > Print to save as PDF.", LOG_LEVEL.WARN);
-            downloadBlob(blob, "NotebookLM Chat.html");
-          }
-          setTimeout(function() {
-            URL.revokeObjectURL(url);
-          }, 3e4);
+        contentObserver.observe(el, { childList: true, subtree: true, characterData: true });
+        if (el.textContent.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
+          stabilityTimer = setTimeout(function() {
+            done(el);
+          }, 300);
         }
       }
-      addLog("Chat exported successfully!", LOG_LEVEL.SUCCESS);
-      showSuccess(1);
-    } catch (err) {
-      addLog("Chat export failed: " + err.message, LOG_LEVEL.ERROR);
-      currentState = "idle";
-    }
-  }
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() {
-      a.remove();
-      URL.revokeObjectURL(url);
-    }, 2e3);
-  }
-  function closeOverlay() {
-    if (ui.overlayHost) {
-      ui.overlayHost.remove();
-      ui.overlayHost = null;
-      ui.overlayRoot = null;
-    }
-  }
-  let _lastTotal = 0;
-  function addLog(msg, level) {
-    level = level || LOG_LEVEL.INFO;
-    const timestamp = "[" + ( new Date()).toLocaleTimeString(void 0, { hour12: false }) + "]";
-    const text = timestamp + " " + msg;
-    overlayLogBuffer.push({ text, level });
-    while (overlayLogBuffer.length > 200) overlayLogBuffer.shift();
-    if (ui.floatRoot && ui.floatRoot._logArea) {
-      const line = document.createElement("div");
-      line.className = "log-line " + level;
-      line.textContent = text;
-      ui.floatRoot._logArea.appendChild(line);
-      while (ui.floatRoot._logArea.children.length > 3) {
-        ui.floatRoot._logArea.removeChild(ui.floatRoot._logArea.firstChild);
+      function checkAppear() {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        rootObserver.disconnect();
+        watchStability(el);
       }
-    }
-    if (ui.overlayRoot && ui.overlayRoot._termLog) {
-      const entry = document.createElement("div");
-      entry.className = "log-entry " + level;
-      entry.textContent = text;
-      ui.overlayRoot._termLog.appendChild(entry);
-      while (ui.overlayRoot._termLog.children.length > TIMING.LOG_MAX_ENTRIES) {
-        ui.overlayRoot._termLog.removeChild(ui.overlayRoot._termLog.firstChild);
+      checkAppear();
+      if (!contentObserver) {
+        rootObserver.observe(document.documentElement, { childList: true, subtree: true });
       }
-      if (ui.overlayRoot._terminal) {
-        ui.overlayRoot._terminal.scrollTop = ui.overlayRoot._terminal.scrollHeight;
-      }
-    }
-    lastLogLines.push({ text, level });
-    while (lastLogLines.length > 50) lastLogLines.shift();
+      setTimeout(function() {
+        done(null);
+      }, timeoutMs);
+    });
   }
-  function updateProgress(current, total) {
-    _lastTotal = total;
-    const pct = Math.round(current / total * 100);
-    const label = current + " <span>/ " + total + "</span>";
-    if (ui.floatRoot && ui.floatRoot._countEl) {
-      ui.floatRoot._countEl.innerHTML = label;
-    }
-    if (ui.floatRoot && ui.floatRoot._barFill) {
-      ui.floatRoot._barFill.style.width = pct + "%";
-    }
-    if (ui.overlayRoot && ui.overlayRoot._countEl) {
-      ui.overlayRoot._countEl.innerHTML = label;
-    }
-    if (ui.overlayRoot && ui.overlayRoot._barFill) {
-      ui.overlayRoot._barFill.style.width = pct + "%";
-    }
-    updateProgressRing(pct);
-  }
-  function initUI() {
-    if (ui.floatHost) {
-      ui.floatHost.remove();
-      ui.floatHost = null;
-      ui.floatRoot = null;
-    }
-    closeOverlay();
-    currentState = "idle";
-    overlayLogBuffer = [];
-    lastLogLines = [];
-    createFloatPill();
-    uiCallbacks.addLog = addLog;
-    uiCallbacks.updateProgress = updateProgress;
-    uiCallbacks.setStatusText = function(text) {
-      if (text === "Stopped") {
-        currentState = "idle";
-        if (ui.floatRoot) {
-          ui.floatRoot.innerHTML = "";
-          GM_addElement(ui.floatRoot, "style", { textContent: FLOAT_CSS });
-          createFloatPill();
-        }
+  function waitForContentGone(selector, timeoutMs) {
+    return new Promise(function(resolve) {
+      if (!document.querySelector(selector)) {
+        resolve(true);
         return;
       }
-      if (ui.floatRoot && ui.floatRoot._fileEl) ui.floatRoot._fileEl.textContent = text;
-      if (ui.overlayRoot && ui.overlayRoot._fileEl) ui.overlayRoot._fileEl.textContent = text;
-    };
-    uiCallbacks.setStartBtnState = function(disabled, text) {
-      if (ui.overlayRoot && ui.overlayRoot._startBtn) {
-        ui.overlayRoot._startBtn.disabled = disabled;
-        ui.overlayRoot._startBtn.textContent = text;
-      }
-    };
-    uiCallbacks.setStopBtnVisible = function(visible) {
-      if (ui.overlayRoot && ui.overlayRoot._stopBtn) {
-        ui.overlayRoot._stopBtn.style.display = visible ? "block" : "none";
-      }
-    };
-    uiCallbacks.restartUI = function() {
-      if (ui.floatHost) {
-        ui.floatHost.style.transition = "opacity 0.3s ease";
-        ui.floatHost.style.opacity = "0";
-        setTimeout(function() {
-          initUI();
-        }, 350);
+      let observeTarget = document.querySelector(".elements-container");
+      if (observeTarget) {
+        observeTarget = observeTarget.parentElement || observeTarget;
       } else {
-        initUI();
+        const el = document.querySelector(selector);
+        observeTarget = el && el.parentElement || document.documentElement;
       }
+      const observer = new MutationObserver(function() {
+        if (!document.querySelector(selector)) {
+          observer.disconnect();
+          resolve(true);
+        }
+      });
+      observer.observe(observeTarget, { childList: true, subtree: true });
+      setTimeout(function() {
+        observer.disconnect();
+        let pollAttempts = 0;
+        const pollTimer = setInterval(function() {
+          if (!document.querySelector(selector)) {
+            clearInterval(pollTimer);
+            resolve(true);
+            return;
+          }
+          pollAttempts++;
+          if (pollAttempts >= 5) {
+            clearInterval(pollTimer);
+            resolve(false);
+          }
+        }, 100);
+      }, timeoutMs);
+    });
+  }
+  function startKeepAlive() {
+    try {
+      var ctx = SoundFX.ctx;
+      if (!ctx) return;
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      gain.gain.value = 1e-6;
+      osc.type = "sine";
+      osc.frequency.value = 440;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      STATE.keepAliveNode = { osc, gain };
+    } catch (e) {
+      log.warn("Keep-alive audio failed: " + e.message);
+    }
+  }
+  function stopKeepAlive() {
+    if (STATE.keepAliveNode) {
+      try {
+        STATE.keepAliveNode.osc.stop();
+      } catch (_) {
+      }
+      try {
+        STATE.keepAliveNode.gain.disconnect();
+      } catch (_) {
+      }
+      STATE.keepAliveNode = null;
+    }
+  }
+  async function attemptClose() {
+    async function tryStrategy(description, actionFn) {
+      actionFn();
+      const gone = await waitForContentGone(CONFIG.selectors.content, 300);
+      if (gone) {
+        log.log("[Close] " + description + " — panel closed.");
+        return true;
+      }
+      return false;
+    }
+    const closeIcons = ["close", "cancel", "arrow_back", "chevron_left"];
+    const buttons = document.querySelectorAll("button");
+    for (let i = 0; i < buttons.length; i++) {
+      const txt = buttons[i].textContent || "";
+      for (let j = 0; j < closeIcons.length; j++) {
+        if (txt.indexOf(closeIcons[j]) !== -1) {
+          const btn = buttons[i];
+          if (await tryStrategy('Strategy 1: icon "' + closeIcons[j] + '"', function() {
+            btn.click();
+          })) return true;
+        }
+      }
+    }
+    const localizedBtn = document.querySelector(CONFIG.selectors.closeBtn);
+    if (localizedBtn) {
+      if (await tryStrategy("Strategy 2: tooltip-based button", function() {
+        localizedBtn.click();
+      })) return true;
+    }
+    const panelHeaderBtns = document.querySelectorAll('[class*="panel"] button, [class*="dialog"] button, [class*="drawer"] button, [class*="sidebar"] button');
+    for (let k = 0; k < panelHeaderBtns.length; k++) {
+      const btn = panelHeaderBtns[k];
+      const aria = btn.getAttribute("aria-label") || "";
+      if (aria.toLowerCase().indexOf("close") !== -1 || aria.toLowerCase().indexOf("schließen") !== -1) {
+        if (await tryStrategy("Strategy 3: panel header button", function() {
+          btn.click();
+        })) return true;
+      }
+    }
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    log.log("[Close] Strategy 4: Escape key dispatched.");
+    return true;
+  }
+  function downloadZip(blob, name) {
+    try {
+      GM_download({ url: blob, name, saveAs: true });
+    } catch (fallbackErr) {
+      log.warn("Direct Blob download failed, using createObjectURL: " + fallbackErr.message);
+      try {
+        const url = URL.createObjectURL(blob);
+        GM_download({ url, name, saveAs: true });
+        setTimeout(function() {
+          URL.revokeObjectURL(url);
+        }, 5e3);
+      } catch (e) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+          a.remove();
+          URL.revokeObjectURL(url);
+        }, 2e3);
+      }
+    }
+  }
+  function cleanupRun() {
+    stopKeepAlive();
+    STATE.soundFXCloseTimer = setTimeout(function() {
+      SoundFX.close();
+      STATE.soundFXCloseTimer = null;
+    }, 2e3);
+    if (STATE.menuStopId != null) {
+      try {
+        GM_unregisterMenuCommand(STATE.menuStopId);
+      } catch (_) {
+      }
+      STATE.menuStopId = null;
+    }
+  }
+  async function exportChat(options) {
+    const onStatus = options.onStatus || function() {
     };
-    uiCallbacks.removeStatusBar = function() {
-      if (currentState === "running") {
-        showSuccess(_lastTotal);
+    const onComplete = options.onComplete || function() {
+    };
+    const onError = options.onError || function() {
+    };
+    try {
+      onStatus("Extracting chat messages...");
+      const markdown = extractChatToMarkdown(htmlToMarkdown);
+      const messagesData = extractChatMessages();
+      if (!markdown && !messagesData) {
+        onError("No chat messages found.");
+        return;
+      }
+      let html = "";
+      let text = "";
+      if (messagesData) {
+        html = buildChatHTMLDocument(messagesData, {});
+        text = extractChatToText();
+      }
+      const files = [];
+      if (markdown) files.push({ name: "chat.md", data: enc.encode(markdown) });
+      if (html) files.push({ name: "chat.html", data: enc.encode(html) });
+      if (text) files.push({ name: "chat.txt", data: enc.encode(text) });
+      if (files.length === 0) {
+        onError("No chat messages found.");
+        return;
+      }
+      onStatus("Building ZIP archive...");
+      const title = messagesData ? messagesData.notebookTitle : "NotebookLM Chat";
+      const zipName = title.replace(/[\\/:*?"<>|]/g, "_").substring(0, 100).trim() + " - chat.zip";
+      const zipBlob = buildStoreZip(files);
+      downloadZip(zipBlob, zipName);
+      log.log("Chat ZIP downloaded: " + zipName);
+      onComplete("Chat export complete!");
+    } catch (err) {
+      log.error("Chat export failed: " + err.message);
+      onError("Chat export failed: " + err.message);
+    }
+  }
+  async function exportSources(options) {
+    const onProgress = options.onProgress || function() {
+    };
+    const onComplete = options.onComplete || function() {
+    };
+    const onError = options.onError || function() {
+    };
+    const onCancelled = options.onCancelled || function() {
+    };
+    if (STATE.soundFXCloseTimer) {
+      clearTimeout(STATE.soundFXCloseTimer);
+      STATE.soundFXCloseTimer = null;
+      SoundFX.close();
+    }
+    STATE.isCancelled = false;
+    onProgress(0, 1, "");
+    STATE.menuStopId = GM_registerMenuCommand("Stop Export", function() {
+      STATE.isCancelled = true;
+      log.warn("Stop requested via menu.");
+    });
+    if (navigator.connection && navigator.connection.saveData) {
+      log.warn("Save-Data mode active — keep-alive audio disabled.");
+    } else {
+      startKeepAlive();
+    }
+    await SoundFX.ensureReady();
+    SoundFX.playStart();
+    const totalSources = document.querySelectorAll(CONFIG.selectors.sourceContainer).length;
+    if (totalSources === 0) {
+      log.error("No sources found.");
+      SoundFX.playError();
+      cleanupRun();
+      onError("No sources found.");
+      return;
+    }
+    log.log("Scan complete. Found " + totalSources + " items.");
+    log.warn("Keep this tab active — background tabs may throttle timers.");
+    const collectedFiles = [];
+    const usedNames = new Set();
+    let crashed = false;
+    function processContent(text, fileName, linesCount, conversionTimeMs) {
+      if (conversionTimeMs > 5e3) {
+        log.warn("Slow conversion (" + Math.round(conversionTimeMs) + "ms for " + linesCount + " elements)");
+      }
+      if (text.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
+        const data = enc.encode(text);
+        collectedFiles.push({ name: fileName, data });
+        log.log("Queued: " + fileName + " (" + text.length + " chars)");
+      } else {
+        log.warn("Content empty for: " + fileName);
+      }
+    }
+    try {
+      for (let i = 0; i < totalSources; i++) {
+        if (STATE.isCancelled) break;
+        onProgress(i + 1, totalSources, "");
+        const source = document.querySelectorAll(CONFIG.selectors.sourceContainer)[i];
+        if (!source) {
+          log.error("Source " + (i + 1) + " not found in DOM. Skipping.");
+          continue;
+        }
+        const titleEl = source.querySelector(CONFIG.selectors.sourceTitle);
+        let fileName = (titleEl && titleEl.textContent ? titleEl.textContent.trim() : "Source_" + (i + 1)).replace(/[\\/:*?"<>|]/g, "_").substring(0, 120).trim();
+        if (!fileName.endsWith(".md")) fileName += ".md";
+        if (usedNames.has(fileName)) {
+          const baseName = fileName.replace(/\.md$/, "");
+          let counter = 2;
+          while (usedNames.has(baseName + "_" + counter + ".md")) counter++;
+          fileName = baseName + "_" + counter + ".md";
+        }
+        usedNames.add(fileName);
+        try {
+          log.log("Opening: " + fileName);
+          onProgress(i + 1, totalSources, fileName);
+          source.scrollIntoView({ block: "center" });
+          await wait(100);
+          const stretchBtn = source.querySelector(".source-stretched-button");
+          if (stretchBtn) stretchBtn.click();
+          else (titleEl || source).click();
+          const contentEl = await waitForContent(CONFIG.selectors.content, 15e3);
+          if (STATE.isCancelled) {
+            await attemptClose();
+            continue;
+          }
+          if (contentEl) {
+            const container = contentEl.closest(".elements-container");
+            const allInContainer = container ? container.querySelectorAll("labs-tailwind-structural-element-view-v2") : document.querySelectorAll(CONFIG.selectors.content);
+            const lines = Array.from(allInContainer).filter(
+              function(el) {
+                return !el.parentElement.closest(CONFIG.selectors.content);
+              }
+            );
+            const t0 = performance.now();
+            const textLines = lines.map(function(l) {
+              return htmlToMarkdown(l);
+            });
+            const t1 = performance.now();
+            const text = textLines.join("\n\n");
+            processContent(text, fileName, lines.length, t1 - t0);
+          } else {
+            const panel = document.querySelector(".elements-container");
+            const iframe = panel && panel.querySelector("iframe");
+            if (iframe) {
+              try {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                if (iframeDoc) {
+                  const iframeLines = iframeDoc.querySelectorAll("labs-tailwind-structural-element-view-v2");
+                  if (iframeLines.length > 0) {
+                    log.log("Content found in iframe — extracting...");
+                    const lines = Array.from(iframeLines).filter(
+                      function(el) {
+                        return !el.parentElement.closest("labs-tailwind-structural-element-view-v2");
+                      }
+                    );
+                    const t0 = performance.now();
+                    const textLines = lines.map(function(l) {
+                      return htmlToMarkdown(l);
+                    });
+                    const t1 = performance.now();
+                    const text = textLines.join("\n\n");
+                    processContent(text, fileName, lines.length, t1 - t0);
+                  } else {
+                    log.error("No content elements found in iframe for: " + fileName);
+                  }
+                } else {
+                  log.error("Cannot access iframe document for: " + fileName);
+                }
+              } catch (_) {
+                log.error("Cross-origin iframe — cannot extract content for: " + fileName);
+              }
+            } else {
+              let fallbackText = "";
+              if (panel) {
+                const directChildren = panel.children;
+                for (let b = 0; b < directChildren.length; b++) {
+                  const txt = directChildren[b].textContent.trim();
+                  if (txt.length > TIMING.MIN_CONTENT_LENGTH_CHARS) {
+                    fallbackText += txt + "\n\n";
+                  }
+                }
+              }
+              processContent(fallbackText, fileName, 0, 0);
+            }
+          }
+          await attemptClose();
+          resetLiCache();
+        } catch (sourceErr) {
+          log.error("Error processing source " + (i + 1) + ": " + sourceErr.message);
+        }
+      }
+    } catch (e) {
+      log.error("Unexpected error: " + e.message);
+      crashed = true;
+    } finally {
+      cleanupRun();
+    }
+    if (crashed) {
+      onError("An unexpected error occurred.");
+      return;
+    }
+    if (STATE.isCancelled) {
+      log.warn("Extraction stopped by user.");
+      onCancelled("Export stopped.");
+      return;
+    }
+    onProgress(totalSources, totalSources, "");
+    if (collectedFiles.length > 0) {
+      log.log("Building ZIP with " + collectedFiles.length + " file(s)...");
+      const notebookTitleEl = document.querySelector(CONFIG.selectors.notebookTitle);
+      const notebookTitle = notebookTitleEl ? notebookTitleEl.textContent.trim() : "NotebookLM";
+      const zipName = notebookTitle.replace(/[\\/:*?"<>|]/g, "_").substring(0, 100).trim() + ".zip";
+      let zipBlob;
+      try {
+        zipBlob = buildStoreZip(collectedFiles);
+      } catch (zipErr) {
+        log.error("ZIP build failed: " + zipErr.message);
+        onError("ZIP build failed.");
+        return;
+      }
+      downloadZip(zipBlob, zipName);
+      log.log("ZIP downloaded: " + zipName);
+      log.log("Process completed successfully.");
+      SoundFX.playComplete();
+      try {
+        GM_notification({
+          title: "NotebookLM Source Export",
+          text: "Exported " + collectedFiles.length + " source" + (collectedFiles.length !== 1 ? "s" : "") + " successfully.",
+          timeout: 5e3
+        });
+      } catch (_) {
+      }
+      onComplete("Exported " + collectedFiles.length + " source" + (collectedFiles.length !== 1 ? "s" : "") + ".");
+    } else {
+      log.warn("No files to export.");
+      onError("No files to export.");
+    }
+  }
+  const STYLES = `
+  :host {
+    all: initial;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 2147483647;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #e2e8f0;
+    pointer-events: none;
+  }
+  .container {
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-radius: 12px;
+    padding: 14px 18px;
+    min-width: 300px;
+    max-width: 420px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .container.destroy {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  .spinner.success {
+    border-color: #22c55e;
+    animation: none;
+  }
+  .spinner.error {
+    border-color: #ef4444;
+    animation: none;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .status-text {
+    flex: 1;
+    font-weight: 500;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .status-text.success {
+    color: #22c55e;
+  }
+  .status-text.error {
+    color: #ef4444;
+  }
+  .details {
+    padding-left: 24px;
+  }
+  .count-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .progress-track {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #6366f1, #c084fc, #f472b6);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .count-label {
+    color: #cbd5e1;
+    min-width: 50px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .filename {
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 24px;
+    margin-top: 2px;
+  }
+  .stop-btn {
+    background: transparent;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    color: #f87171;
+    border-radius: 6px;
+    padding: 3px 12px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+    transition: background 0.15s ease;
+    flex-shrink: 0;
+  }
+  .stop-btn:hover {
+    background: rgba(248, 113, 113, 0.1);
+  }
+  .status-line {
+    padding-left: 24px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+`;
+  function createProgress(mode, onStop) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = host.attachShadow({ mode: "closed" });
+    GM_addElement(root, "style", { textContent: STYLES });
+    const container = document.createElement("div");
+    container.className = "container";
+    root.appendChild(container);
+    const header = document.createElement("div");
+    header.className = "header";
+    container.appendChild(header);
+    const spinner = document.createElement("div");
+    spinner.className = "spinner";
+    header.appendChild(spinner);
+    const statusText = document.createElement("div");
+    statusText.className = "status-text";
+    statusText.textContent = mode === "sources" ? "Exporting sources..." : "Exporting chat...";
+    header.appendChild(statusText);
+    let stopBtn = null;
+    if (mode === "sources" && typeof onStop === "function") {
+      stopBtn = document.createElement("button");
+      stopBtn.className = "stop-btn";
+      stopBtn.textContent = "Stop";
+      stopBtn.addEventListener("click", function() {
+        if (stopBtn.disabled) return;
+        stopBtn.disabled = true;
+        stopBtn.textContent = "Stopping...";
+        statusText.textContent = "Stopping...";
+        onStop();
+      });
+      header.appendChild(stopBtn);
+    }
+    let details = null;
+    let countLabel = null;
+    let progressFill = null;
+    let filenameEl = null;
+    let statusLine = null;
+    if (mode === "sources") {
+      details = document.createElement("div");
+      details.className = "details";
+      container.appendChild(details);
+      const countLine = document.createElement("div");
+      countLine.className = "count-line";
+      details.appendChild(countLine);
+      const track = document.createElement("div");
+      track.className = "progress-track";
+      countLine.appendChild(track);
+      progressFill = document.createElement("div");
+      progressFill.className = "progress-fill";
+      track.appendChild(progressFill);
+      countLabel = document.createElement("span");
+      countLabel.className = "count-label";
+      countLabel.textContent = "0 / 0";
+      countLine.appendChild(countLabel);
+      filenameEl = document.createElement("div");
+      filenameEl.className = "filename";
+      details.appendChild(filenameEl);
+    } else {
+      statusLine = document.createElement("div");
+      statusLine.className = "status-line";
+      statusLine.textContent = "Starting...";
+      container.appendChild(statusLine);
+    }
+    let finished = false;
+    let destroyTimer = null;
+    function startDestroy(delayMs) {
+      if (destroyTimer) clearTimeout(destroyTimer);
+      destroyTimer = setTimeout(function() {
+        container.classList.add("destroy");
+        setTimeout(function() {
+          host.remove();
+        }, 300);
+      }, delayMs);
+    }
+    function clearDestroy() {
+      if (destroyTimer) {
+        clearTimeout(destroyTimer);
+        destroyTimer = null;
+      }
+    }
+    return {
+      update: function(current, total, filename) {
+        if (finished) return;
+        clearDestroy();
+        spinner.className = "spinner";
+        statusText.className = "status-text";
+        statusText.textContent = "Exporting sources...";
+        if (countLabel) countLabel.textContent = String(current) + " / " + String(total);
+        if (progressFill) progressFill.style.width = (total > 0 ? current / total * 100 : 0) + "%";
+        if (filenameEl) filenameEl.textContent = filename || "";
+      },
+      setStatus: function(text) {
+        if (finished) return;
+        clearDestroy();
+        spinner.className = "spinner";
+        statusText.className = "status-text";
+        statusText.textContent = text;
+        if (statusLine) statusLine.textContent = text;
+      },
+      complete: function(message) {
+        if (finished) return;
+        finished = true;
+        clearDestroy();
+        spinner.className = "spinner success";
+        statusText.className = "status-text success";
+        statusText.textContent = message || "Export complete!";
+        if (stopBtn) stopBtn.style.display = "none";
+        startDestroy(7e3);
+      },
+      error: function(message) {
+        if (finished) return;
+        finished = true;
+        clearDestroy();
+        spinner.className = "spinner error";
+        statusText.className = "status-text error";
+        statusText.textContent = message || "Export failed!";
+        if (stopBtn) stopBtn.style.display = "none";
+        startDestroy(7e3);
+      },
+      cancel: function(message) {
+        if (finished) return;
+        finished = true;
+        clearDestroy();
+        spinner.className = "spinner error";
+        statusText.className = "status-text error";
+        statusText.textContent = message || "Export cancelled.";
+        if (stopBtn) {
+          stopBtn.textContent = "Stopped";
+          stopBtn.disabled = true;
+        }
+        startDestroy(7e3);
       }
     };
   }
   
-  registerMenuStart(() => {
-    initUI();
+  var _busy = false;
+  GM_registerMenuCommand("Export Chat", function() {
+    if (_busy) return;
+    _busy = true;
+    var progress = createProgress("chat", null);
+    exportChat({
+      onStatus: function(t) {
+        progress.setStatus(t);
+      },
+      onComplete: function(m) {
+        progress.complete(m);
+        _busy = false;
+      },
+      onError: function(m) {
+        progress.error(m);
+        _busy = false;
+      }
+    });
+  });
+  GM_registerMenuCommand("Export Sources", function() {
+    if (_busy) return;
+    _busy = true;
+    var progress = createProgress("sources", function() {
+      STATE.isCancelled = true;
+    });
+    exportSources({
+      onProgress: function(c, t, f) {
+        progress.update(c, t, f);
+      },
+      onComplete: function(m) {
+        progress.complete(m);
+        _busy = false;
+      },
+      onError: function(m) {
+        progress.error(m);
+        _busy = false;
+      },
+      onCancelled: function(m) {
+        progress.cancel(m);
+        _busy = false;
+      }
+    });
   });
 
 })();

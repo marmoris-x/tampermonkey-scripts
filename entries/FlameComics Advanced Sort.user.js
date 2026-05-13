@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.0
+// @version      1.7.1
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
 // @author       marmoris-x
 // @match        https://flamecomics.xyz/*
@@ -18,8 +18,30 @@
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
-import { observeMutations } from '../src/shared/dom-utils.js';
+export function createLogger(prefix, debugMode = false) {
+  const tag = '[' + prefix + ']';
+  return {
+    log:   function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.log.apply(console, args); },
+    warn:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.warn.apply(console, args); },
+    error: function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.error.apply(console, args); },
+    info:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.info.apply(console, args); },
+    debug: function () { if (debugMode) { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.debug.apply(console, args); } }
+  };
+}
+
+export function observeMutations(callback, root) {
+  root = root || document.body;
+  const observer = new MutationObserver(function (mutations) {
+    for (let m = 0; m < mutations.length; m++) {
+      const nodes = mutations[m].addedNodes;
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
+      }
+    }
+  });
+  observer.observe(root, { childList: true, subtree: true });
+  return observer;
+}
 
 const log = createLogger('FlameComics Advanced Sort');
     log.log('Script loaded');

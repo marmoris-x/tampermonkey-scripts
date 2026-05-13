@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.11.0
+// @version      2.11.1
 // @description  Recaptcha Solver in Browser | Start button in challenge footer
 // @author       marmoris-x
 // @match        https://www.google.com/recaptcha/*
@@ -23,8 +23,8 @@
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
-import { waitForElement, observeMutations } from '../src/shared/dom-utils.js';
+import { createLogger } from '../src/recaptcha-solver/_logger.js';
+import { waitForElement, observeMutations } from '../src/recaptcha-solver/_dom.js';
 import { injectStyles, injectButton } from '../src/recaptcha-solver/ui-button.js';
 
 // ── Context Guard ──────────────────────────────────────────────────────────

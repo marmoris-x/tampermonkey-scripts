@@ -1,155 +1,131 @@
 // ==UserScript==
 // @name         Crunchyroll Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.0
+// @version      5.2.1
 // @author       marmoris-x
 // @description  Sidebar (page-push) with multi-filter & sort for Crunchyroll browse — auto-scan, retry, export/clipboard, data-only filter
 // @license      MIT
+// @icon         https://www.google.com/s2/favicons?sz=32&domain=crunchyroll.com
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=crunchyroll.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Crunchyroll%20Enhanced.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Crunchyroll%20Enhanced.user.js
 // @match        https://*.crunchyroll.com/*
-// @sandbox      JavaScript
+// @sandbox      raw
 // @grant        GM.getValue
+// @grant        GM.registerMenuCommand
 // @grant        GM.setValue
-// @grant        GM.setValues
 // @grant        GM_addStyle
-// @inject-into  content
+// @grant        window.onurlchange
 // @run-at       document-idle
 // @noframes
-// @unwrap
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.createLogger = createLogger;
-  function createLogger(prefix, debugMode) {
-    debugMode = debugMode || false;
-    var tag = "[" + prefix + "]";
+  function createLogger(prefix, debugMode = false) {
+    const tag = `[${prefix}]`;
+    const forward = (method, args) => console[method](tag, ...args);
     return {
-      log: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.log.apply(console, args);
-      },
-      warn: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.warn.apply(console, args);
-      },
-      error: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.error.apply(console, args);
-      },
-      info: function() {
-        var args = [tag];
-        for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.info.apply(console, args);
-      },
-      debug: function() {
-        if (debugMode) {
-          var args = [tag];
-          for (var i = 0; i < arguments.length; i++) args.push(arguments[i]);
-          console.debug.apply(console, args);
-        }
+log: (...args) => forward("log", args),
+warn: (...args) => forward("warn", args),
+error: (...args) => forward("error", args),
+info: (...args) => forward("info", args),
+debug: (...args) => {
+        if (debugMode) forward("debug", args);
       }
     };
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.dom = {
-    waitForElement,
-    debounce,
-    throttle,
-    observeMutations
-  };
-  function waitForElement(selector, timeout, root) {
-    timeout = timeout || 1e4;
-    root = root || document.body;
-    return new Promise(function(resolve, reject) {
-      var existing = root.querySelector(selector);
+  function waitForElement(selector, timeout = 1e4, root = document.body) {
+    return new Promise((resolve, reject) => {
+      const existing = root.querySelector(selector);
       if (existing) return resolve(existing);
-      var timer;
-      var observer = new MutationObserver(function(mutations) {
-        for (var m = 0; m < mutations.length; m++) {
-          var nodes = mutations[m].addedNodes;
-          for (var i = 0; i < nodes.length; i++) {
-            if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
-            if (nodes[i].matches && nodes[i].matches(selector)) {
+      let timer = null;
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            if (node.matches && node.matches(selector)) {
               cleanup();
-              return resolve(nodes[i]);
+              return resolve(node);
             }
-            var child = nodes[i].querySelector && nodes[i].querySelector(selector);
-            if (child) {
+            if (node.querySelector && node.querySelector(selector)) {
               cleanup();
-              return resolve(child);
+              return resolve(node.querySelector(selector));
             }
           }
         }
       });
-      function cleanup() {
+      const cleanup = () => {
         observer.disconnect();
-        if (timer) clearTimeout(timer);
-      }
+        if (timer !== null) clearTimeout(timer);
+      };
       observer.observe(root, { childList: true, subtree: true });
       if (timeout > 0) {
-        timer = setTimeout(function() {
+        timer = setTimeout(() => {
           cleanup();
-          reject(new Error("waitForElement timeout: " + selector));
+          reject(new Error(`waitForElement timeout: ${selector}`));
         }, timeout);
       }
     });
   }
-  function debounce(fn, ms) {
-    ms = ms || 200;
-    var timer = 0;
-    return function() {
-      var ctx = this, args = arguments;
+  function debounce(fn, ms = 200) {
+    let timer = null;
+    return function(...args) {
       clearTimeout(timer);
-      timer = setTimeout(function() {
-        fn.apply(ctx, args);
-      }, ms);
+      timer = setTimeout(() => fn.apply(this, args), ms);
     };
   }
-  function throttle(fn, ms) {
-    ms = ms || 200;
-    var last = 0;
-    return function() {
-      var now = Date.now();
-      if (now - last >= ms) {
-        last = now;
-        fn.apply(this, arguments);
+  function createState() {
+    return {
+cards: new Map(),
+origOrder: [],
+isScanning: false,
+isOpen: false,
+showBadges: true,
+sidebar: null,
+_observer: null,
+_observerPaused: false,
+_observerTimer: null
+    };
+  }
+  function createEmitter() {
+    const listeners = new Map();
+    return {
+on(event, fn) {
+        if (!listeners.has(event)) listeners.set(event, new Set());
+        listeners.get(event).add(fn);
+      },
+off(event, fn) {
+        const set = listeners.get(event);
+        if (set) set.delete(fn);
+      },
+emit(event, ...args) {
+        const set = listeners.get(event);
+        if (set) set.forEach((fn) => fn(...args));
+      },
+clear() {
+        listeners.clear();
       }
     };
   }
-  function observeMutations(callback, root) {
-    root = root || document.body;
-    var observer = new MutationObserver(function(mutations) {
-      for (var m = 0; m < mutations.length; m++) {
-        var nodes = mutations[m].addedNodes;
-        for (var i = 0; i < nodes.length; i++) {
-          if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
-        }
-      }
-    });
-    observer.observe(root, { childList: true, subtree: true });
-    return observer;
+  function queryById(root) {
+    return (id) => root.querySelector("#" + CSS.escape(id));
   }
   async function scanCards(ctx) {
     if (ctx.isScanning) return;
     ctx.isScanning = true;
-    var btn = ctx._$("cr-btn-scan");
+    const btn = ctx._$("cr-btn-scan");
     btn.disabled = true;
-    btn.innerHTML = '<span class="cr-spin"></span> Scannen…';
+    btn.textContent = "";
+    btn.append(createSpinner(), document.createTextNode(" Scanning…"));
     ctx._status("Scanning cards…");
     ctx._$("cr-prog").style.display = "block";
     ctx.cards.clear();
-    ctx.origOrder = [];
-    var all = Array.from(document.querySelectorAll(".browse-card"));
-    var forceStyle = document.createElement("style");
+    ctx.origOrder.length = 0;
+    const all = document.querySelectorAll(".browse-card");
+    const forceStyle = document.createElement("style");
     forceStyle.id = "cr-force-hover";
     forceStyle.textContent = [
       '[class*="browse-card-hover"] {',
@@ -159,24 +135,28 @@
       "}"
     ].join("");
     document.head.appendChild(forceStyle);
-    all.forEach(function(c) {
-      c.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    });
+    for (const card of all) {
+      card.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+    }
     await ctx._sleep(600);
-    for (var i = 0; i < all.length; i++) {
-      var card = all[i];
-      var info = extractInfo(card, i);
-      ctx.cards.set(card, info);
-      ctx.origOrder.push(card);
-      if (ctx.showBadges) addBadges(card, info);
+    for (let i = 0; i < all.length; i++) {
+      try {
+        const card = all[i];
+        const info = extractInfo(card, i);
+        ctx.cards.set(card, info);
+        ctx.origOrder.push(card);
+        if (ctx.showBadges) addBadges(card, info);
+      } catch (err) {
+        ctx.log.warn("Scan error on card", i, err);
+      }
       ctx._$("cr-prog-fill").style.width = Math.round((i + 1) / all.length * 100) + "%";
       ctx._status("Scanned: " + (i + 1) + " / " + all.length);
       if ((i + 1) % 30 === 0) await ctx._sleep(0);
     }
-    var fh = document.getElementById("cr-force-hover");
+    const fh = document.getElementById("cr-force-hover");
     if (fh) fh.remove();
     ctx._$("cr-prog").style.display = "none";
-    var noData = Array.from(ctx.cards.entries()).filter(function(e) {
+    const noData = [...ctx.cards.entries()].filter(function(e) {
       return !e[1].hasData;
     }).map(function(e) {
       return e[0];
@@ -184,57 +164,58 @@
     if (noData.length > 0) {
       retryNoData(ctx, noData);
     }
-    var wd = withData(ctx.cards);
-    ctx._status("✅ " + all.length + " scanned, " + wd + " with real data");
+    const wd = withData(ctx.cards);
+    ctx._status("✅ " + all.length + " scanned, " + wd + " with data");
     ctx._updateStats(all.length, all.length, wd);
     ctx.isScanning = false;
     btn.disabled = false;
-    btn.innerHTML = "<span>🔄</span> Scannen";
+    btn.textContent = "";
+    btn.innerHTML = "<span>🔄</span> Scan";
     ctx._apply();
     startObserver(ctx);
   }
   function extractInfo(card, index) {
-    var titleEl = card.querySelector('h3[data-t="title"] a') || card.querySelector('[class*="browse-card__title"] a');
-    var title = titleEl ? titleEl.textContent.trim() : "";
-    var link = titleEl ? titleEl.href : "";
-    var seriesId = link.match(/series\/([A-Z0-9]+)/) ? link.match(/series\/([A-Z0-9]+)/)[1] : "";
-    var descEl = card.querySelector('p[data-t="description"]');
-    var description = descEl ? descEl.textContent.trim() : "";
-    var ratingEl = card.querySelector('p[class*="star-rating-short-static__rating"]') || card.querySelector('[data-t="star-rating-short-static"] [class*="rating"]');
-    var rating = ratingEl ? parseFloat(ratingEl.textContent.trim()) || null : null;
-    var votesEl = card.querySelector('p[data-t="rating-count"]') || card.querySelector('[class*="votes-count"]') || card.querySelector('[class*="star-rating-short-static__votes"]');
-    var votes = null;
+    const titleEl = card.querySelector('h3[data-t="title"] a') || card.querySelector('[class*="browse-card__title"] a') || card.querySelector('[data-testid="card-title"] a') || card.querySelector('a[class*="title"]') || card.querySelector('a[href*="/series/"]');
+    const title = titleEl ? titleEl.textContent.trim() : "";
+    const link = titleEl ? titleEl.href : "";
+    const seriesId = link.match(/series\/([A-Z0-9]+)/) ? link.match(/series\/([A-Z0-9]+)/)[1] : "";
+    const descEl = card.querySelector('p[data-t="description"]') || card.querySelector('[class*="browse-card__description"]') || card.querySelector('[data-testid="card-description"]') || card.querySelector('[class*="description"]');
+    const description = descEl ? descEl.textContent.trim() : "";
+    const ratingEl = card.querySelector('p[class*="star-rating-short-static__rating"]') || card.querySelector('[data-t="star-rating-short-static"] [class*="rating"]') || card.querySelector('[class*="rating"][data-t]') || card.querySelector('[class*="star-rating"] [class*="rating"]') || card.querySelector('[class*="rating"]');
+    const rating = ratingEl ? parseFloat(ratingEl.textContent.trim()) || null : null;
+    const votesEl = card.querySelector('p[data-t="rating-count"]') || card.querySelector('[class*="votes-count"]') || card.querySelector('[class*="star-rating-short-static__votes"]') || card.querySelector('[class*="rating-count"]');
+    let votes = null;
     if (votesEl) {
-      var m = votesEl.textContent.match(/([\d,.]+)\s*([kKmM]?)/);
+      const m = votesEl.textContent.match(/([\d,.]+)\s*([kKmM]?)/);
       if (m) {
-        var n = parseFloat(m[1].replace(",", "."));
-        var s = m[2].toLowerCase();
+        let n = parseFloat(m[1].replace(",", "."));
+        const s = m[2].toLowerCase();
         if (s === "k") n *= 1e3;
         else if (s === "m") n *= 1e6;
         votes = Math.round(n);
       }
     }
-    var metaEl = card.querySelector('[class*="browse-card-hover__series-meta"]');
-    var seasons = null, episodes = null;
+    const metaEl = card.querySelector('[class*="browse-card-hover__series-meta"]') || card.querySelector('[class*="series-meta"]');
+    let seasons = null, episodes = null;
     if (metaEl) {
-      metaEl.querySelectorAll("span").forEach(function(span) {
-        var t = span.textContent.trim();
-        var ep = t.match(/(\d+)\s*(?:Episode[ns]?|Folge[n]?)/i);
-        var se = t.match(/(\d+)\s*(?:Staffel[n]?|Season[s]?)/i);
+      for (const span of metaEl.querySelectorAll("span")) {
+        const t = span.textContent.trim();
+        const ep = t.match(/(\d+)\s*(?:Episode[ns]?|Folge[n]?)/i);
+        const se = t.match(/(\d+)\s*(?:Staffel[n]?|Season[s]?)/i);
         if (ep) episodes = parseInt(ep[1], 10);
         if (se) seasons = parseInt(se[1], 10);
-      });
+      }
     }
-    var hasSub = false, hasDub = false;
-    card.querySelectorAll('[class*="meta-tags"] span, [class*="meta-tag"] span').forEach(function(el) {
-      var t = el.textContent.toLowerCase();
-      if (t.indexOf("untertitel") !== -1 || t.indexOf("sub") !== -1) hasSub = true;
-      if (t.indexOf("synchro") !== -1 || t.indexOf("dub") !== -1) hasDub = true;
-    });
-    var onWatchlist = !!card.querySelector(
+    let hasSub = false, hasDub = false;
+    for (const el of card.querySelectorAll('[class*="meta-tags"] span, [class*="meta-tag"] span')) {
+      const t = el.textContent.toLowerCase();
+      if (t.includes("untertitel") || t.includes("sub")) hasSub = true;
+      if (t.includes("synchro") || t.includes("dub")) hasDub = true;
+    }
+    const onWatchlist = !!card.querySelector(
       '[class*="card-watchlist-label"], [class*="watchlist-label"]'
     );
-    var hasData = rating !== null || votes !== null || episodes !== null || seasons !== null;
+    const hasData = rating !== null || votes !== null || episodes !== null || seasons !== null;
     return {
       title,
       description,
@@ -252,7 +233,7 @@
     };
   }
   function triggerHover(cards) {
-    var style = document.createElement("style");
+    const style = document.createElement("style");
     style.id = "cr-force-hover";
     style.textContent = [
       '[class*="browse-card-hover"] {',
@@ -262,35 +243,42 @@
       "}"
     ].join("");
     document.head.appendChild(style);
-    cards.forEach(function(c) {
+    for (const c of cards) {
       c.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    });
+    }
   }
   async function retryNoData(ctx, noDataCards) {
     ctx._status("Retry: " + noDataCards.length + " cards without data…");
     triggerHover(noDataCards);
     await ctx._sleep(1e3);
-    var improved = 0;
-    noDataCards.forEach(function(card) {
-      var old = ctx.cards.get(card);
-      var fresh = extractInfo(card, old.index);
-      if (fresh.hasData) {
-        ctx.cards.set(card, fresh);
-        if (ctx.showBadges) addBadges(card, fresh);
-        improved++;
+    let improved = 0;
+    for (const card of noDataCards) {
+      try {
+        const old = ctx.cards.get(card);
+        if (!old) continue;
+        const fresh = extractInfo(card, old.index);
+        if (fresh.hasData) {
+          ctx.cards.set(card, fresh);
+          if (ctx.showBadges) addBadges(card, fresh);
+          improved++;
+        }
+      } catch (err) {
+        ctx.log.warn("Retry error on card", err);
       }
-    });
-    var fh = document.getElementById("cr-force-hover");
+    }
+    const fh = document.getElementById("cr-force-hover");
     if (fh) fh.remove();
     ctx._status("Retry: +" + improved + " of " + noDataCards.length + " upgraded");
     ctx.log.log("Retry: " + improved + "/" + noDataCards.length + " cards now have data");
   }
   function addBadges(card, info) {
-    var existing = card.querySelector(".cr-overlay");
+    const existing = card.querySelector(".cr-overlay");
     if (existing) existing.remove();
-    var anchor = card.querySelector('[class*="browse-card__poster"], [class*="content-image"]') || card;
-    if (getComputedStyle(anchor).position === "static") anchor.style.position = "relative";
-    var ov = document.createElement("div");
+    const anchor = card.querySelector('[class*="browse-card__poster"], [class*="content-image"]') || card;
+    if (getComputedStyle(anchor).position === "static") {
+      anchor.style.position = "relative";
+    }
+    const ov = document.createElement("div");
     ov.className = "cr-overlay";
     if (info.rating !== null) ov.appendChild(mkBadge("cr-b-rating", "⭐ " + info.rating.toFixed(1)));
     if (info.votes !== null) ov.appendChild(mkBadge("cr-b-votes", "👥 " + fmtNum(info.votes)));
@@ -302,18 +290,23 @@
     anchor.appendChild(ov);
   }
   function mkBadge(cls, text) {
-    var b = document.createElement("div");
+    const b = document.createElement("div");
     b.className = "cr-badge " + cls;
     b.textContent = text;
     return b;
   }
+  function createSpinner() {
+    const span = document.createElement("span");
+    span.className = "cr-spin";
+    return span;
+  }
   function updateBadgeVisibility(show) {
-    document.querySelectorAll(".cr-overlay").forEach(function(el) {
+    for (const el of document.querySelectorAll(".cr-overlay")) {
       el.style.display = show ? "" : "none";
-    });
+    }
   }
   function startObserver(ctx) {
-    var target = ctx.origOrder[0] ? ctx.origOrder[0].parentElement : null;
+    const target = ctx.origOrder[0] ? ctx.origOrder[0].parentElement : null;
     if (!target) return;
     if (ctx._observer) {
       ctx._observer.disconnect();
@@ -323,26 +316,26 @@
     ctx._observerTimer = null;
     ctx._observer = new MutationObserver(function(mutations) {
       if (ctx._observerPaused || ctx.isScanning) return;
-      var newCards = [];
-      mutations.forEach(function(m) {
-        m.addedNodes.forEach(function(node) {
-          if (node.nodeType !== 1) return;
-          if (node.parentElement !== target) return;
+      const newCards = [];
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (node.parentElement !== target) continue;
           if (node.classList && node.classList.contains("browse-card") && !ctx.cards.has(node)) {
             newCards.push(node);
           }
           if (node.querySelectorAll) {
-            node.querySelectorAll(".browse-card").forEach(function(c) {
+            for (const c of node.querySelectorAll(".browse-card")) {
               if (!ctx.cards.has(c)) newCards.push(c);
-            });
+            }
           }
-        });
-      });
+        }
+      }
       if (newCards.length === 0) return;
       clearTimeout(ctx._observerTimer);
       ctx._observerTimer = setTimeout(function() {
-        var ready = newCards.filter(function(c) {
-          var t = c.querySelector('h3[data-t="title"] a, [class*="browse-card__title"] a');
+        const ready = newCards.filter(function(c) {
+          const t = c.querySelector('h3[data-t="title"] a, [class*="browse-card__title"] a');
           return t && t.textContent.trim() !== "";
         });
         if (ready.length > 0) ingestNewCards(ctx, ready);
@@ -351,33 +344,40 @@
     ctx._observer.observe(target, { childList: true, subtree: true });
   }
   async function ingestNewCards(ctx, cards) {
-    cards.forEach(function(c) {
+    for (const c of cards) {
       c.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-    });
+    }
     await ctx._sleep(700);
-    var added = 0;
-    cards.forEach(function(card) {
-      if (ctx.cards.has(card)) return;
-      var info = extractInfo(card, ctx.origOrder.length);
-      ctx.cards.set(card, info);
-      ctx.origOrder.push(card);
-      if (ctx.showBadges) addBadges(card, info);
-      card.classList.add("cr-new-card");
-      added++;
-    });
+    let added = 0;
+    for (const card of cards) {
+      try {
+        if (ctx.cards.has(card)) continue;
+        const info = extractInfo(card, ctx.origOrder.length);
+        ctx.cards.set(card, info);
+        ctx.origOrder.push(card);
+        if (ctx.showBadges) addBadges(card, info);
+        card.classList.add("cr-new-card");
+        added++;
+      } catch (err) {
+        ctx.log.warn("ingestNewCards error", err);
+      }
+    }
     if (added > 0) {
       ctx._status("+" + added + " new cards detected");
-      var visCount = Array.from(ctx.cards.keys()).filter(function(c) {
-        return !c.classList.contains("cr-hidden");
-      }).length;
+      let visCount = 0;
+      for (const c of ctx.cards.keys()) {
+        if (!c.classList.contains("cr-hidden")) visCount++;
+      }
       ctx._updateStats(visCount, ctx.cards.size, withData(ctx.cards));
       ctx._apply();
     }
   }
   function withData(cards) {
-    return Array.from(cards.values()).filter(function(i) {
-      return i.hasData;
-    }).length;
+    let count = 0;
+    for (const info of cards.values()) {
+      if (info.hasData) count++;
+    }
+    return count;
   }
   function fmtNum(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
@@ -385,25 +385,25 @@
     return String(n);
   }
   function getFilters($, sidebarRoot) {
-    function num(id) {
-      var v = parseFloat($(id) ? $(id).value : "");
+    const num = (id) => {
+      const v = parseFloat($(id) ? $(id).value : "");
       return isNaN(v) ? null : v;
-    }
-    function intVal(id) {
-      var v = parseInt($(id) ? $(id).value : "", 10);
+    };
+    const intVal = (id) => {
+      const v = parseInt($(id) ? $(id).value : "", 10);
       return isNaN(v) ? null : v;
-    }
-    function str(id) {
-      var el = $(id);
+    };
+    const str = (id) => {
+      const el = $(id);
       return el ? el.value.trim().toLowerCase() : "";
-    }
-    function chk(id) {
-      var el = $(id);
+    };
+    const chk = (id) => {
+      const el = $(id);
       return el ? el.checked : false;
-    }
-    var wlEl = sidebarRoot.querySelector('input[name="cr-wl"]:checked');
-    var wl = wlEl ? wlEl.value : "all";
-    return {
+    };
+    const wlEl = sidebarRoot.querySelector('input[name="cr-wl"]:checked');
+    const wl = wlEl ? wlEl.value : "all";
+    const result = {
       title: str("cr-f-title"),
       desc: str("cr-f-desc"),
       ratingMin: num("cr-f-r-min"),
@@ -417,15 +417,16 @@
       dubOnly: chk("cr-f-dub"),
       watchlist: wl,
       dataOnly: chk("cr-opt-data"),
-      sort: ["cr-s-1", "cr-s-2", "cr-s-3"].map(function(id) {
-        var el = $(id);
+      sort: ["cr-s-1", "cr-s-2", "cr-s-3"].map((id) => {
+        const el = $(id);
         return el ? el.value : "";
       }).filter(Boolean)
     };
+    return result;
   }
   function passesFilter(info, f) {
-    if (f.title && info.title.toLowerCase().indexOf(f.title) === -1) return false;
-    if (f.desc && info.description.toLowerCase().indexOf(f.desc) === -1) return false;
+    if (f.title && !info.title.toLowerCase().includes(f.title)) return false;
+    if (f.desc && !info.description.toLowerCase().includes(f.desc)) return false;
     if (f.ratingMin !== null && info.rating !== null && info.rating < f.ratingMin) return false;
     if (f.ratingMax !== null && info.rating !== null && info.rating > f.ratingMax) return false;
     if (f.votesMin !== null && info.votes !== null && info.votes < f.votesMin) return false;
@@ -441,15 +442,15 @@
     return true;
   }
   function compareCards(a, b, criterion) {
-    var parts = criterion.split("-");
-    var field = parts[0], dir = parts[1];
-    var mult = dir === "desc" ? -1 : 1;
-    function numCmp(va, vb) {
+    const parts = criterion.split("-");
+    const field = parts[0], dir = parts[1];
+    const mult = dir === "desc" ? -1 : 1;
+    const numCmp = (va, vb) => {
       if (va === null && vb === null) return 0;
       if (va === null) return 1;
       if (vb === null) return -1;
       return (va - vb) * mult;
-    }
+    };
     switch (field) {
       case "rating":
         return numCmp(a.rating, b.rating);
@@ -466,116 +467,129 @@
     }
   }
   function applyFilterAndSort(ctx) {
-    if (ctx.cards.size === 0) return;
-    ctx._observerPaused = true;
-    var f = getFilters(ctx._$, ctx.sidebar.root);
-    var container = ctx.origOrder[0] ? ctx.origOrder[0].parentElement : null;
-    if (!container) return;
-    var entries = Array.from(ctx.cards.entries());
-    var all = entries.map(function(e) {
-      return { card: e[0], info: e[1] };
-    });
-    var visible = all.filter(function(item) {
-      return passesFilter(item.info, f);
-    });
-    var hidden = all.filter(function(item) {
-      return !passesFilter(item.info, f);
-    });
-    if (f.sort.length > 0) {
-      visible.sort(function(a, b) {
-        for (var ci = 0; ci < f.sort.length; ci++) {
-          var r = compareCards(a.info, b.info, f.sort[ci]);
-          if (r !== 0) return r;
-        }
-        return a.info.index - b.info.index;
-      });
-    } else {
-      visible.sort(function(a, b) {
-        return a.info.index - b.info.index;
-      });
+    try {
+      if (ctx.cards.size === 0) return;
+      ctx._observerPaused = true;
+      const f = getFilters(ctx._$, ctx.sidebar.root);
+      const card0 = ctx.origOrder[0];
+      const container = card0 ? card0.parentElement : null;
+      if (!container) return;
+      const entries = [...ctx.cards.entries()];
+      const all = entries.map((e) => ({ card: e[0], info: e[1] }));
+      const visible = all.filter((item) => passesFilter(item.info, f));
+      const hidden = all.filter((item) => !passesFilter(item.info, f));
+      if (f.sort.length > 0) {
+        visible.sort((a, b) => {
+          for (let ci = 0; ci < f.sort.length; ci++) {
+            const r = compareCards(a.info, b.info, f.sort[ci]);
+            if (r !== 0) return r;
+          }
+          return a.info.index - b.info.index;
+        });
+      } else {
+        visible.sort((a, b) => a.info.index - b.info.index);
+      }
+      for (const item of visible) {
+        item.card.classList.remove("cr-hidden");
+        container.appendChild(item.card);
+      }
+      for (const item of hidden) {
+        item.card.classList.add("cr-hidden");
+        container.appendChild(item.card);
+      }
+      ctx._updateStats(visible.length, ctx.cards.size, withData(ctx.cards));
+      setTimeout(() => {
+        ctx._observerPaused = false;
+      }, 500);
+    } catch (err) {
+      console.error("[Crunchyroll Enhanced] applyFilterAndSort error:", err);
     }
-    visible.forEach(function(item) {
-      item.card.classList.remove("cr-hidden");
-      container.appendChild(item.card);
-    });
-    hidden.forEach(function(item) {
-      item.card.classList.add("cr-hidden");
-      container.appendChild(item.card);
-    });
-    ctx._updateStats(visible.length, ctx.cards.size, withData(ctx.cards));
-    setTimeout(function() {
-      ctx._observerPaused = false;
-    }, 500);
   }
-  function createShadowContainer(opts) {
-    opts = opts || {};
-    var host = document.createElement(opts.tag || "div");
+  function createShadowContainer(opts = {}) {
+    const host = document.createElement(opts.tag || "div");
     if (opts.id) host.id = opts.id;
     if (opts.className) host.className = opts.className;
-    var root = host.attachShadow({ mode: "closed" });
+    const root = host.attachShadow({ mode: "closed" });
     if (opts.styles) {
-      var style = document.createElement("style");
+      const style = document.createElement("style");
       style.textContent = opts.styles;
       root.appendChild(style);
     }
     document.body.appendChild(host);
+    const _reinsert = new MutationObserver(() => {
+      if (!host.isConnected && document.body) {
+        document.body.appendChild(host);
+      }
+    });
+    _reinsert.observe(document.body, { childList: true });
+    setTimeout(() => _reinsert.disconnect(), 6e4);
     return { host, root };
   }
-  function createSidebar(opts) {
-    opts = opts || {};
-    var width = opts.width || 340;
-    var accent = opts.accentColor || "#2196F3";
-    var title = opts.title || "";
-    var isOpen = false;
-    var baseCSS = [
-      ":host { position:fixed; top:0; right:0; width:" + width + "px; height:100vh; z-index:2147483645;",
-      "background:#1a1a2e; color:#e0e0e0; font:13px/1.5 system-ui,sans-serif;",
-      "transform:translateX(" + width + "px); transition:transform 0.3s ease;",
-      "display:flex; flex-direction:column; }",
-      ":host(.open) { transform:translateX(0); }",
-      ".header { display:flex; align-items:center; padding:10px 14px; background:#16213e;",
-      "border-bottom:1px solid #0f3460; cursor:move; user-select:none; flex-shrink:0; }",
-      ".header h2 { margin:0; font-size:14px; font-weight:600; color:" + accent + "; flex:1; }",
-      ".header button { background:none; border:none; color:#e0e0e0; cursor:pointer; font-size:18px;",
-      "padding:0 4px; line-height:1; }",
-      ".header button:hover { color:" + accent + "; }",
-      ".body { flex:1; overflow-y:auto; padding:12px 14px; }",
-      ".body::-webkit-scrollbar { width:6px; }",
-      ".body::-webkit-scrollbar-track { background:transparent; }",
-      ".body::-webkit-scrollbar-thumb { background:#0f3460; border-radius:3px; }",
+  function createSidebar(opts = {}) {
+    const width = opts.width ?? 340;
+    const accent = opts.accentColor ?? "#F47521";
+    const title = opts.title ?? "";
+    let isOpen = false;
+    const baseCSS = [
+      ":host {",
+      "all: initial;",
+      "position: fixed; top: 0; right: 0; width: " + width + "px; height: 100vh;",
+      "z-index: 2147483645;",
+      "font: 13px/1.5 system-ui, sans-serif;",
+      "transform: translateX(" + width + "px);",
+      "transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);",
+      "display: flex; flex-direction: column;",
+      "}",
+      ":host(.open) { transform: translateX(0); }",
+      ".header {",
+      "display: flex; align-items: center; padding: 10px 14px;",
+      "cursor: move; user-select: none; flex-shrink: 0;",
+      "}",
+      ".header h2 { margin: 0; font-size: 14px; font-weight: 600; color: " + accent + "; flex: 1; }",
+      ".header button {",
+      "background: none; border: none; color: #e0e0e0; cursor: pointer;",
+      "font-size: 18px; padding: 0 4px; line-height: 1;",
+      "}",
+      ".header button:hover { color: " + accent + "; }",
+      ".body { flex: 1; overflow-y: auto; }",
       opts.cssOverrides || ""
-    ].join("");
-    var container = createShadowContainer({ styles: baseCSS });
-    var root = container.root;
-    var header = document.createElement("div");
+    ].join("\n");
+    const container = createShadowContainer({ styles: baseCSS });
+    const root = container.root;
+    const header = document.createElement("div");
     header.className = "header";
-    var h2 = document.createElement("h2");
+    const h2 = document.createElement("h2");
     h2.textContent = title;
-    var closeBtn = document.createElement("button");
+    const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
     closeBtn.setAttribute("aria-label", "Close sidebar");
-    header.appendChild(h2);
-    header.appendChild(closeBtn);
+    header.append(h2, closeBtn);
     root.appendChild(header);
-    var body = document.createElement("div");
+    const body = document.createElement("div");
     body.className = "body";
     root.appendChild(body);
-    var tab = document.createElement("div");
-    var tabRoot = tab.attachShadow({ mode: "closed" });
-    var tabStyle = document.createElement("style");
+    const tab = document.createElement("div");
+    const tabRoot = tab.attachShadow({ mode: "closed" });
+    const tabStyle = document.createElement("style");
     tabStyle.textContent = [
-      ":host { position:fixed; top:50%; z-index:2147483644; background:" + accent + "; color:#fff;",
-      "padding:10px 6px; border-radius:6px 0 0 6px; cursor:pointer; font:12px system-ui,sans-serif;",
-      "writing-mode:vertical-rl; text-orientation:mixed; box-shadow:-2px 2px 8px rgba(0,0,0,0.3);",
-      "right:0; transform:translateY(-50%) translateX(100%);",
-      "transition:right 0.3s ease, transform 0.3s ease; }",
-      ":host(:hover) { filter:brightness(1.1); }",
-      ":host(.open) { right:" + (width + 8) + "px; transform:translateY(-50%) translateX(0); }"
-    ].join("");
-    var tabSpan = document.createElement("span");
+      ":host {",
+      "all: initial;",
+      "position: fixed; top: 50%; z-index: 2147483644;",
+      "background: " + accent + "; color: #fff;",
+      "padding: 10px 6px; border-radius: 6px 0 0 6px; cursor: pointer;",
+      "font: 12px system-ui, sans-serif;",
+      "writing-mode: vertical-rl; text-orientation: mixed;",
+      "box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.3);",
+      "right: 0; transform: translateY(-50%);",
+      "transition: right 0.32s cubic-bezier(0.4, 0, 0.2, 1);",
+      "pointer-events: auto;",
+      "}",
+      ":host(:hover) { filter: brightness(1.15); }",
+      ":host(.open) { right: " + (width + 8) + "px; }"
+    ].join("\n");
+    const tabSpan = document.createElement("span");
     tabSpan.textContent = title;
-    tabRoot.appendChild(tabStyle);
-    tabRoot.appendChild(tabSpan);
+    tabRoot.append(tabStyle, tabSpan);
     document.body.appendChild(tab);
     function open() {
       if (isOpen) return;
@@ -593,18 +607,19 @@
       document.documentElement.style.marginRight = "";
       if (opts.onClose) opts.onClose();
     }
-    function toggle2() {
+    function toggleFn() {
       if (isOpen) close();
       else open();
     }
-    var dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
+    let dragging = false, startX = 0, startY = 0, startRight = 0, startTop = 0;
     header.addEventListener("mousedown", function(e) {
       if (e.target === closeBtn) return;
       dragging = true;
       startX = e.clientX;
       startY = e.clientY;
-      startRight = parseInt(container.host.style.right || 0, 10);
-      startTop = parseInt(container.host.style.top || 0, 10);
+      const cs = getComputedStyle(container.host);
+      startRight = parseInt(cs.right, 10) || 0;
+      startTop = parseInt(cs.top, 10) || 0;
       e.preventDefault();
     });
     document.addEventListener("mousemove", function(e) {
@@ -616,7 +631,7 @@
       dragging = false;
     });
     closeBtn.addEventListener("click", close);
-    tab.addEventListener("click", toggle2);
+    tab.addEventListener("click", toggleFn);
     return {
       host: container.host,
       root,
@@ -624,7 +639,7 @@
       tabEl: tab,
       open,
       close,
-      toggle: toggle2,
+      toggle: toggleFn,
       isOpen: function() {
         return isOpen;
       },
@@ -634,74 +649,57 @@
       }
     };
   }
-  globalThis.TM = globalThis.TM || {};
-  globalThis.TM.storage = {
-    loadSetting,
-    saveSetting,
-    loadSettings,
-    saveSettings
-  };
-  async function loadSetting(key, defaultValue) {
+  async function loadSetting(key, defaultValue = null) {
     try {
-      var raw = await GM.getValue(key);
+      const raw = await GM.getValue(key);
       if (raw === void 0 || raw === null) return defaultValue;
+      if (typeof raw === "string") {
+        try {
+          return JSON.parse(raw);
+        } catch (_) {
+          return raw;
+        }
+      }
       return raw;
-    } catch (e) {
+    } catch (_) {
       return defaultValue;
     }
   }
   async function saveSetting(key, value) {
-    await GM.setValue(key, value);
-  }
-  async function loadSettings(defaults) {
-    var keys = Object.keys(defaults);
-    var result = {};
-    for (var i = 0; i < keys.length; i++) {
-      result[keys[i]] = await loadSetting(keys[i], defaults[keys[i]]);
-    }
-    return result;
-  }
-  async function saveSettings(obj) {
-    await GM.setValues(obj);
+    await GM.setValue(
+      key,
+      typeof value === "object" && value !== null ? JSON.stringify(value) : value
+    );
   }
   function escCsv(v) {
-    return '"' + String(v || "").replace(/"/g, '""') + '"';
+    const s = String(v ?? "");
+    return '"' + s.replace(/"/g, '""') + '"';
   }
   function exportVisible(ctx) {
-    var fmt = ctx._$("cr-export-fmt").value;
-    var btn = ctx._$("cr-btn-copy");
-    var items = Array.from(ctx.cards.entries()).filter(function(e) {
-      return !e[0].classList.contains("cr-hidden");
-    }).map(function(e) {
-      return e[1];
-    });
+    const fmt = ctx._$("cr-export-fmt").value;
+    const btn = ctx._$("cr-btn-copy");
+    const items = [...ctx.cards.entries()].filter((e) => !e[0].classList.contains("cr-hidden")).map((e) => e[1]);
     if (items.length === 0) {
-      btn.textContent = "⚠ Keine Titel";
-      setTimeout(function() {
-        btn.innerHTML = "📋 Kopieren";
+      btn.textContent = "⚠ No titles";
+      setTimeout(() => {
+        btn.textContent = "📋 Copy";
       }, 1500);
       return;
     }
-    var text = "";
+    let text = "";
     switch (fmt) {
       case "numbered":
-        text = items.map(function(info, i) {
-          return i + 1 + ". " + info.title;
-        }).join("\n");
+        text = items.map((info, i) => i + 1 + ". " + info.title).join("\n");
         break;
       case "bullets":
-        text = items.map(function(info) {
-          return "• " + info.title;
-        }).join("\n");
+        text = items.map((info) => "• " + info.title).join("\n");
         break;
       case "links":
-        text = items.map(function(info) {
-          return info.link || info.title;
-        }).join("\n");
+        text = items.map((info) => info.link || info.title).join("\n");
         break;
       case "csv": {
-        var header = ["Titel", "Bewertung", "Stimmen", "Episoden", "Staffeln", "Sub", "Dub", "Watchlist", "Link"];
-        var rows = items.map(function(i) {
+        const header = ["Titel", "Bewertung", "Stimmen", "Episoden", "Staffeln", "Sub", "Dub", "Watchlist", "Link"];
+        const rows = items.map((i) => {
           return [
             escCsv(i.title),
             escCsv(i.rating !== null ? i.rating : ""),
@@ -718,28 +716,24 @@
         break;
       }
       case "json":
-        text = JSON.stringify(items.map(function(i) {
-          return {
-            title: i.title,
-            rating: i.rating,
-            votes: i.votes,
-            episodes: i.episodes,
-            seasons: i.seasons,
-            sub: i.hasSub,
-            dub: i.hasDub,
-            onWatchlist: i.onWatchlist,
-            link: i.link
-          };
-        }), null, 2);
+        text = JSON.stringify(items.map((i) => ({
+          title: i.title,
+          rating: i.rating,
+          votes: i.votes,
+          episodes: i.episodes,
+          seasons: i.seasons,
+          sub: i.hasSub,
+          dub: i.hasDub,
+          onWatchlist: i.onWatchlist,
+          link: i.link
+        })), null, 2);
         break;
       case "markdown": {
-        let row2 = function(cells) {
-          return "| " + cells.join(" | ") + " |";
-        };
-        var mdHeader = row2(["#", "Titel", "⭐", "👥", "📺 Ep.", "📦 St.", "Sub", "Dub"]);
-        var sep = row2(["---", "---", "---", "---", "---", "---", "---", "---"]);
-        var mdRows = items.map(function(info, idx) {
-          return row2([
+        const row = (cells) => "| " + cells.join(" | ") + " |";
+        const mdHeader = row(["#", "Titel", "⭐", "👥", "📺 Ep.", "📦 St.", "Sub", "Dub"]);
+        const sep = row(["---", "---", "---", "---", "---", "---", "---", "---"]);
+        const mdRows = items.map((info, idx) => {
+          return row([
             String(idx + 1),
             info.title,
             info.rating !== null ? info.rating.toFixed(1) : "—",
@@ -750,277 +744,496 @@
             info.hasDub ? "✓" : ""
           ]);
         });
-        text = [mdHeader, sep].concat(mdRows).join("\n");
+        text = [mdHeader, sep, ...mdRows].join("\n");
         break;
       }
     }
-    navigator.clipboard.writeText(text).then(function() {
+    navigator.clipboard.writeText(text).then(() => {
       btn.classList.add("copied");
-      btn.innerHTML = "✅ " + items.length + " kopiert";
-      setTimeout(function() {
+      btn.textContent = "✅ " + items.length + " copied";
+      setTimeout(() => {
         btn.classList.remove("copied");
-        btn.innerHTML = "📋 Kopieren";
+        btn.textContent = "📋 Copy";
       }, 1800);
-    }).catch(function() {
-      btn.textContent = "⚠ Fehler";
-      setTimeout(function() {
-        btn.innerHTML = "📋 Kopieren";
+    }).catch(() => {
+      btn.textContent = "⚠ Error";
+      setTimeout(() => {
+        btn.textContent = "📋 Copy";
       }, 1500);
     });
   }
+  const CSS_VARS = [
+    ":host {",
+    "--cr-bg: #0a0a14;",
+    "--cr-surface: rgba(18, 18, 38, 0.65);",
+    "--cr-surface-raised: rgba(30, 30, 55, 0.82);",
+    "--cr-border: rgba(255, 255, 255, 0.07);",
+    "--cr-border-focus: rgba(244, 117, 33, 0.45);",
+    "--cr-accent: #f47521;",
+    "--cr-accent-glow: rgba(244, 117, 33, 0.25);",
+    "--cr-text: #f0f0f8;",
+    "--cr-text-secondary: #9898b8;",
+    "--cr-text-muted: #5a5a80;",
+    "--cr-danger: #e74c3c;",
+    "--cr-success: #3dcc8a;",
+    "--cr-info: #5b9bd5;",
+    "--cr-radius-sm: 6px;",
+    "--cr-radius-md: 10px;",
+    "--cr-transition: 0.15s cubic-bezier(0.4, 0, 0.2, 1);",
+    "--cr-transition-med: 0.25s cubic-bezier(0.4, 0, 0.2, 1);",
+    "--cr-blur: 16px;",
+    "background: linear-gradient(180deg, rgba(10,10,20,0.97) 0%, rgba(14,14,28,0.95) 50%, rgba(10,10,20,0.97) 100%);",
+    "backdrop-filter: blur(var(--cr-blur));",
+    "-webkit-backdrop-filter: blur(var(--cr-blur));",
+    "border-left: 1px solid var(--cr-border);",
+    "box-shadow: -4px 0 32px rgba(0,0,0,0.45);",
+    "color: var(--cr-text);",
+    "}"
+  ];
   function sidebarStylesCSS() {
     return [
-      ".body { padding: 0 !important; }",
-      ".body::-webkit-scrollbar { width: 3px; }",
+      ...CSS_VARS,
+".body::-webkit-scrollbar { width: 4px; }",
       ".body::-webkit-scrollbar-track { background: transparent; }",
-      ".body::-webkit-scrollbar-thumb { background: rgba(244,117,33,0.4); border-radius: 2px; }",
-      ".body::-webkit-scrollbar-thumb:hover { background: #f47521; }",
-".cr-head { position:sticky; top:0; z-index:10; flex-shrink:0; background:#0e0e1a; border-bottom:1px solid rgba(244,117,33,0.2); padding:14px 16px 12px; display:flex; align-items:center; gap:10px; }",
-      ".cr-head-logo { width:28px; height:28px; background:#f47521; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }",
-      ".cr-head-text { flex:1; min-width:0; }",
-      ".cr-head-text h2 { margin:0; font-size:14px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }",
-      ".cr-head-text p { margin:2px 0 0; font-size:10px; color:#5a5a80; }",
-      ".cr-head-close { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#888; width:28px; height:28px; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.15s,color 0.15s; }",
-      ".cr-head-close:hover { background:rgba(231,76,60,0.2); color:#e74c3c; border-color:rgba(231,76,60,0.4); }",
-".cr-stats { flex-shrink:0; display:grid; grid-template-columns:1fr 1fr 1fr; background:#0e0e1a; border-bottom:1px solid rgba(255,255,255,0.06); }",
-      ".cr-stat { padding:10px 6px; text-align:center; border-right:1px solid rgba(255,255,255,0.05); }",
-      ".cr-stat:last-child { border-right:none; }",
-      ".cr-stat-n { display:block; font-size:20px; font-weight:700; color:#f47521; line-height:1; }",
-      ".cr-stat-l { display:block; font-size:9px; color:#4a4a70; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px; }",
-".cr-prog-wrap { flex-shrink:0; height:2px; background:rgba(255,255,255,0.05); display:none; }",
-      ".cr-prog-fill { height:100%; background:linear-gradient(90deg,#f47521,#ff9f5a); width:0%; transition:width 0.12s; }",
-      ".cr-status { flex-shrink:0; font-size:10px; color:#4a4a70; padding:5px 16px; border-bottom:1px solid rgba(255,255,255,0.04); min-height:22px; display:flex; align-items:center; gap:6px; }",
-".cr-body-inner { padding:12px 12px 4px; display:flex; flex-direction:column; gap:8px; }",
-".cr-card { background:#1a1a2a; border:1px solid rgba(255,255,255,0.07); border-radius:8px; overflow:hidden; }",
-      ".cr-card-head { display:flex; align-items:center; gap:7px; padding:8px 12px; background:rgba(244,117,33,0.06); border-bottom:1px solid rgba(244,117,33,0.12); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.9px; color:#f47521; }",
-      ".cr-card-head .cr-icon { font-size:13px; opacity:0.9; }",
-      ".cr-card-body { padding:11px 12px; display:flex; flex-direction:column; gap:8px; }",
-".cr-field { display:flex; align-items:center; gap:8px; }",
-      ".cr-field-label { font-size:11px; color:#8888b0; min-width:80px; flex-shrink:0; }",
-      ".cr-field-ctrl { flex:1; min-width:0; display:flex; align-items:center; gap:5px; }",
-      ".cr-range { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:5px; flex:1; }",
-      ".cr-range-sep { font-size:11px; color:#3a3a5a; text-align:center; flex-shrink:0; }",
-      "input.cr-in, select.cr-sel { width:100%; padding:6px 8px; background:#0e0e1a; border:1px solid rgba(255,255,255,0.1); border-radius:5px; color:#d8d8f0; font-size:11px; font-family:inherit; transition:border-color 0.15s,box-shadow 0.15s; box-sizing:border-box; -webkit-appearance:none; appearance:none; }",
-      "input.cr-in:focus, select.cr-sel:focus { outline:none; border-color:#f47521; box-shadow:0 0 0 2px rgba(244,117,33,0.15); }",
-      "input.cr-in::placeholder { color:#2e2e4e; }",
-      `select.cr-sel { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 8px center; padding-right:24px; cursor:pointer; }`,
-      "select.cr-sel option { background:#12121e; color:#d8d8f0; }",
-      ".cr-toggles { display:flex; flex-wrap:wrap; gap:6px; }",
-      ".cr-toggle-lbl { display:flex; align-items:center; gap:5px; background:#0e0e1a; border:1px solid rgba(255,255,255,0.1); border-radius:5px; padding:5px 9px; font-size:11px; color:#8888b0; cursor:pointer; transition:border-color 0.15s,color 0.15s,background 0.15s; -webkit-user-select:none; user-select:none; }",
-      ".cr-toggle-lbl:hover { border-color:rgba(244,117,33,0.4); color:#d8d8f0; }",
-      ".cr-toggle-lbl input { display:none; }",
-      ".cr-toggle-lbl.checked { background:rgba(244,117,33,0.12); border-color:rgba(244,117,33,0.5); color:#f47521; }",
-      ".cr-wl-group { display:flex; gap:4px; }",
-      ".cr-wl-lbl { flex:1; text-align:center; padding:5px 4px; background:#0e0e1a; border:1px solid rgba(255,255,255,0.08); border-radius:5px; font-size:10px; color:#666; cursor:pointer; transition:all 0.15s; -webkit-user-select:none; user-select:none; }",
-      ".cr-wl-lbl:hover { border-color:rgba(244,117,33,0.3); color:#aaa; }",
-      ".cr-wl-lbl.checked { background:rgba(244,117,33,0.12); border-color:rgba(244,117,33,0.5); color:#f47521; }",
-      ".cr-wl-lbl input { display:none; }",
-      ".cr-sort-level { display:grid; grid-template-columns:20px 1fr; align-items:center; gap:8px; }",
-      ".cr-sort-num { font-size:10px; font-weight:700; color:#3a3a5a; text-align:center; }",
-".cr-foot { flex-shrink:0; padding:10px 12px 12px; border-top:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column; gap:6px; background:#0e0e1a; }",
-      ".cr-btn-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; }",
-      ".cr-btn { padding:9px 12px; border:none; border-radius:6px; font-size:11px; font-weight:700; font-family:inherit; cursor:pointer; text-transform:uppercase; letter-spacing:0.5px; transition:filter 0.15s,transform 0.1s; display:flex; align-items:center; justify-content:center; gap:5px; }",
-      ".cr-btn:hover { filter:brightness(1.18); transform:translateY(-1px); }",
-      ".cr-btn:active { transform:translateY(0); filter:brightness(0.9); }",
-      ".cr-btn-scan { background:#2d6ca8; color:#fff; }",
-      ".cr-btn-apply { background:#f47521; color:#fff; }",
-      ".cr-btn-reset { background:rgba(231,76,60,0.12); color:#c0392b; border:1px solid rgba(231,76,60,0.25); }",
-      ".cr-btn-reset:hover { background:rgba(231,76,60,0.22); filter:brightness(1); }",
-      ".cr-btn:disabled { opacity:0.45; cursor:not-allowed; transform:none; filter:none; }",
-".cr-export-row { display:grid; grid-template-columns:1fr auto; gap:6px; align-items:center; }",
-      ".cr-btn-copy { padding:7px 12px; background:#2a6049; color:#5de8a8; border:1px solid rgba(93,232,168,0.25); border-radius:5px; font-size:11px; font-weight:700; font-family:inherit; cursor:pointer; transition:background 0.15s,filter 0.15s; white-space:nowrap; display:flex; align-items:center; gap:5px; }",
-      ".cr-btn-copy:hover { background:#2e6e52; filter:brightness(1.15); }",
-      ".cr-btn-copy.copied { background:#1a4a35; color:#3dcc8a; }",
-".cr-spin { display:inline-block; width:10px; height:10px; border:2px solid rgba(244,117,33,0.2); border-top-color:#f47521; border-radius:50%; animation:cr-spin 0.7s linear infinite; flex-shrink:0; }"
+      ".body::-webkit-scrollbar-thumb { background: rgba(244,117,33,0.2); border-radius: 2px; }",
+      ".body::-webkit-scrollbar-thumb:hover { background: var(--cr-accent); }",
+".cr-head {",
+      "position: sticky; top: 0; z-index: 10; flex-shrink: 0;",
+      "background: linear-gradient(180deg, rgba(10,10,20,0.98) 0%, rgba(10,10,20,0.92) 100%);",
+      "backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);",
+      "border-bottom: 1px solid rgba(244,117,33,0.15);",
+      "padding: 16px 18px; display: flex; align-items: center; gap: 12px;",
+      "}",
+      ".cr-head-logo {",
+      "width: 32px; height: 32px;",
+      "background: linear-gradient(135deg, #f47521, #ff9a3c);",
+      "border-radius: var(--cr-radius-sm);",
+      "display: flex; align-items: center; justify-content: center;",
+      "font-size: 16px; flex-shrink: 0;",
+      "box-shadow: 0 2px 8px rgba(244,117,33,0.3);",
+      "}",
+      ".cr-head-text { flex: 1; min-width: 0; }",
+      ".cr-head-text h2 { margin: 0; font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+      ".cr-head-text p { margin: 2px 0 0; font-size: 10px; color: var(--cr-text-muted); letter-spacing: 0.3px; }",
+      ".cr-head-close {",
+      "background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);",
+      "border-radius: var(--cr-radius-sm); color: var(--cr-text-muted);",
+      "width: 28px; height: 28px; cursor: pointer; font-size: 14px;",
+      "display: flex; align-items: center; justify-content: center; flex-shrink: 0;",
+      "transition: background var(--cr-transition), color var(--cr-transition), border-color var(--cr-transition);",
+      "}",
+      ".cr-head-close:hover { background: rgba(231,76,60,0.18); color: var(--cr-danger); border-color: rgba(231,76,60,0.35); }",
+".cr-stats { flex-shrink: 0; display: grid; grid-template-columns: 1fr 1fr 1fr; background: rgba(10,10,20,0.5); border-bottom: 1px solid rgba(255,255,255,0.05); }",
+      ".cr-stat { padding: 12px 8px; text-align: center; border-right: 1px solid rgba(255,255,255,0.04); }",
+      ".cr-stat:last-child { border-right: none; }",
+      ".cr-stat-n { display: block; font-size: 22px; font-weight: 700; color: var(--cr-accent); line-height: 1; text-shadow: 0 0 12px var(--cr-accent-glow); }",
+      ".cr-stat-l { display: block; font-size: 9px; color: var(--cr-text-muted); text-transform: uppercase; letter-spacing: 0.6px; margin-top: 4px; }",
+".cr-prog-wrap { flex-shrink: 0; height: 2px; background: rgba(255,255,255,0.04); display: none; }",
+      ".cr-prog-fill { height: 100%; background: linear-gradient(90deg, var(--cr-accent), #ffa64d); width: 0%; transition: width 0.2s ease; }",
+".cr-status { flex-shrink: 0; font-size: 10px; color: var(--cr-text-muted); padding: 6px 18px; border-bottom: 1px solid rgba(255,255,255,0.03); min-height: 24px; display: flex; align-items: center; gap: 6px; }",
+".cr-body-inner { padding: 12px 14px 8px; display: flex; flex-direction: column; gap: 10px; }",
+".cr-accordion { background: var(--cr-surface); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid var(--cr-border); border-radius: var(--cr-radius-md); overflow: hidden; transition: border-color var(--cr-transition-med), box-shadow var(--cr-transition-med); }",
+      ".cr-accordion[open] { border-color: rgba(244,117,33,0.18); box-shadow: 0 2px 12px rgba(0,0,0,0.25); }",
+      ".cr-accordion-summary { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; user-select: none; -webkit-user-select: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; color: var(--cr-text-secondary); transition: color var(--cr-transition); list-style: none; }",
+      ".cr-accordion-summary::-webkit-details-marker { display: none; }",
+      ".cr-accordion-summary:hover { color: var(--cr-accent); }",
+      ".cr-accordion[open] > .cr-accordion-summary { color: var(--cr-accent); border-bottom: 1px solid rgba(244,117,33,0.1); }",
+      ".cr-accordion-icon { font-size: 14px; opacity: 0.8; flex-shrink: 0; }",
+      ".cr-accordion-arrow { margin-left: auto; flex-shrink: 0; transition: transform var(--cr-transition-med); font-size: 10px; color: var(--cr-text-muted); }",
+      ".cr-accordion[open] .cr-accordion-arrow { transform: rotate(180deg); }",
+      ".cr-accordion-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; }",
+".cr-filter-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: var(--cr-accent); color: #fff; border-radius: 9px; font-size: 10px; font-weight: 700; margin-left: auto; transition: transform var(--cr-transition), opacity var(--cr-transition); }",
+      ".cr-filter-chip[hidden] { display: none; }",
+      ".cr-filter-chip:not([hidden]) { animation: cr-chip-pop 0.2s ease-out; }",
+      "@keyframes cr-chip-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }",
+".cr-field { display: flex; align-items: center; gap: 8px; }",
+      ".cr-field-label { font-size: 11px; color: var(--cr-text-muted); min-width: 80px; flex-shrink: 0; }",
+      ".cr-field-ctrl { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }",
+      ".cr-range { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; flex: 1; }",
+      ".cr-range-sep { font-size: 11px; color: var(--cr-text-muted); text-align: center; flex-shrink: 0; }",
+"input.cr-in, select.cr-sel { width: 100%; padding: 7px 10px; background: rgba(14,14,30,0.75); border: 1px solid rgba(255,255,255,0.09); border-radius: var(--cr-radius-sm); color: var(--cr-text); font-size: 11px; font-family: inherit; transition: border-color var(--cr-transition), box-shadow var(--cr-transition); box-sizing: border-box; -webkit-appearance: none; appearance: none; }",
+      "input.cr-in:focus, select.cr-sel:focus { outline: none; border-color: var(--cr-accent); box-shadow: 0 0 0 3px var(--cr-accent-glow); }",
+      "input.cr-in::placeholder { color: rgba(255,255,255,0.15); }",
+      `select.cr-sel { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 26px; cursor: pointer; }`,
+      "select.cr-sel option { background: #14142a; color: var(--cr-text); }",
+".cr-toggles { display: flex; flex-wrap: wrap; gap: 6px; }",
+      ".cr-toggle-lbl { display: flex; align-items: center; gap: 5px; background: rgba(14,14,30,0.55); border: 1px solid rgba(255,255,255,0.07); border-radius: var(--cr-radius-sm); padding: 6px 10px; font-size: 11px; color: var(--cr-text-muted); cursor: pointer; transition: border-color var(--cr-transition), color var(--cr-transition), background var(--cr-transition); user-select: none; -webkit-user-select: none; }",
+      ".cr-toggle-lbl:hover { border-color: rgba(244,117,33,0.3); color: var(--cr-text-secondary); }",
+      ".cr-toggle-lbl input { display: none; }",
+      ".cr-toggle-lbl.active { background: rgba(244,117,33,0.12); border-color: rgba(244,117,33,0.4); color: var(--cr-accent); box-shadow: 0 0 8px rgba(244,117,33,0.1); }",
+".cr-wl-group { display: flex; gap: 4px; }",
+      ".cr-wl-lbl { flex: 1; text-align: center; padding: 6px 4px; background: rgba(14,14,30,0.55); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--cr-radius-sm); font-size: 10px; color: var(--cr-text-muted); cursor: pointer; transition: all var(--cr-transition); user-select: none; -webkit-user-select: none; }",
+      ".cr-wl-lbl:hover { border-color: rgba(244,117,33,0.25); color: var(--cr-text-secondary); }",
+      ".cr-wl-lbl input { display: none; }",
+      ".cr-wl-lbl.active { background: rgba(244,117,33,0.12); border-color: rgba(244,117,33,0.4); color: var(--cr-accent); }",
+".cr-sort-level { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 8px; }",
+      ".cr-sort-num { font-size: 10px; font-weight: 700; color: var(--cr-text-muted); text-align: center; }",
+".cr-foot { flex-shrink: 0; padding: 12px 14px 14px; border-top: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 8px; background: linear-gradient(0deg, rgba(10,10,20,0.95) 0%, rgba(14,14,28,0.7) 100%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }",
+      ".cr-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }",
+".cr-btn { padding: 10px 14px; border: none; border-radius: var(--cr-radius-sm); font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: filter var(--cr-transition), transform 0.1s ease, box-shadow var(--cr-transition); display: flex; align-items: center; justify-content: center; gap: 6px; }",
+      ".cr-btn:hover { filter: brightness(1.2); transform: translateY(-1px); }",
+      ".cr-btn:active { transform: translateY(0); filter: brightness(0.88); }",
+      ".cr-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; filter: none; box-shadow: none; }",
+      ".cr-btn-scan { background: linear-gradient(135deg, #2d6ca8, #3a85cc); color: #fff; box-shadow: 0 2px 8px rgba(45,108,168,0.3); }",
+      ".cr-btn-apply { background: linear-gradient(135deg, #f47521, #ff9340); color: #fff; box-shadow: 0 2px 10px var(--cr-accent-glow); }",
+      ".cr-btn-reset { background: rgba(231,76,60,0.08); color: #c0392b; border: 1px solid rgba(231,76,60,0.2); }",
+      ".cr-btn-reset:hover { background: rgba(231,76,60,0.18); filter: brightness(1); box-shadow: 0 2px 10px rgba(231,76,60,0.2); }",
+".cr-export-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }",
+      ".cr-btn-copy { padding: 8px 14px; background: linear-gradient(135deg, #1a4a35, #2a6049); color: var(--cr-success); border: 1px solid rgba(61,204,138,0.2); border-radius: var(--cr-radius-sm); font-size: 11px; font-weight: 700; font-family: inherit; cursor: pointer; transition: background var(--cr-transition), filter var(--cr-transition); white-space: nowrap; display: flex; align-items: center; gap: 5px; }",
+      ".cr-btn-copy:hover { background: linear-gradient(135deg, #1e5a3f, #2e6e52); filter: brightness(1.15); }",
+      ".cr-btn-copy.copied { background: #143528; color: #5de8a8; }",
+".cr-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(244,117,33,0.2); border-top-color: var(--cr-accent); border-radius: 50%; animation: cr-spin 0.7s linear infinite; flex-shrink: 0; }",
+"@keyframes cr-spin { to { transform: rotate(360deg); } }",
+".cr-hidden { display: none !important; }"
     ].join("\n");
   }
-  function bodyHTML(showBadges) {
-    var chk = showBadges ? "checked" : "";
+  function makeField(labelText, control) {
+    const field = document.createElement("div");
+    field.className = "cr-field";
+    const label = document.createElement("span");
+    label.className = "cr-field-label";
+    label.textContent = labelText;
+    field.append(label, control);
+    return field;
+  }
+  function makeTextInput(id, placeholder) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "cr-in";
+    input.id = id;
+    input.placeholder = placeholder;
+    return input;
+  }
+  function makeNumberInput(id, placeholder, min, max, step) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "cr-in";
+    input.id = id;
+    input.placeholder = placeholder;
+    return input;
+  }
+  function makeSelect(id, options) {
+    const sel = document.createElement("select");
+    sel.className = "cr-sel";
+    sel.id = id;
+    for (const opt of options) {
+      const el = document.createElement("option");
+      el.value = opt.value;
+      el.textContent = opt.label;
+      sel.appendChild(el);
+    }
+    return sel;
+  }
+  function sortOptions(emptyLabel) {
     return [
-      '<div class="cr-head">',
+      { value: "", label: emptyLabel },
+      { value: "rating-desc", label: "⭐ Bewertung — hoch → niedrig" },
+      { value: "rating-asc", label: "⭐ Bewertung — niedrig → hoch" },
+      { value: "votes-desc", label: "👥 Stimmen — viele → wenige" },
+      { value: "votes-asc", label: "👥 Stimmen — wenige → viele" },
+      { value: "episodes-desc", label: "📺 Episoden — viele → wenige" },
+      { value: "episodes-asc", label: "📺 Episoden — wenige → viele" },
+      { value: "seasons-desc", label: "📦 Staffeln — viele → wenige" },
+      { value: "seasons-asc", label: "📦 Staffeln — wenige → viele" },
+      { value: "title-asc", label: "🔤 Titel — A → Z" },
+      { value: "title-desc", label: "🔤 Titel — Z → A" }
+    ];
+  }
+  function makeToggle(text, inputId, checked) {
+    const lbl = document.createElement("label");
+    lbl.className = "cr-toggle-lbl" + (checked ? " active" : "");
+    lbl.id = "lbl-" + inputId;
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.id = inputId;
+    if (checked) input.checked = true;
+    lbl.appendChild(input);
+    lbl.appendChild(document.createTextNode(text));
+    return lbl;
+  }
+  function makeRadioGroup(name, options, selectedValue) {
+    const group = document.createElement("div");
+    group.className = "cr-wl-group";
+    for (const opt of options) {
+      const lbl = document.createElement("label");
+      lbl.className = "cr-wl-lbl" + (opt.value === selectedValue ? " active" : "");
+      lbl.id = "lbl-wl-" + opt.value;
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = name;
+      input.value = opt.value;
+      if (opt.value === selectedValue) input.checked = true;
+      lbl.appendChild(input);
+      lbl.appendChild(document.createTextNode(opt.label));
+      group.appendChild(lbl);
+    }
+    return group;
+  }
+  function makeRange(idMin, idMax, placeholderMin, placeholderMax) {
+    const range = document.createElement("div");
+    range.className = "cr-range";
+    const minInput = makeNumberInput(idMin, placeholderMin);
+    const sep = document.createElement("span");
+    sep.className = "cr-range-sep";
+    sep.textContent = "–";
+    const maxInput = makeNumberInput(idMax, placeholderMax);
+    range.append(minInput, sep, maxInput);
+    return range;
+  }
+  function makeAccordion(icon, title, bodyElements, chipId) {
+    const details = document.createElement("details");
+    details.className = "cr-accordion";
+    details.open = false;
+    const summary = document.createElement("summary");
+    summary.className = "cr-accordion-summary";
+    const iconEl = document.createElement("span");
+    iconEl.className = "cr-accordion-icon";
+    iconEl.textContent = icon;
+    const label = document.createElement("span");
+    label.textContent = title;
+    summary.append(iconEl, label);
+    if (chipId) {
+      const chip = document.createElement("span");
+      chip.className = "cr-filter-chip";
+      chip.id = chipId;
+      chip.hidden = true;
+      chip.textContent = "0";
+      summary.append(chip);
+    }
+    const arrow = document.createElement("span");
+    arrow.className = "cr-accordion-arrow";
+    arrow.textContent = "▼";
+    summary.appendChild(arrow);
+    details.appendChild(summary);
+    const body = document.createElement("div");
+    body.className = "cr-accordion-body";
+    for (const el of bodyElements) body.appendChild(el);
+    details.appendChild(body);
+    return details;
+  }
+  function buildBodyContent(state) {
+    const frag = document.createDocumentFragment();
+    const head = document.createElement("div");
+    head.className = "cr-head";
+    head.innerHTML = [
       '<div class="cr-head-logo">⚙</div>',
-      '<div class="cr-head-text"><h2>Advanced Filter</h2><p>Crunchyroll Browse Enhancer · v4.6</p></div>',
-      '<button class="cr-head-close" id="cr-close">✕</button>',
-      "</div>",
-      '<div class="cr-stats">',
-      '<div class="cr-stat"><span class="cr-stat-n" id="cr-s-vis">—</span><span class="cr-stat-l">Sichtbar</span></div>',
-      '<div class="cr-stat"><span class="cr-stat-n" id="cr-s-tot">—</span><span class="cr-stat-l">Gesamt</span></div>',
-      '<div class="cr-stat"><span class="cr-stat-n" id="cr-s-dat">—</span><span class="cr-stat-l">Mit Daten</span></div>',
-      "</div>",
-      '<div class="cr-prog-wrap" id="cr-prog"><div class="cr-prog-fill" id="cr-prog-fill"></div></div>',
-      '<div class="cr-status" id="cr-status">Bereit — klicke Scannen um zu starten</div>',
-      '<div class="cr-body-inner">',
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">🔍</span>Suche</div><div class="cr-card-body">',
-      '<div class="cr-field"><span class="cr-field-label">Titel</span><div class="cr-field-ctrl"><input type="text" class="cr-in" id="cr-f-title" placeholder="Stichwort im Titel…"></div></div>',
-      '<div class="cr-field"><span class="cr-field-label">Beschreibung</span><div class="cr-field-ctrl"><input type="text" class="cr-in" id="cr-f-desc" placeholder="Stichwort in Beschreibung…"></div></div>',
-      "</div></div>",
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">⭐</span>Bewertung &amp; Popularität</div><div class="cr-card-body">',
-      '<div class="cr-field"><span class="cr-field-label">Bewertung</span><div class="cr-range"><input type="number" class="cr-in" id="cr-f-r-min" min="0" max="5" step="0.1" placeholder="Min"><span class="cr-range-sep">–</span><input type="number" class="cr-in" id="cr-f-r-max" min="0" max="5" step="0.1" placeholder="Max"></div></div>',
-      '<div class="cr-field"><span class="cr-field-label">Min. Stimmen</span><div class="cr-field-ctrl"><input type="number" class="cr-in" id="cr-f-v-min" min="0" placeholder="z. B. 500"></div></div>',
-      "</div></div>",
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">📺</span>Umfang</div><div class="cr-card-body">',
-      '<div class="cr-field"><span class="cr-field-label">Episoden</span><div class="cr-range"><input type="number" class="cr-in" id="cr-f-ep-min" min="0" placeholder="Min"><span class="cr-range-sep">–</span><input type="number" class="cr-in" id="cr-f-ep-max" min="0" placeholder="Max"></div></div>',
-      '<div class="cr-field"><span class="cr-field-label">Staffeln</span><div class="cr-range"><input type="number" class="cr-in" id="cr-f-se-min" min="0" placeholder="Min"><span class="cr-range-sep">–</span><input type="number" class="cr-in" id="cr-f-se-max" min="0" placeholder="Max"></div></div>',
-      "</div></div>",
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">🌐</span>Verfügbarkeit</div><div class="cr-card-body">',
-      '<div class="cr-field"><span class="cr-field-label">Sprache</span><div class="cr-toggles" id="cr-lang-group"><label class="cr-toggle-lbl" id="lbl-sub"><input type="checkbox" id="cr-f-sub"> 🎌 Untertitel</label><label class="cr-toggle-lbl" id="lbl-dub"><input type="checkbox" id="cr-f-dub"> 🔊 Synchronisation</label></div></div>',
-      '<div class="cr-field"><span class="cr-field-label">Watchlist</span><div class="cr-wl-group"><label class="cr-wl-lbl checked" id="lbl-wl-all"><input type="radio" name="cr-wl" value="all" checked> Alle</label><label class="cr-wl-lbl" id="lbl-wl-yes"><input type="radio" name="cr-wl" value="yes"> ✅ Ja</label><label class="cr-wl-lbl" id="lbl-wl-no"><input type="radio" name="cr-wl" value="no"> ❌ Nein</label></div></div>',
-      "</div></div>",
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">🔀</span>Sortierung <span style="font-size:9px;color:#5a5a80;font-weight:400;text-transform:none;letter-spacing:0;">— bis zu 3 Ebenen</span></div><div class="cr-card-body">',
-      '<div class="cr-sort-level"><span class="cr-sort-num">1</span><select class="cr-sel" id="cr-s-1">' + sortOptsHTML("— Standard —") + "</select></div>",
-      '<div class="cr-sort-level"><span class="cr-sort-num">2</span><select class="cr-sel" id="cr-s-2">' + sortOptsHTML("— Keine —") + "</select></div>",
-      '<div class="cr-sort-level"><span class="cr-sort-num">3</span><select class="cr-sel" id="cr-s-3">' + sortOptsHTML("— Keine —") + "</select></div>",
-      "</div></div>",
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">🏷</span>Anzeige</div><div class="cr-card-body">',
-      '<label class="cr-toggle-lbl' + (showBadges ? " checked" : "") + '" id="lbl-badges" style="width:fit-content;"><input type="checkbox" id="cr-opt-badges" ' + chk + "> Badges auf Karten anzeigen</label>",
-      '<label class="cr-toggle-lbl" id="lbl-data-only" style="width:fit-content;"><input type="checkbox" id="cr-opt-data"> Nur Karten mit gescannten Daten</label>',
-      "</div></div>",
-'<div class="cr-card"><div class="cr-card-head"><span class="cr-icon">📋</span>Export <span style="font-size:9px;color:#5a5a80;font-weight:400;text-transform:none;letter-spacing:0;">— sichtbare Titel</span></div><div class="cr-card-body">',
-      '<div class="cr-export-row">',
-      '<select class="cr-sel" id="cr-export-fmt"><option value="numbered">1. Nummerierte Liste</option><option value="bullets">• Aufzählung</option><option value="csv">CSV (alle Daten)</option><option value="json">JSON (alle Daten)</option><option value="links">Links (URLs)</option><option value="markdown">Markdown Tabelle</option></select>',
-      '<button class="cr-btn-copy" id="cr-btn-copy">📋 Kopieren</button>',
-      "</div></div></div>",
-'<div class="cr-foot">',
+      '<div class="cr-head-text"><h2>Advanced Filter</h2><p>Crunchyroll Browse Enhancer · v5.2.1</p></div>',
+      '<button class="cr-head-close" id="cr-close">✕</button>'
+    ].join("");
+    frag.appendChild(head);
+    const stats = document.createElement("div");
+    stats.className = "cr-stats";
+    stats.innerHTML = [
+      '<div class="cr-stat"><span class="cr-stat-n" id="cr-s-vis">—</span><span class="cr-stat-l">Visible</span></div>',
+      '<div class="cr-stat"><span class="cr-stat-n" id="cr-s-tot">—</span><span class="cr-stat-l">Total</span></div>',
+      '<div class="cr-stat"><span class="cr-stat-n" id="cr-s-dat">—</span><span class="cr-stat-l">With Data</span></div>'
+    ].join("");
+    frag.appendChild(stats);
+    const prog = document.createElement("div");
+    prog.className = "cr-prog-wrap";
+    prog.id = "cr-prog";
+    const fill = document.createElement("div");
+    fill.className = "cr-prog-fill";
+    fill.id = "cr-prog-fill";
+    prog.appendChild(fill);
+    frag.appendChild(prog);
+    const status = document.createElement("div");
+    status.className = "cr-status";
+    status.id = "cr-status";
+    status.textContent = "Ready — click Scan to start";
+    frag.appendChild(status);
+    const inner = document.createElement("div");
+    inner.className = "cr-body-inner";
+    inner.appendChild(makeAccordion("🔍", "Search", [
+      makeField("Title", makeTextInput("cr-f-title", "Search in title…")),
+      makeField("Description", makeTextInput("cr-f-desc", "Search in description…"))
+    ], "cr-chip-search"));
+    inner.appendChild(makeAccordion("⭐", "Rating & Popularity", [
+      makeField("Rating", makeRange("cr-f-r-min", "cr-f-r-max", "Min", "Max")),
+      makeField("Min Votes", makeField(
+        "Min Votes",
+        (() => {
+          const inp = makeNumberInput("cr-f-v-min", "e.g. 500");
+          return inp;
+        })()
+      ))
+    ], "cr-chip-rating"));
+    inner.appendChild(makeAccordion("📺", "Scope", [
+      makeField("Episodes", makeRange("cr-f-ep-min", "cr-f-ep-max", "Min", "Max")),
+      makeField("Seasons", makeRange("cr-f-se-min", "cr-f-se-max", "Min", "Max"))
+    ], "cr-chip-scope"));
+    const subDubGroup = document.createElement("div");
+    subDubGroup.className = "cr-toggles";
+    subDubGroup.id = "cr-lang-group";
+    subDubGroup.appendChild(makeToggle("🎌 Subtitles", "cr-f-sub"));
+    subDubGroup.appendChild(makeToggle("🔊 Dubbing", "cr-f-dub"));
+    inner.appendChild(makeAccordion("🌐", "Availability", [
+      makeField("Language", subDubGroup),
+      makeField("Watchlist", makeRadioGroup("cr-wl", [
+        { value: "all", label: "All" },
+        { value: "yes", label: "✅ Yes" },
+        { value: "no", label: "❌ No" }
+      ], "all"))
+    ], "cr-chip-avail"));
+    inner.appendChild(makeAccordion("🔀", "Sorting", [
+      (() => {
+        const lvl = document.createElement("div");
+        lvl.className = "cr-sort-level";
+        const n1 = document.createElement("span");
+        n1.className = "cr-sort-num";
+        n1.textContent = "1";
+        lvl.append(n1, makeSelect("cr-s-1", sortOptions("— Default —")));
+        return lvl;
+      })(),
+      (() => {
+        const lvl = document.createElement("div");
+        lvl.className = "cr-sort-level";
+        const n2 = document.createElement("span");
+        n2.className = "cr-sort-num";
+        n2.textContent = "2";
+        lvl.append(n2, makeSelect("cr-s-2", sortOptions("— None —")));
+        return lvl;
+      })(),
+      (() => {
+        const lvl = document.createElement("div");
+        lvl.className = "cr-sort-level";
+        const n3 = document.createElement("span");
+        n3.className = "cr-sort-num";
+        n3.textContent = "3";
+        lvl.append(n3, makeSelect("cr-s-3", sortOptions("— None —")));
+        return lvl;
+      })()
+    ]));
+    inner.appendChild(makeAccordion("🏷", "Display", [
+      (() => {
+        const container = document.createElement("div");
+        container.className = "cr-toggles";
+        container.appendChild(makeToggle("Show badges on cards", "cr-opt-badges", state.showBadges));
+        container.appendChild(makeToggle("Only cards with scanned data", "cr-opt-data"));
+        return container;
+      })()
+    ]));
+    const exportRow = document.createElement("div");
+    exportRow.className = "cr-export-row";
+    exportRow.appendChild(makeSelect("cr-export-fmt", [
+      { value: "numbered", label: "1. Numbered List" },
+      { value: "bullets", label: "• Bullet List" },
+      { value: "csv", label: "CSV (all data)" },
+      { value: "json", label: "JSON (all data)" },
+      { value: "links", label: "Links (URLs)" },
+      { value: "markdown", label: "Markdown Table" }
+    ]));
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "cr-btn-copy";
+    copyBtn.id = "cr-btn-copy";
+    copyBtn.textContent = "📋 Copy";
+    exportRow.appendChild(copyBtn);
+    inner.appendChild(makeAccordion("📋", "Export", [exportRow]));
+    frag.appendChild(inner);
+    const foot = document.createElement("div");
+    foot.className = "cr-foot";
+    foot.innerHTML = [
       '<div class="cr-btn-row">',
-      '<button class="cr-btn cr-btn-scan" id="cr-btn-scan"><span>🔄</span> Scannen</button>',
-      '<button class="cr-btn cr-btn-apply" id="cr-btn-apply"><span>✨</span> Anwenden</button>',
+      '<button class="cr-btn cr-btn-scan" id="cr-btn-scan">🔄 Scan</button>',
+      '<button class="cr-btn cr-btn-apply" id="cr-btn-apply">✨ Apply</button>',
       "</div>",
-      '<button class="cr-btn cr-btn-reset" id="cr-btn-reset">↺ Alle Filter zurücksetzen</button>',
-      "</div>"
+      '<button class="cr-btn cr-btn-reset" id="cr-btn-reset">↺ Reset All Filters</button>'
     ].join("");
+    frag.appendChild(foot);
+    return frag;
   }
-  function sortOptsHTML(empty) {
-    return [
-      '<option value="">' + empty + "</option>",
-      '<option value="rating-desc">⭐ Bewertung — hoch &darr; niedrig</option>',
-      '<option value="rating-asc">⭐ Bewertung — niedrig &rarr; hoch</option>',
-      '<option value="votes-desc">👥 Stimmen — viele &rarr; wenige</option>',
-      '<option value="votes-asc">👥 Stimmen — wenige &rarr; viele</option>',
-      '<option value="episodes-desc">📺 Episoden — viele &rarr; wenige</option>',
-      '<option value="episodes-asc">📺 Episoden — wenige &rarr; viele</option>',
-      '<option value="seasons-desc">📦 Staffeln — viele &rarr; wenige</option>',
-      '<option value="seasons-asc">📦 Staffeln — wenige &rarr; viele</option>',
-      '<option value="title-asc">🔤 Titel — A &rarr; Z</option>',
-      '<option value="title-desc">🔤 Titel — Z &rarr; A</option>'
-    ].join("");
-  }
-  function buildSidebar(ctx, sidebarWidth) {
-    ctx.sidebar = createSidebar({
+  function buildSidebar(state, sidebarWidth) {
+    state.sidebar = createSidebar({
       width: sidebarWidth,
       title: "Filter",
       accentColor: "#F47521",
       onOpen: async function() {
-        ctx.isOpen = true;
+        state.isOpen = true;
         await GM.setValue("cr_sidebar_open", true);
       },
       onClose: async function() {
-        ctx.isOpen = false;
+        state.isOpen = false;
         await GM.setValue("cr_sidebar_open", false);
       }
     });
-    var style = document.createElement("style");
+    const style = document.createElement("style");
     style.textContent = sidebarStylesCSS();
-    ctx.sidebar.root.appendChild(style);
-    var sharedHdr = ctx.sidebar.root.querySelector(".header");
+    state.sidebar.root.appendChild(style);
+    const sharedHdr = state.sidebar.root.querySelector(".header");
     if (sharedHdr) sharedHdr.style.display = "none";
-    ctx.sidebar.bodyEl.innerHTML = bodyHTML(ctx.showBadges);
-    if (ctx.isOpen) ctx.sidebar.open();
+    state.sidebar.bodyEl.textContent = "";
+    state.sidebar.bodyEl.appendChild(buildBodyContent(state));
+    if (state.isOpen) state.sidebar.open();
   }
-  function attachEvents(ctx) {
-    ctx._$("cr-close").addEventListener("click", function() {
-      toggle(ctx, false);
-    });
-    ctx._$("cr-btn-scan").addEventListener("click", function() {
-      ctx._scan();
-    });
-    ctx._$("cr-btn-apply").addEventListener("click", function() {
-      ctx._apply();
-    });
-    ctx._$("cr-btn-reset").addEventListener("click", function() {
-      ctx._reset();
-    });
-    ctx._$("cr-f-sub").addEventListener("change", function(e) {
-      ctx._$("lbl-sub").classList.toggle("checked", e.target.checked);
-      ctx._debounceApply();
-    });
-    ctx._$("cr-f-dub").addEventListener("change", function(e) {
-      ctx._$("lbl-dub").classList.toggle("checked", e.target.checked);
-      ctx._debounceApply();
-    });
-    var wlRadios = ctx.sidebar.root.querySelectorAll('input[name="cr-wl"]');
-    Array.from(wlRadios).forEach(function(r) {
-      r.addEventListener("change", function() {
-        var labels = ctx.sidebar.root.querySelectorAll(".cr-wl-lbl");
-        Array.from(labels).forEach(function(l) {
-          l.classList.remove("checked");
-        });
-        var v = ctx.sidebar.root.querySelector('input[name="cr-wl"]:checked');
-        v = v ? v.value : "all";
-        var map = { all: "lbl-wl-all", yes: "lbl-wl-yes", no: "lbl-wl-no" };
-        if (map[v]) ctx._$(map[v]).classList.add("checked");
-        ctx._debounceApply();
-      });
-    });
-    ctx._$("cr-opt-badges").addEventListener("change", async function(e) {
-      ctx.showBadges = e.target.checked;
-      ctx._$("lbl-badges").classList.toggle("checked", ctx.showBadges);
-      await GM.setValue("cr_show_badges", ctx.showBadges);
-      updateBadgeVisibility(ctx.showBadges);
-    });
-    ctx._$("cr-opt-data").addEventListener("change", function(e) {
-      ctx._$("lbl-data-only").classList.toggle("checked", e.target.checked);
-      ctx._debounceApply();
-    });
-    ctx._$("cr-btn-copy").addEventListener("click", function() {
-      exportVisible(ctx);
-    });
-    var filterIds = [
-      "cr-f-title",
-      "cr-f-desc",
-      "cr-f-r-min",
-      "cr-f-r-max",
-      "cr-f-v-min",
-      "cr-f-ep-min",
-      "cr-f-ep-max",
-      "cr-f-se-min",
-      "cr-f-se-max",
-      "cr-s-1",
-      "cr-s-2",
-      "cr-s-3"
-    ];
-    filterIds.forEach(function(id) {
-      var el = ctx._$(id);
-      if (el) {
-        el.addEventListener("input", function() {
-          ctx._debounceApply();
-        });
-        el.addEventListener("change", function() {
-          ctx._debounceApply();
-        });
+  function attachEvents(state, _$, emitter, debouncedApply) {
+    _$("cr-close").addEventListener("click", () => {
+      try {
+        toggle(state, false);
+      } catch (err) {
+        console.error("[Crunchyroll Enhanced] Close error:", err);
       }
     });
-  }
-  function toggle(ctx, forceTo) {
-    if (forceTo === true || forceTo === void 0 && !ctx.isOpen) {
-      ctx.sidebar.open();
-    } else {
-      ctx.sidebar.close();
+    _$("cr-btn-scan").addEventListener("click", () => {
+      try {
+        state._scan();
+      } catch (err) {
+        console.error("[Crunchyroll Enhanced] Scan error:", err);
+      }
+    });
+    _$("cr-btn-apply").addEventListener("click", () => {
+      try {
+        debouncedApply();
+      } catch (err) {
+        console.error("[Crunchyroll Enhanced] Apply error:", err);
+      }
+    });
+    _$("cr-btn-reset").addEventListener("click", () => {
+      try {
+        resetFilters(state, _$, emitter);
+        debouncedApply();
+      } catch (err) {
+        console.error("[Crunchyroll Enhanced] Reset error:", err);
+      }
+    });
+    _$("cr-f-sub").addEventListener("change", (e) => {
+      _$("lbl-cr-f-sub").classList.toggle("active", e.target.checked);
+      emitter.emit("filter:changed");
+    });
+    _$("cr-f-dub").addEventListener("change", (e) => {
+      _$("lbl-cr-f-dub").classList.toggle("active", e.target.checked);
+      emitter.emit("filter:changed");
+    });
+    const wlInputs = state.sidebar.root.querySelectorAll('input[name="cr-wl"]');
+    for (const r of wlInputs) {
+      r.addEventListener("change", () => {
+        for (const l of state.sidebar.root.querySelectorAll(".cr-wl-lbl")) {
+          l.classList.remove("active");
+        }
+        const checked = state.sidebar.root.querySelector('input[name="cr-wl"]:checked');
+        const val = checked ? checked.value : "all";
+        const map = { all: "lbl-wl-all", yes: "lbl-wl-yes", no: "lbl-wl-no" };
+        if (map[val]) _$("lbl-wl-" + val).classList.add("active");
+        emitter.emit("filter:changed");
+      });
     }
-  }
-  function updateStatus(ctx, msg) {
-    var el = ctx._$("cr-status");
-    if (el) el.textContent = msg;
-  }
-  function updateStats(ctx, visible, total, wd) {
-    var vis = ctx._$("cr-s-vis");
-    var tot = ctx._$("cr-s-tot");
-    var dat = ctx._$("cr-s-dat");
-    if (vis) vis.textContent = String(visible);
-    if (tot) tot.textContent = String(total);
-    if (dat) dat.textContent = String(wd);
-  }
-  function resetFilters(ctx) {
-    var ids = [
+    _$("cr-opt-badges").addEventListener("change", async (e) => {
+      state.showBadges = e.target.checked;
+      _$("lbl-cr-opt-badges").classList.toggle("active", state.showBadges);
+      await GM.setValue("cr_show_badges", state.showBadges);
+      updateBadgeVisibility(state.showBadges);
+    });
+    _$("cr-opt-data").addEventListener("change", (e) => {
+      _$("lbl-cr-opt-data").classList.toggle("active", e.target.checked);
+      emitter.emit("filter:changed");
+    });
+    _$("cr-btn-copy").addEventListener("click", () => {
+      try {
+        exportVisible({ cards: state.cards, _$, ...state });
+      } catch (err) {
+        console.error("[Crunchyroll Enhanced] Copy error:", err);
+      }
+    });
+    const filterIds = [
       "cr-f-title",
       "cr-f-desc",
       "cr-f-r-min",
@@ -1034,50 +1247,104 @@
       "cr-s-2",
       "cr-s-3"
     ];
-    ids.forEach(function(id) {
-      var el = ctx._$(id);
+    for (const id of filterIds) {
+      const el = _$(id);
+      if (el) {
+        el.addEventListener("input", () => emitter.emit("filter:changed"));
+        el.addEventListener("change", () => emitter.emit("filter:changed"));
+      }
+    }
+  }
+  function toggle(state, forceTo) {
+    if (!state.sidebar) return;
+    {
+      state.sidebar.close();
+    }
+  }
+  function updateStatus(state, msg) {
+    if (!state.sidebar) return;
+    const el = state.sidebar.root.querySelector("#cr-status");
+    if (el) el.textContent = msg;
+  }
+  function updateStats(state, visible, total, withDataCount) {
+    if (!state.sidebar) return;
+    const vis = state.sidebar.root.querySelector("#cr-s-vis");
+    const tot = state.sidebar.root.querySelector("#cr-s-tot");
+    const dat = state.sidebar.root.querySelector("#cr-s-dat");
+    if (vis) vis.textContent = String(visible);
+    if (tot) tot.textContent = String(total);
+    if (dat) dat.textContent = String(withDataCount);
+  }
+  function resetFilters(state, _$, emitter) {
+    const ids = [
+      "cr-f-title",
+      "cr-f-desc",
+      "cr-f-r-min",
+      "cr-f-r-max",
+      "cr-f-v-min",
+      "cr-f-ep-min",
+      "cr-f-ep-max",
+      "cr-f-se-min",
+      "cr-f-se-max",
+      "cr-s-1",
+      "cr-s-2",
+      "cr-s-3"
+    ];
+    for (const id of ids) {
+      const el = _$(id);
       if (el) el.value = "";
-    });
-    ["cr-f-sub", "cr-f-dub"].forEach(function(id) {
-      ctx._$(id).checked = false;
-    });
-    ctx._$("lbl-sub").classList.remove("checked");
-    ctx._$("lbl-dub").classList.remove("checked");
-    ctx._$("cr-opt-data").checked = false;
-    ctx._$("lbl-data-only").classList.remove("checked");
-    var allRadio = ctx.sidebar.root.querySelector('input[name="cr-wl"][value="all"]');
+    }
+    for (const id of ["cr-f-sub", "cr-f-dub"]) {
+      const el = _$(id);
+      if (el) el.checked = false;
+    }
+    for (const lblId of ["lbl-cr-f-sub", "lbl-cr-f-dub"]) {
+      const el = _$(lblId);
+      if (el) el.classList.remove("active");
+    }
+    const dataEl = _$("cr-opt-data");
+    if (dataEl) dataEl.checked = false;
+    const dataLbl = _$("lbl-cr-opt-data");
+    if (dataLbl) dataLbl.classList.remove("active");
+    const allRadio = state.sidebar.root.querySelector('input[name="cr-wl"][value="all"]');
     if (allRadio) allRadio.checked = true;
-    var wlLabels = ctx.sidebar.root.querySelectorAll(".cr-wl-lbl");
-    Array.from(wlLabels).forEach(function(l) {
-      l.classList.remove("checked");
-    });
-    ctx._$("lbl-wl-all").classList.add("checked");
-    var container = ctx.origOrder[0] ? ctx.origOrder[0].parentElement : null;
+    for (const l of state.sidebar.root.querySelectorAll(".cr-wl-lbl")) {
+      l.classList.remove("active");
+    }
+    const allLbl = _$("lbl-wl-all");
+    if (allLbl) allLbl.classList.add("active");
+    const container = state.origOrder[0] ? state.origOrder[0].parentElement : null;
     if (container) {
-      ctx.origOrder.forEach(function(card) {
+      for (const card of state.origOrder) {
         card.classList.remove("cr-hidden");
         container.appendChild(card);
-      });
+      }
     }
-    ctx._updateStats(ctx.cards.size, ctx.cards.size, withData(ctx.cards));
-    ctx._saveFilters();
+    updateStats(state, state.cards.size, state.cards.size, withData(state.cards));
+    emitter.emit("filter:changed");
   }
-  async function saveFilters(ctx) {
+  async function saveFilters(state, _$, _emitter2, log2) {
     try {
-      await saveSetting("crunchyroll_advanced_filters", getFilters(ctx._$, ctx.sidebar.root));
+      await saveSetting(
+        "cr_filters",
+        getFilters(_$, state.sidebar.root)
+      );
     } catch (e) {
-      ctx.log.warn("Failed to save filters", e);
+      if (log2) log2.warn("Failed to save filters", e);
     }
   }
-  async function loadSavedFilters(ctx) {
+  async function loadSavedFilters(state, _$, _emitter2, log2) {
     try {
-      let set2 = function(id, val) {
-        if (val == null || val === "") return;
-        var el = $(id);
-        if (el) el.value = String(val);
-      };
-      var set = set2;
-      var s = await loadSetting("crunchyroll_advanced_filters", {});
+      let s = await loadSetting("cr_filters", null);
+      if (s === null) {
+        const old = await loadSetting("crunchyroll_advanced_filters", null);
+        if (old !== null) {
+          s = old;
+          await saveSetting("cr_filters", JSON.stringify(s));
+        } else {
+          s = {};
+        }
+      }
       if (typeof s === "string") {
         try {
           s = JSON.parse(s);
@@ -1086,143 +1353,207 @@
         }
       }
       if (!s || typeof s !== "object") s = {};
-      var $ = ctx._$;
-      set2("cr-f-title", s.title);
-      set2("cr-f-desc", s.desc);
-      set2("cr-f-r-min", s.ratingMin);
-      set2("cr-f-r-max", s.ratingMax);
-      set2("cr-f-v-min", s.votesMin);
-      set2("cr-f-ep-min", s.epMin);
-      set2("cr-f-ep-max", s.epMax);
-      set2("cr-f-se-min", s.seasonsMin);
-      set2("cr-f-se-max", s.seasonsMax);
-      set2("cr-s-1", s.sort ? s.sort[0] : null);
-      set2("cr-s-2", s.sort ? s.sort[1] : null);
-      set2("cr-s-3", s.sort ? s.sort[2] : null);
+      const setField = (id, val) => {
+        if (val == null || val === "") return;
+        const el = _$(id);
+        if (el) el.value = String(val);
+      };
+      setField("cr-f-title", s.title);
+      setField("cr-f-desc", s.desc);
+      setField("cr-f-r-min", s.ratingMin);
+      setField("cr-f-r-max", s.ratingMax);
+      setField("cr-f-v-min", s.votesMin);
+      setField("cr-f-ep-min", s.epMin);
+      setField("cr-f-ep-max", s.epMax);
+      setField("cr-f-se-min", s.seasonsMin);
+      setField("cr-f-se-max", s.seasonsMax);
+      setField("cr-s-1", s.sort ? s.sort[0] : null);
+      setField("cr-s-2", s.sort ? s.sort[1] : null);
+      setField("cr-s-3", s.sort ? s.sort[2] : null);
       if (s.dataOnly) {
-        var doEl = $("cr-opt-data");
+        const doEl = _$("cr-opt-data");
         if (doEl) doEl.checked = true;
-        var doLbl = $("lbl-data-only");
-        if (doLbl) doLbl.classList.add("checked");
+        const doLbl = _$("lbl-cr-opt-data");
+        if (doLbl) doLbl.classList.add("active");
       }
       if (s.subOnly) {
-        var subEl = $("cr-f-sub");
+        const subEl = _$("cr-f-sub");
         if (subEl) subEl.checked = true;
-        var subLbl = $("lbl-sub");
-        if (subLbl) subLbl.classList.add("checked");
+        const subLbl = _$("lbl-cr-f-sub");
+        if (subLbl) subLbl.classList.add("active");
       }
       if (s.dubOnly) {
-        var dubEl = $("cr-f-dub");
+        const dubEl = _$("cr-f-dub");
         if (dubEl) dubEl.checked = true;
-        var dubLbl = $("lbl-dub");
-        if (dubLbl) dubLbl.classList.add("checked");
+        const dubLbl = _$("lbl-cr-f-dub");
+        if (dubLbl) dubLbl.classList.add("active");
       }
       if (s.watchlist && s.watchlist !== "all") {
-        var r = ctx.sidebar.root.querySelector('input[name="cr-wl"][value="' + s.watchlist + '"]');
-        if (r) {
-          r.checked = true;
-          var wlLbls = ctx.sidebar.root.querySelectorAll(".cr-wl-lbl");
-          Array.from(wlLbls).forEach(function(l) {
-            l.classList.remove("checked");
-          });
-          var wlMap = { yes: "lbl-wl-yes", no: "lbl-wl-no" };
-          if (wlMap[s.watchlist]) {
-            var targetLbl = $(wlMap[s.watchlist]);
-            if (targetLbl) targetLbl.classList.add("checked");
+        try {
+          const r = state.sidebar.root.querySelector(
+            'input[name="cr-wl"][value="' + s.watchlist + '"]'
+          );
+          if (r) {
+            r.checked = true;
+            for (const l of state.sidebar.root.querySelectorAll(".cr-wl-lbl")) {
+              l.classList.remove("active");
+            }
+            const wlMap = { yes: "lbl-wl-yes", no: "lbl-wl-no" };
+            if (wlMap[s.watchlist]) {
+              const targetLbl = _$(wlMap[s.watchlist]);
+              if (targetLbl) targetLbl.classList.add("active");
+            }
+            const allLbl = _$("lbl-wl-all");
+            if (allLbl) allLbl.classList.remove("active");
           }
-          var allLbl = $("lbl-wl-all");
-          if (allLbl) allLbl.classList.remove("checked");
+        } catch (e2) {
+          if (log2) log2.warn("Failed to restore watchlist filter", e2);
         }
       }
     } catch (e) {
-      ctx.log.warn("Failed to load saved filters", e);
+      if (log2) log2.warn("Failed to load saved filters", e);
     }
+  }
+  const log = createLogger("Crunchyroll Enhanced");
+  let _initialized = false;
+  let _state = null;
+  let _emitter = null;
+  async function init(opts = {}) {
+    if (_initialized) {
+      if (_state && _state._scan && !_state.isScanning) {
+        _state._scan();
+      }
+      return { state: _state, emitter: _emitter };
+    }
+    const sidebarWidth = opts.sidebarWidth ?? 360;
+    const state = createState();
+    const emitter = createEmitter();
+    const debouncedApply = debounce(() => {
+      if (!state.sidebar) return;
+      const _$2 = queryById(state.sidebar.root);
+      saveFilters(state, _$2, emitter, log);
+      applyFilterAndSort(createCtx(state, _$2, emitter, debouncedApply));
+    }, 280);
+    function createCtx(st, _$2, _em, da) {
+      return {
+        cards: st.cards,
+        origOrder: st.origOrder,
+        isScanning: st.isScanning,
+        showBadges: st.showBadges,
+        sidebar: st.sidebar,
+        _observer: st._observer,
+        _observerPaused: st._observerPaused,
+        _observerTimer: st._observerTimer,
+        _$: _$2,
+        log,
+        _status: (msg) => updateStatus(st, msg),
+        _updateStats: (v, t, wd) => updateStats(st, v, t, wd),
+        _sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        _apply: () => da(),
+        _debounceApply: () => da()
+      };
+    }
+    state._scan = async () => {
+      if (!state.sidebar) return;
+      const _$2 = queryById(state.sidebar.root);
+      const ctx = createCtx(state, _$2, emitter, debouncedApply);
+      await scanCards(ctx);
+    };
+    await waitForElement(".browse-card", 0).catch(() => {
+    });
+    state.isOpen = await loadSetting("cr_sidebar_open", false);
+    state.showBadges = await loadSetting("cr_show_badges", true);
+    buildSidebar(state, sidebarWidth);
+    const _$ = queryById(state.sidebar.root);
+    await loadSavedFilters(state, _$, emitter, log);
+    attachEvents(state, _$, emitter, debouncedApply);
+    setTimeout(() => {
+      const ctx = createCtx(state, _$, emitter, debouncedApply);
+      scanCards(ctx);
+    }, 1200);
+    emitter.on("scan:complete", () => debouncedApply());
+    emitter.on("filter:changed", () => debouncedApply());
+    _initialized = true;
+    _state = state;
+    _emitter = emitter;
+    return { state, emitter };
+  }
+  function unlockPiP() {
+    if (!/\/watch\//.test(location.pathname)) return;
+    const existing = document.querySelectorAll("video[disablePictureInPicture]");
+    for (const v of existing) {
+      v.removeAttribute("disablePictureInPicture");
+    }
+    const obs = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "attributes" && m.attributeName === "disablepictureinpicture") {
+          m.target.removeAttribute("disablePictureInPicture");
+        }
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          if (node.matches && node.matches("video[disablePictureInPicture]")) {
+            node.removeAttribute("disablePictureInPicture");
+          }
+          if (node.querySelectorAll) {
+            for (const v of node.querySelectorAll("video[disablePictureInPicture]")) {
+              v.removeAttribute("disablePictureInPicture");
+            }
+          }
+        }
+      }
+    });
+    obs.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["disablepictureinpicture"]
+    });
   }
   
-  var SW = 360;
-  var log = createLogger("Crunchyroll Enhanced");
-  GM_addStyle([
-    "html { transition: margin-right 0.32s ease !important; }",
-    ".cr-overlay { position:absolute; top:5px; right:5px; z-index:3; display:flex; flex-direction:column; gap:2px; pointer-events:none; }",
-    ".cr-badge { display:inline-block; padding:2px 5px; border-radius:3px; font-size:9px; font-weight:700; line-height:1.4; white-space:nowrap; }",
-    ".cr-b-rating   { background:rgba(230,140,10,0.9); color:#fff; }",
-    ".cr-b-votes    { background:rgba(130,60,160,0.9); color:#fff; }",
-    ".cr-b-seasons  { background:rgba(30,150,80,0.9);  color:#fff; }",
-    ".cr-b-episodes { background:rgba(40,120,200,0.9); color:#fff; }",
-    ".cr-b-sub      { background:rgba(20,50,80,0.92);  color:#6bb5e0; }",
-    ".cr-b-dub      { background:rgba(20,50,80,0.92);  color:#9ecfec; }",
-    ".cr-b-wl       { background:rgba(200,40,40,0.88); color:#fff; }",
-    ".cr-hidden { display: none !important; }",
-    "@keyframes cr-spin { to { transform: rotate(360deg); } }",
-    "@keyframes cr-new-card { from { outline: 2px solid #f47521; } to { outline: 2px solid transparent; } }",
-    ".cr-new-card { animation: cr-new-card 1.2s ease-out forwards; }"
-  ].join("\n"));
-  class CrunchyrollEnhanced {
-    constructor() {
-      this.cards = new Map();
-      this.origOrder = [];
-      this.isScanning = false;
-      this.isOpen = false;
-      this.showBadges = true;
-      this.log = log;
-      var self = this;
-      this._debounceApply = debounce(function() {
-        saveFilters(self);
-        self._apply();
-      }, 280);
-      this._waitForCards().then(function() {
-        self._buildUI();
-        setTimeout(function() {
-          self._scan();
-        }, 1200);
-      });
+  unlockPiP();
+  if (/\/videos\/popular/.test(location.pathname)) {
+    GM_addStyle([
+      "html { transition: margin-right 0.32s cubic-bezier(0.4,0,0.2,1) !important; }",
+      ".cr-overlay { position:absolute; top:5px; right:5px; z-index:3; display:flex; flex-direction:column; gap:2px; pointer-events:none; }",
+      ".cr-badge { display:inline-block; padding:2px 5px; border-radius:3px; font-size:9px; font-weight:700; line-height:1.4; white-space:nowrap; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }",
+      ".cr-b-rating   { background:rgba(230,140,10,0.88); color:#fff; }",
+      ".cr-b-votes    { background:rgba(130,60,160,0.88); color:#fff; }",
+      ".cr-b-seasons  { background:rgba(30,150,80,0.88);  color:#fff; }",
+      ".cr-b-episodes { background:rgba(40,120,200,0.88); color:#fff; }",
+      ".cr-b-sub      { background:rgba(20,50,80,0.9);    color:#6bb5e0; }",
+      ".cr-b-dub      { background:rgba(20,50,80,0.9);    color:#9ecfec; }",
+      ".cr-b-wl       { background:rgba(200,40,40,0.85);  color:#fff; }",
+      ".cr-hidden { display:none !important; }",
+      "@keyframes cr-spin { to { transform: rotate(360deg); } }",
+      "@keyframes cr-new-card { from { outline: 2px solid #f47521; } to { outline: 2px solid transparent; } }",
+      ".cr-new-card { animation: cr-new-card 1.2s ease-out forwards; }"
+    ].join("\n"));
+    async function bootstrap() {
+      try {
+        await init({ sidebarWidth: 360 });
+      } catch (err) {
+        console.error("[Crunchyroll Enhanced] Bootstrap failed", err);
+      }
     }
-_waitForCards() {
-      return waitForElement(".browse-card", 0).catch(function() {
-      });
-    }
-    async _buildUI() {
-      this.isOpen = await GM.getValue("cr_sidebar_open", false);
-      this.showBadges = await GM.getValue("cr_show_badges", true);
-      buildSidebar(this, SW);
-      await loadSavedFilters(this);
-      attachEvents(this);
-    }
-_$(id) {
-      return this.sidebar.root.querySelector("#" + CSS.escape(id));
-    }
-_scan() {
-      scanCards(this);
-    }
-    _apply() {
-      applyFilterAndSort(this);
-    }
-    _toggle(forceTo) {
-      toggle(this, forceTo);
-    }
-    _reset() {
-      resetFilters(this);
-    }
-    _status(msg) {
-      updateStatus(this, msg);
-    }
-    _updateStats(visible, total, wd) {
-      updateStats(this, visible, total, wd);
-    }
-    _saveFilters() {
-      saveFilters(this);
-    }
-    _sleep(ms) {
-      return new Promise(function(r) {
-        setTimeout(r, ms);
-      });
-    }
+    bootstrap();
   }
-  setInterval(function() {
-    var v = document.querySelector("video[disablePictureInPicture]");
-    if (v) v.removeAttribute("disablePictureInPicture");
-  }, 1e3);
-  if (/\/videos\/popular/.test(location.pathname))
-    new CrunchyrollEnhanced();
+  if (typeof window.onurlchange === "function") {
+    window.addEventListener("urlchange", async () => {
+      if (/\/videos\/popular/.test(location.pathname)) {
+        try {
+          await init({ sidebarWidth: 360 });
+        } catch (err) {
+          console.error("[Crunchyroll Enhanced] SPA bootstrap failed", err);
+        }
+      }
+    });
+  }
+  if (typeof GM.registerMenuCommand === "function") {
+    GM.registerMenuCommand("🔍 Crunchyroll Enhanced Scan", () => {
+      if (/\/videos\/popular/.test(location.pathname)) {
+        init({ sidebarWidth: 360 });
+      }
+    });
+  }
 
 })();

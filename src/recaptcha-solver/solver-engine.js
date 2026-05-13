@@ -4,7 +4,7 @@
 // solved state, and manages retry limits.
 // Consumers: Recaptcha Solver (entry file)
 
-import { createLogger } from '../shared/logging-utils.js';
+import { createLogger } from './_logger.js';
 import { setButtonState } from './ui-button.js';
 import { getTextFromAudio } from './audio-api.js';
 

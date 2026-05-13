@@ -11,7 +11,7 @@
 // @sandbox      JavaScript
 // @inject-into  content
 // @noframes
-// @version      2.6.0
+// @version      2.6.1
 // @author       marmoris-x
 // @description  Removes NSFW popup, un-blurs content, and makes website accessible
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js
@@ -20,8 +20,40 @@
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
-import { observeMutations, debounce } from '../src/shared/dom-utils.js';
+export function createLogger(prefix, debugMode = false) {
+  const tag = '[' + prefix + ']';
+  return {
+    log:   function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.log.apply(console, args); },
+    warn:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.warn.apply(console, args); },
+    error: function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.error.apply(console, args); },
+    info:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.info.apply(console, args); },
+    debug: function () { if (debugMode) { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.debug.apply(console, args); } }
+  };
+}
+
+export function observeMutations(callback, root) {
+  root = root || document.body;
+  const observer = new MutationObserver(function (mutations) {
+    for (let m = 0; m < mutations.length; m++) {
+      const nodes = mutations[m].addedNodes;
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
+      }
+    }
+  });
+  observer.observe(root, { childList: true, subtree: true });
+  return observer;
+}
+
+export function debounce(fn, ms) {
+  ms = ms || 200;
+  let timer = 0;
+  return function () {
+    const ctx = this, args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(function () { fn.apply(ctx, args); }, ms);
+  };
+}
 
 const log = createLogger('Reddit Content Unlocker');
 

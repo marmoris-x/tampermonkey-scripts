@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.7.0
+// @version      5.7.1
 // @description  Adds a Tampermonkey menu command to force the current tab into PiP mode.
 // @author       marmoris-x
 // @match        *://*/*
@@ -17,7 +17,22 @@
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
+/**
+ * Creates a prefixed logger instance. All methods prepend `[prefix]` to messages.
+ * @param {string} prefix - Script identifier
+ * @param {boolean} [debugMode=false] - When false, debug() calls are no-ops
+ */
+function createLogger(prefix, debugMode) {
+  debugMode = debugMode || false;
+  const tag = '[' + prefix + ']';
+  return {
+    log:   function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.log.apply(console, args); },
+    warn:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.warn.apply(console, args); },
+    error: function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.error.apply(console, args); },
+    info:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.info.apply(console, args); },
+    debug: function () { if (debugMode) { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.debug.apply(console, args); } }
+  };
+}
 
 const log = createLogger('Picture-in-Picture');
 

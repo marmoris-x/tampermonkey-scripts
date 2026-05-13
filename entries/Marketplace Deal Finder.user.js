@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Marketplace Deal Finder
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      30.0
+// @version      30.0.1
 // @description  Cross-platform deal aggregator for Willhaben and Kleinanzeigen with AI-powered price analysis. Multi-page crawling with Gemini AI.
 // @author       marmoris
 // @match        https://www.willhaben.at/iad/kaufen-und-verkaufen/*
@@ -25,9 +25,9 @@
 // @license      MIT
 // ==/UserScript==
 
-import { createLogger } from '../src/shared/logging-utils.js';
-import { saveSetting } from '../src/shared/storage-utils.js';
-import { waitForElement } from '../src/shared/dom-utils.js';
+import { createLogger } from '../src/marketplace-deal-finder/_logger.js';
+import { saveSetting } from '../src/marketplace-deal-finder/_storage.js';
+import { waitForElement } from '../src/marketplace-deal-finder/_dom.js';
 import {
   PAUSE_POLL_INTERVAL, REQUEST_TIMEOUT, MAX_CACHE_SIZE, MAX_RETRIES,
   INITIAL_BATCH_SIZE, SAME_PAGE_INCREMENT, NEW_PAGE_INCREMENT, MAX_INIT_RETRIES,

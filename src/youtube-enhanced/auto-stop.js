@@ -3,8 +3,8 @@
 // (/watch, /shorts, /channel, /@, /playlist, /live). Also handles catching
 // auto-play that starts after the initial pause.
 
-import { createLogger } from '../shared/logging-utils.js';
-import { observeMutations } from '../shared/dom-utils.js';
+import { createLogger } from './_logger.js';
+import { observeMutations } from './_dom.js';
 import { initAutoHD } from './auto-hd.js';
 
 var log = createLogger('YouTube Enhanced');

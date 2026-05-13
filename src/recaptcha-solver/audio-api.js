@@ -3,8 +3,8 @@
 // the audio transcription request with dual-server failover.
 // Consumers: Recaptcha Solver (solver-engine)
 
-import { createLogger } from '../shared/logging-utils.js';
-import { fetchJSON } from '../shared/network-utils.js';
+import { createLogger } from './_logger.js';
+import { fetchJSON } from './_network.js';
 import { state } from './solver-engine.js';
 
 var log = createLogger('Recaptcha Solver');
