@@ -40,6 +40,10 @@ export const SELECTORS = {
   // Blurred slots inside aspect-ratio containers
   ASPECT_RATIO_BLURRED: 'shreddit-aspect-ratio [slot="blurred"]',
 
+  // Video player detection
+  SHREDDIT_PLAYER: 'shreddit-player',
+  SHREDDIT_POST: 'shreddit-post',
+
   // Image selectors
   BLURRED_IMAGES: 'img:not([data-unblurred])',
   IMAGES_WITH_BLUR_SRC: 'img[src*="blur="]:not([data-unblurred])',
