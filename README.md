@@ -45,9 +45,9 @@ The repository was fully modularized in April 2026. Entry files in `src/entries/
 
 ```
 ├── src/
-│   ├── entries/                  # 17 entry files — metadata blocks + ES module imports
+│   ├── entries/                  # 18 entry files — metadata blocks + ES module imports
 │   │   ├── AniSearch Endless Scroll.user.js
-│   │   ├── ... (all 17 scripts)
+│   │   ├── ... (all 18 scripts)
 │   │   └── YouTube Enhanced.user.js
 │   │
 │   ├── shared/                  # 8 shared modules on the globalThis.TM namespace
@@ -69,9 +69,10 @@ The repository was fully modularized in April 2026. Entry files in `src/entries/
 │   ├── marketplace-deal-finder/   # 5 modules
 │   ├── notebooklm-source-export/  # 2 modules
 │   ├── recaptcha-solver/          # 3 modules
+│   ├── reddit-content-unlocker/   # 9 modules
 │   └── youtube-enhanced/          # 3 modules
 │
-├── dist/                        # Build output — 17 standalone .user.js files (all modules inlined)
+├── dist/                        # Build output — 18 standalone .user.js files (all modules inlined)
 │   ├── AniSearch Endless Scroll.user.js
 │   ├── ... (all 17 scripts)
 │   └── YouTube Enhanced.user.js
@@ -83,11 +84,11 @@ The repository was fully modularized in April 2026. Entry files in `src/entries/
 
 ### Module System
 
-**Shared modules** (in `src/shared/`) expose APIs via ES module `export` and also register on the `globalThis.TM` namespace for backward compatibility. All 17 scripts depend on `logging-utils.js`. Heavier scripts use additional shared modules for DOM, storage, networking, UI components, i18n, markdown conversion, and ZIP building. The dependency tree is flat — shared modules never import each other.
+**Shared modules** (in `src/shared/`) expose APIs via ES module `export` and also register on the `globalThis.TM` namespace for backward compatibility. All 18 scripts depend on `logging-utils.js`. Heavier scripts use additional shared modules for DOM, storage, networking, UI components, i18n, markdown conversion, and ZIP building. The dependency tree is flat — shared modules never import each other.
 
 **Script-specific modules** (in `src/<slug>/`) export constructors, configuration objects, and utility functions via ES module `export`. The entry file imports from them and wires everything together. Each folder contains 2-7 focused modules that split the original monolithic script into single-responsibility units.
 
-**Entry files** (in `src/entries/`) are kept minimal:
+**Entry files** (in `entries/`) are kept minimal:
 1. Full `==UserScript==` metadata block with `@grant`, `@match`, `@connect`, etc.
 2. ES module `import` statements from `../shared/` and `../<script-name>/` modules
 3. A thin orchestration block: double-init guard, menu command registration, async init IIFE
@@ -100,7 +101,7 @@ A custom build script (`build.mjs`) uses **Vite 6** + **vite-plugin-monkey 7** t
 3. Inlines all shared and script-specific modules into a single IIFE-wrapped `.user.js` file
 4. Outputs to `dist/` (non-minified, GreasyFork-compatible)
 
-Run `npm run build` to regenerate all 17 `dist/` files after editing source files. There are no runtime `@require` dependencies — all code is self-contained in each output file.
+Run `npm run build` to regenerate all 18 `dist/` files after editing source files. There are no runtime `@require` dependencies — all code is self-contained in each output file.
 
 ## Installation
 
@@ -167,7 +168,7 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | 2 shared | `GM_addElement`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js) |
+| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | 0 shared + 9 script | `GM_addElement`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js) |
 
 ### Manga & Comics Tools
 
