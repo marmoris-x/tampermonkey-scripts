@@ -39,7 +39,7 @@ This repository contains a personal collection of userscripts written for the Ta
 
 ## Architecture
 
-The repository was fully modularized in April 2026. Entry files in `src/entries/` are thin orchestrators that import shared and script-specific modules via ES module `import` syntax. A Vite-based build step (`npm run build`) bundles everything into standalone `.user.js` files in `dist/` with all modules inlined.
+The repository was fully modularized in April 2026. Entry files in `entries/` are thin orchestrators that import shared and script-specific modules via ES module `import` syntax. A Vite-based build step (`npm run build`) bundles everything into standalone `.user.js` files in `dist/` with all modules inlined.
 
 ### Structure
 
@@ -74,7 +74,7 @@ The repository was fully modularized in April 2026. Entry files in `src/entries/
 │
 ├── dist/                        # Build output — 18 standalone .user.js files (all modules inlined)
 │   ├── AniSearch Endless Scroll.user.js
-│   ├── ... (all 17 scripts)
+│   ├── ... (all 18 scripts)
 │   └── YouTube Enhanced.user.js
 │
 ├── build.mjs                    # Vite build orchestrator (parses entries, bundles with vite-plugin-monkey)
@@ -168,7 +168,7 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 
 | File | Name | Description | Modules | Grant | Update URL |
 |------|------|-------------|---------|-------|------------|
-| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | 0 shared + 9 script | `GM_addElement`, `GM_setValue`, `GM_getValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js) |
+| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | 0 shared + 9 script | `GM_addElement`, `GM_getValue`, `GM_setValue` | [GitHub Raw](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js) |
 
 ### Manga & Comics Tools
 
@@ -202,7 +202,7 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 | Markdown export | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | ✓ | ✓ | -- | -- | -- | ✓ | -- |
 | Cross-site support | ✓ | -- | ✓ | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | ✓ | ✓ | -- |
 | CAPTCHA solving | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | ✓ |
-| Modular architecture | 3 shared + 3 script | 4 shared + 3 script | 1 shared | 5 shared + 4 script | 6 shared + 5 script | 2 shared | 5 shared + 3 script | 2 shared | 5 shared + 4 script | 2 shared | 4 shared + 2 script | 4 shared | 2 shared | 2 shared | 4 shared + 4 script | 5 shared + 9 script | 3 shared + 3 script |
+| Modular architecture | 3 shared + 3 script | 4 shared + 3 script | 1 shared | 5 shared + 4 script | 6 shared + 5 script | 2 shared | 5 shared + 3 script | 2 shared | 5 shared + 4 script | 2 shared | 4 shared + 2 script | 4 shared | 2 shared | 0 shared + 9 script | 4 shared + 4 script | 5 shared + 9 script | 3 shared + 3 script |
 
 ## Usage & Configuration
 
@@ -268,7 +268,7 @@ Contributions are welcome! If you have an idea for a new script or an improvemen
 ### Adding a new script
 1. **Read `docs/Userscripts_Gold_Standards_2026.md` first** — it defines all metadata, security, and performance standards.
 2. Create `src/<script-slug>/` with focused ES modules that `export` their public API.
-3. Create `src/entries/<Script Name>.user.js` with the canonical metadata block and ES module `import` statements.
+3. Create `entries/<Script Name>.user.js` with the canonical metadata block and ES module `import` statements.
 4. Reuse shared modules from `src/shared/` where possible — check existing utilities before writing new ones.
 5. Add a double-init guard: `if (window.__MYSCRIPT__) throw new Error(); window.__MYSCRIPT__ = true;`
 6. Run `npm run build` — verify the output in `dist/` builds cleanly.
