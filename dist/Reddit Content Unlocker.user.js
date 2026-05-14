@@ -357,6 +357,23 @@ node,
       img.style.setProperty("filter", "none", "important");
     });
   }
+  function unblurImageUrl(src) {
+    const match = src.match(/https?:\/\/(?:preview|external-preview)\.redd\.it\/([^?]+)/);
+    if (match) {
+      return "https://i.redd.it/" + match[1];
+    }
+    return src;
+  }
+  function replacePreviewUrls() {
+    document.querySelectorAll(
+      'img[src*="preview.redd.it/"], img[src*="external-preview.redd.it/"]'
+    ).forEach((img) => {
+      const unblurred = unblurImageUrl(img.src);
+      if (unblurred !== img.src) {
+        img.src = unblurred;
+      }
+    });
+  }
   function unblurCallback() {
     if (!stateManager.getState()) return;
     injectGlobalCSS();
@@ -431,6 +448,7 @@ node,
       reveal(el);
       unblurImgs(el);
     });
+    replacePreviewUrls();
     document.body.style.removeProperty("overflow");
     document.documentElement.style.removeProperty("overflow");
   }

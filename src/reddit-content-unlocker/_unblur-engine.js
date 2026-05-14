@@ -12,6 +12,7 @@
 import { SELECTORS, ATTRS, SLOTS, BUNDLE_PATTERNS } from './_selectors.js';
 import { injectGlobalCSS } from './_css.js';
 import { removeAll, reveal, unblurImgs } from './_dom-utils.js';
+import { replacePreviewUrls } from './_image-cleaner.js';
 import { stateManager } from './_state.js';
 
 /**
@@ -139,7 +140,10 @@ export function unblurCallback() {
     unblurImgs(el);
   });
 
-  // --- Phase 10: Restore page scrolling ---
+  // --- Phase 10: Replace preview CDN URLs with direct image URLs ---
+  replacePreviewUrls();
+
+  // --- Phase 11: Restore page scrolling ---
   document.body.style.removeProperty('overflow');
   document.documentElement.style.removeProperty('overflow');
 }

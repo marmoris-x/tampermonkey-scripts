@@ -1,46 +1,38 @@
 /**
- * @fileoverview Image blur removal utilities.
- * Cleans blur URL parameters and inline CSS filter:blur() styles
- * from images to restore full-quality content.
+ * @fileoverview Image URL unblurring utility.
+ * Replaces Reddit CDN preview URLs (server-side blurred) with
+ * direct i.redd.it URLs that serve the full-resolution image.
  *
  * @module _image-cleaner
  */
 
-import { URL_PATTERNS, STYLE_PATTERNS } from './_selectors.js';
+/**
+ * Maps Reddit preview CDN URLs to direct image URLs.
+ * preview.redd.it serves blurred images with a signed URL.
+ * i.redd.it serves the same image without server-side blur.
+ *
+ * @param {string} src - Current image src
+ * @returns {string} Unblurred image URL, or original if no match
+ */
+export function unblurImageUrl(src) {
+  const match = src.match(/https?:\/\/(?:preview|external-preview)\.redd\.it\/([^?]+)/);
+  if (match) {
+    return 'https://i.redd.it/' + match[1];
+  }
+  return src;
+}
 
 /**
- * Removes blur from all images on the page.
- * Handles two blur mechanisms:
- * 1. URL parameter-based blur: `?blur=500&format=pjpg`
- * 2. Inline style-based blur: `filter: blur(20px)`
- *
- * Marks processed images with data-unblurred attribute
- * to prevent redundant processing.
+ * Replaces all Reddit preview CDN image URLs with direct
+ * i.redd.it URLs to remove server-side blur.
  */
-export function removeImageBlur() {
-  // Select all images with blur indicators — no :not([data-unblurred]) guard
-  // because unblurImgs() in Phase 8 may have already set that attribute.
-  document.querySelectorAll('img[src*="blur="], img[style*="blur"]').forEach((img) => {
-    // Clean URL-based blur
-    if (img.src.includes('blur=')) {
-      let fixed = img.src
-        .replace(URL_PATTERNS.BLUR_PARAM, '')
-        .replace(URL_PATTERNS.FORMAT_PJPG, '')
-        .replace(URL_PATTERNS.DOUBLE_AMPERSAND, '&')
-        .replace(URL_PATTERNS.QUESTION_AMPERSAND, '?');
-
-      if (fixed !== img.src) {
-        img.src = fixed;
-      }
-    }
-
-    // Clean inline style blur
-    const style = img.getAttribute('style') || '';
-    if (style.includes('blur')) {
-      img.setAttribute(
-        'style',
-        style.replace(STYLE_PATTERNS.BLUR_FILTER, '')
-      );
+export function replacePreviewUrls() {
+  document.querySelectorAll(
+    'img[src*="preview.redd.it/"], img[src*="external-preview.redd.it/"]'
+  ).forEach((img) => {
+    const unblurred = unblurImageUrl(img.src);
+    if (unblurred !== img.src) {
+      img.src = unblurred;
     }
   });
 }
