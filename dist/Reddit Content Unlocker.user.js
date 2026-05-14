@@ -545,6 +545,10 @@ e.target
       menuElement.classList.remove("active");
     }
   }
+  function resetMenu() {
+    menuElement = null;
+    initialized = false;
+  }
   let observer = null;
   let menuInitialized = false;
   function registerBoot() {
@@ -553,6 +557,11 @@ e.target
     const debouncedCallback = debounce(handleMutations, 150);
     observer = observeMutations(debouncedCallback, document);
     window.addEventListener("urlchange", onUrlChange);
+    unblurCallback();
+    setTimeout(() => {
+      initMenuWithFallback();
+      unblurCallback();
+    }, 1500);
     setTimeout(() => {
       if (!document.querySelector(SELECTORS.REDDIT_APP)) {
         observer == null ? void 0 : observer.disconnect();
@@ -560,17 +569,23 @@ e.target
     }, 8e3);
   }
   function handleMutations(_node, _obs) {
-    if (!menuInitialized) {
-      menuInitialized = true;
-      injectMenuCSS();
-      initMenu();
-    }
+    initMenuWithFallback();
     if (!stateManager.getState()) return;
     unblurCallback();
   }
   function onUrlChange() {
+    menuInitialized = false;
+    resetMenu();
+    initMenuWithFallback();
     if (stateManager.getState()) {
       unblurCallback();
+    }
+  }
+  function initMenuWithFallback() {
+    if (!menuInitialized) {
+      menuInitialized = true;
+      injectMenuCSS();
+      initMenu();
     }
   }
   

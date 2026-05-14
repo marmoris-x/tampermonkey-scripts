@@ -13,7 +13,7 @@ import { injectGlobalCSS, injectMenuCSS } from './_css.js';
 import { patchAttachShadow } from './_shadow-patch.js';
 import { observeMutations, debounce } from './_dom-utils.js';
 import { unblurCallback } from './_unblur-engine.js';
-import { initMenu } from './_menu-ui.js';
+import { initMenu, resetMenu } from './_menu-ui.js';
 
 /** @type {MutationObserver|null} */
 let observer = null;
@@ -39,7 +39,18 @@ export function registerBoot() {
   // 4. Set up SPA navigation handler
   window.addEventListener('urlchange', onUrlChange);
 
-  // 5. Safety timeout: disconnect observer if Reddit app never loads
+  // 5. Initial scan: handle elements that already exist
+  // For document-start this is a no-op (DOM is empty).
+  // For late injection, this unblurs existing content immediately.
+  unblurCallback();
+
+  // 6. Delayed init: ensure menu + full scan even if no mutations fire
+  setTimeout(() => {
+    initMenuWithFallback();
+    unblurCallback();
+  }, 1500);
+
+  // 7. Safety timeout: disconnect observer if Reddit app never loads
   setTimeout(() => {
     if (!document.querySelector(SELECTORS.REDDIT_APP)) {
       observer?.disconnect();
@@ -54,12 +65,7 @@ export function registerBoot() {
  * @param {MutationObserver} obs - The observer instance
  */
 function handleMutations(_node, _obs) {
-  // Initialize menu on first mutation (when header is available)
-  if (!menuInitialized) {
-    menuInitialized = true;
-    injectMenuCSS();
-    initMenu();
-  }
+  initMenuWithFallback();
 
   // Skip unblur if master toggle is off
   if (!stateManager.getState()) return;
@@ -72,8 +78,25 @@ function handleMutations(_node, _obs) {
  * Re-runs unblur logic for newly loaded pages.
  */
 function onUrlChange() {
+  // Reset menu so it gets re-created in the new header
+  menuInitialized = false;
+  resetMenu();
+  initMenuWithFallback();
+
   // Run unblur immediately on navigation
   if (stateManager.getState()) {
     unblurCallback();
+  }
+}
+
+/**
+ * Initialize menu UI if not already done.
+ * Safe to call after SPA navigation when the header is replaced.
+ */
+function initMenuWithFallback() {
+  if (!menuInitialized) {
+    menuInitialized = true;
+    injectMenuCSS();
+    initMenu();
   }
 }

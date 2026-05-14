@@ -146,3 +146,12 @@ function handleClickOutside(e) {
     menuElement.classList.remove('active');
   }
 }
+
+/**
+ * Resets menu state so it gets re-created on next init.
+ * Should be called after SPA navigation when the header is replaced.
+ */
+export function resetMenu() {
+  menuElement = null;
+  initialized = false;
+}
