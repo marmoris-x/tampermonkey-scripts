@@ -53,7 +53,7 @@ export function registerBoot() {
  * @param {Element} node - Added element node
  * @param {MutationObserver} obs - The observer instance
  */
-function handleMutations(node, obs) {
+function handleMutations(_node, _obs) {
   // Initialize menu on first mutation (when header is available)
   if (!menuInitialized) {
     menuInitialized = true;
