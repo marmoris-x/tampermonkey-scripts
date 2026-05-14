@@ -6,7 +6,7 @@
  * @module _image-cleaner
  */
 
-import { ATTRS, URL_PATTERNS, STYLE_PATTERNS } from './_selectors.js';
+import { URL_PATTERNS, STYLE_PATTERNS } from './_selectors.js';
 
 /**
  * Removes blur from all images on the page.
@@ -18,15 +18,9 @@ import { ATTRS, URL_PATTERNS, STYLE_PATTERNS } from './_selectors.js';
  * to prevent redundant processing.
  */
 export function removeImageBlur() {
-  // Select all images with blur indicators that haven't been processed
-  const selector = [
-    'img[src*="blur="]:not([data-unblurred])',
-    'img[style*="blur"]:not([data-unblurred])'
-  ].join(',');
-
-  document.querySelectorAll(selector).forEach((img) => {
-    img.setAttribute(ATTRS.DATA_UNBLURRED, '1');
-
+  // Select all images with blur indicators — no :not([data-unblurred]) guard
+  // because unblurImgs() in Phase 8 may have already set that attribute.
+  document.querySelectorAll('img[src*="blur="], img[style*="blur"]').forEach((img) => {
     // Clean URL-based blur
     if (img.src.includes('blur=')) {
       let fixed = img.src

@@ -367,12 +367,7 @@ node,
     });
   }
   function removeImageBlur() {
-    const selector = [
-      'img[src*="blur="]:not([data-unblurred])',
-      'img[style*="blur"]:not([data-unblurred])'
-    ].join(",");
-    document.querySelectorAll(selector).forEach((img) => {
-      img.setAttribute(ATTRS.DATA_UNBLURRED, "1");
+    document.querySelectorAll('img[src*="blur="], img[style*="blur"]').forEach((img) => {
       if (img.src.includes("blur=")) {
         let fixed = img.src.replace(URL_PATTERNS.BLUR_PARAM, "").replace(URL_PATTERNS.FORMAT_PJPG, "").replace(URL_PATTERNS.DOUBLE_AMPERSAND, "&").replace(URL_PATTERNS.QUESTION_AMPERSAND, "?");
         if (fixed !== img.src) {
