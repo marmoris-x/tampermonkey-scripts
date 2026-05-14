@@ -11,14 +11,13 @@
  * @module _shadow-patch
  */
 
-import { SELECTORS, SHADOW_STYLE_IDS, SLOTS } from './_selectors.js';
+import { SHADOW_STYLE_IDS, SLOTS } from './_selectors.js';
 
 /**
  * CSS injected into every shreddit-blurred-container shadow root.
  * Hides the blurred slot, reveals the actual content, hides prompts.
  */
 const REVEAL_SHADOW_CSS = [
-  `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
   `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
   'div.prompt{display:none!important}'
 ].join('');

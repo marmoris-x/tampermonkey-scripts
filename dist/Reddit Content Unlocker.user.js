@@ -299,7 +299,6 @@ HEADER_NAV_V2: "header.v2 > nav",
     document.head.appendChild(style);
   }
   const REVEAL_SHADOW_CSS = [
-    `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
     `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
     "div.prompt{display:none!important}"
   ].join("");
@@ -425,7 +424,6 @@ node,
       const style = document.createElement("style");
       style.id = "u-reveal";
       style.textContent = [
-        `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
         `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
         "div.prompt{display:none!important}"
       ].join("");
@@ -460,6 +458,13 @@ node,
       } else if (blurredSlot) {
         reveal(blurredSlot);
         unblurImgs(blurredSlot);
+      }
+      const sr = blurred.shadowRoot;
+      if (sr && !sr.querySelector('slot[name="blurred"]') && sr.querySelector('slot[name="revealed"]')) {
+        const lightBlurred = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
+        if (lightBlurred) {
+          lightBlurred.setAttribute("slot", SLOTS.REVEALED);
+        }
       }
     }
     document.querySelectorAll(SELECTORS.ASPECT_RATIO_BLURRED).forEach((el) => {

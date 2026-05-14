@@ -80,7 +80,6 @@ export function unblurCallback() {
     const style = document.createElement('style');
     style.id = 'u-reveal';
     style.textContent = [
-      `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
       `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
       'div.prompt{display:none!important}'
     ].join('');
@@ -126,6 +125,16 @@ export function unblurCallback() {
       // No separate revealed slot — just reveal what's there
       reveal(blurredSlot);
       unblurImgs(blurredSlot);
+    }
+
+    // Handle shadow root slot mismatch: post pages may have only a "revealed" slot
+    // in the shadow DOM while light DOM content is still in the "blurred" slot
+    const sr = blurred.shadowRoot;
+    if (sr && !sr.querySelector('slot[name="blurred"]') && sr.querySelector('slot[name="revealed"]')) {
+      const lightBlurred = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
+      if (lightBlurred) {
+        lightBlurred.setAttribute('slot', SLOTS.REVEALED);
+      }
     }
   }
 
