@@ -12,7 +12,6 @@
 import { SELECTORS, ATTRS, SLOTS, BUNDLE_PATTERNS } from './_selectors.js';
 import { injectGlobalCSS } from './_css.js';
 import { removeAll, reveal, unblurImgs } from './_dom-utils.js';
-import { removeImageBlur } from './_image-cleaner.js';
 import { stateManager } from './_state.js';
 
 /**
@@ -109,10 +108,6 @@ export function unblurCallback() {
     blurred.removeAttribute(ATTRS.BLURRED);
     blurred.setAttribute(ATTRS.CLICKED, '');
 
-    // Attempt to programmatically click the container to trigger reveal
-    try { blurred.click(); } catch (e) { /* ignore */ }
-    try { blurred.firstElementChild?.click(); } catch (e) { /* ignore */ }
-
     // Handle slotted content
     const blurredSlot = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
     const revealedSlot = blurred.querySelector(`[slot="${SLOTS.REVEALED}"]`);
@@ -144,10 +139,7 @@ export function unblurCallback() {
     unblurImgs(el);
   });
 
-  // --- Phase 10: Clean image URL blurs and inline styles ---
-  removeImageBlur();
-
-  // --- Phase 11: Restore page scrolling ---
+  // --- Phase 10: Restore page scrolling ---
   document.body.style.removeProperty('overflow');
   document.documentElement.style.removeProperty('overflow');
 }

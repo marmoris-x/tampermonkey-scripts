@@ -119,15 +119,6 @@ HEADER_NAV_V2: "header.v2 > nav",
     REVEALED: "revealed"
   };
   const OPACITY_CLASSES = ["opacity-30", "opacity-50"];
-  const URL_PATTERNS = {
-    BLUR_PARAM: /[?&]blur=\d+/g,
-    FORMAT_PJPG: /[?&]format=pjpg/g,
-    DOUBLE_AMPERSAND: /&&/g,
-    QUESTION_AMPERSAND: /\?&/
-  };
-  const STYLE_PATTERNS = {
-    BLUR_FILTER: /filter:\s*blur\([^)]+\)/g
-  };
   const SHADOW_STYLE_IDS = {
     U_REVEAL: "u-reveal",
     UNBLUR_CSS: "unblur-css"
@@ -366,25 +357,7 @@ node,
       img.style.setProperty("filter", "none", "important");
     });
   }
-  function removeImageBlur() {
-    document.querySelectorAll('img[src*="blur="], img[style*="blur"]').forEach((img) => {
-      if (img.src.includes("blur=")) {
-        let fixed = img.src.replace(URL_PATTERNS.BLUR_PARAM, "").replace(URL_PATTERNS.FORMAT_PJPG, "").replace(URL_PATTERNS.DOUBLE_AMPERSAND, "&").replace(URL_PATTERNS.QUESTION_AMPERSAND, "?");
-        if (fixed !== img.src) {
-          img.src = fixed;
-        }
-      }
-      const style = img.getAttribute("style") || "";
-      if (style.includes("blur")) {
-        img.setAttribute(
-          "style",
-          style.replace(STYLE_PATTERNS.BLUR_FILTER, "")
-        );
-      }
-    });
-  }
   function unblurCallback() {
-    var _a;
     if (!stateManager.getState()) return;
     injectGlobalCSS();
     removeAll(SELECTORS.FACEPLATE_MODAL_BLOCKING);
@@ -437,14 +410,6 @@ node,
       if (reason === "spoiler" && !state.spoiler) continue;
       blurred.removeAttribute(ATTRS.BLURRED);
       blurred.setAttribute(ATTRS.CLICKED, "");
-      try {
-        blurred.click();
-      } catch (e) {
-      }
-      try {
-        (_a = blurred.firstElementChild) == null ? void 0 : _a.click();
-      } catch (e) {
-      }
       const blurredSlot = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
       const revealedSlot = blurred.querySelector(`[slot="${SLOTS.REVEALED}"]`);
       if (revealedSlot) {
@@ -466,7 +431,6 @@ node,
       reveal(el);
       unblurImgs(el);
     });
-    removeImageBlur();
     document.body.style.removeProperty("overflow");
     document.documentElement.style.removeProperty("overflow");
   }
