@@ -1,35 +1,30 @@
-// Local copies of normalizeText and matchAnyTerm from shared/i18n-utils.js
-// Converted from var to let/const for YouTube Enhanced module isolation.
+// src/youtube-enhanced/_i18n.js — Internationalization utilities
+'use strict';
 
 /**
- * Normalizes text for comparison: lowercase, remove diacritics, collapse whitespace,
- * trim separators (hyphens, underscores, dots).
- * @param {string} str
- * @returns {string}
+ * Detects browser language. Returns 'de' if German, otherwise 'en'.
+ * @returns {'de'|'en'}
  */
-export function normalizeText(str) {
-  if (!str) return '';
-  return str
-    .toLowerCase()
-    .replace(/[äæ]/g, 'ae').replace(/[öœ]/g, 'oe').replace(/[ü]/g, 'ue').replace(/ß/g, 'ss')
-    .replace(/[àáâãå]/g, 'a').replace(/[èéêë]/g, 'e').replace(/[ìíîï]/g, 'i')
-    .replace(/[òóôõ]/g, 'o').replace(/[ùúû]/g, 'u').replace(/[ñ]/g, 'n')
-    .replace(/[ç]/g, 'c')
-    .replace(/[-_.:]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+export function getLanguage() {
+  const browserLang = navigator.language;
+  if (browserLang && browserLang.toLowerCase().startsWith('de')) return 'de';
+  return 'en';
 }
 
+const isGerman = getLanguage() === 'de';
+
 /**
- * Checks if `text` matches any term in `terms` after normalization.
- * @param {string} text
- * @param {string[]} terms
- * @returns {boolean}
+ * Localized strings for the Channel Speed panel and menu.
+ * @type {{ isGerman: boolean, backToPreviousMenu: string, channelSpeed: string,
+ *          decreaseSpeed: string, increaseSpeed: string, standard: string,
+ *          channelSpeedLabel: string }}
  */
-export function matchAnyTerm(text, terms) {
-  const n = normalizeText(text);
-  for (let i = 0; i < terms.length; i++) {
-    if (n.indexOf(normalizeText(terms[i])) !== -1) return true;
-  }
-  return false;
-}
+export const LANG = {
+  isGerman: isGerman,
+  backToPreviousMenu: isGerman ? 'Zurück zum vorherigen Menü' : 'Back to previous menu',
+  channelSpeed: isGerman ? 'Kanalgeschwindigkeit' : 'Channel speed',
+  decreaseSpeed: isGerman ? 'Kanalgeschwindigkeit reduzieren 0,05' : 'Decrease speed 0.05',
+  increaseSpeed: isGerman ? 'Kanalgeschwindigkeit erhöhen 0,05' : 'Increase speed 0.05',
+  standard: isGerman ? 'Normal' : 'Normal',
+  channelSpeedLabel: isGerman ? 'Kanalgeschwindigkeit' : 'Channel speed'
+};

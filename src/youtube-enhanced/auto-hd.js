@@ -4,17 +4,18 @@
 // quality on each video.
 
 import { createLogger } from './_logger.js';
+'use strict';
 
-var log = createLogger('YouTube Enhanced');
+const log = createLogger('YouTube Enhanced');
 
-var THIRTY_DAYS_MS = 2592000000;
+const THIRTY_DAYS_MS = 2592000000;
 
-export var CFG = {
+export const CFG = {
   debug: false,
   preferredQuality: 8    // Fallback: 0=Auto  5=720p  6=1080p  7=1440p  8=2160p/4K
 };
 
-export var QUALITY_MAP = {
+export const QUALITY_MAP = {
   0: 'auto',
   5: 'hd720',
   6: 'hd1080',
@@ -22,7 +23,7 @@ export var QUALITY_MAP = {
   8: 'hd2160'
 };
 
-export var handledVidsHD = new WeakSet();
+export let handledVidsHD = new WeakSet();
 
 export function resetHDTrackers() {
   handledVidsHD = new WeakSet();
@@ -37,17 +38,17 @@ export function resetHDTrackers() {
  */
 export function patchQuality() {
   try {
-    var KEY = 'yt-player-user-settings';
-    var us = {};
+    const KEY = 'yt-player-user-settings';
+    let us = {};
     try {
-      var raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(KEY);
       if (raw) {
-        var p = JSON.parse(raw);
+        const p = JSON.parse(raw);
         if (p && p.data) us = JSON.parse(p.data);
       }
     } catch (_) { }
 
-    var now = Date.now();
+    const now = Date.now();
     us['482'] = { intValue: CFG.preferredQuality };
     localStorage.setItem(KEY, JSON.stringify({
       creation:   now,
@@ -73,11 +74,11 @@ export function applyAutoHD(ytPlayer) {
   try {
     if (!ytPlayer || typeof ytPlayer.getAvailableQualityLevels !== 'function') return;
 
-    var levels = ytPlayer.getAvailableQualityLevels();
+    const levels = ytPlayer.getAvailableQualityLevels();
     if (!levels || levels.length === 0) return;
 
-    var desired = QUALITY_MAP[CFG.preferredQuality];
-    var targetQuality = null;
+    const desired = QUALITY_MAP[CFG.preferredQuality];
+    let targetQuality = null;
 
     if (desired && desired !== 'auto') {
       targetQuality = levels.find(function (q) { return q === desired; });
@@ -108,7 +109,7 @@ export function initAutoHD(ytPlayer, vid) {
   if (!ytPlayer || !vid || handledVidsHD.has(vid)) return;
   handledVidsHD.add(vid);
 
-  var force = function () { return applyAutoHD(ytPlayer); };
+  const force = function () { return applyAutoHD(ytPlayer); };
 
   force(); // Apply immediately
   vid.addEventListener('loadedmetadata', force, { once: true });

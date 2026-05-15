@@ -6,16 +6,17 @@
 import { createLogger } from './_logger.js';
 import { observeMutations } from './_dom.js';
 import { initAutoHD } from './auto-hd.js';
+'use strict';
 
-var log = createLogger('YouTube Enhanced');
+const log = createLogger('YouTube Enhanced');
 
-var PS_PLAYING   = 1; // YouTube player state: PLAYING
-var PS_BUFFERING = 3; // YouTube player state: BUFFERING
+const PS_PLAYING   = 1; // YouTube player state: PLAYING
+const PS_BUFFERING = 3; // YouTube player state: BUFFERING
 
-var STOP_PATHS  = ['/channel','/watch','/shorts','/@','/playlist','/live'];
-var stopObs     = null;
+const STOP_PATHS  = ['/channel','/watch','/shorts','/@','/playlist','/live'];
+let stopObs     = null;
 
-export var handledVids = new WeakSet();
+export let handledVids = new WeakSet();
 
 export function resetStopTrackers() {
   handledVids = new WeakSet();
@@ -34,7 +35,7 @@ export function stopVideoPlayback(youtubePlayer, videoElement) {
   handledVids.add(videoElement);
 
   try {
-    var playerState = youtubePlayer.getPlayerState ? youtubePlayer.getPlayerState() : undefined;
+    const playerState = youtubePlayer.getPlayerState ? youtubePlayer.getPlayerState() : undefined;
     if (playerState === PS_PLAYING || playerState === PS_BUFFERING) {
       youtubePlayer.pauseVideo();
     }
@@ -43,13 +44,13 @@ export function stopVideoPlayback(youtubePlayer, videoElement) {
   }
 
   // One-time event listener to catch auto-play
-  var hasIntercepted = false;
+  let hasIntercepted = false;
 
-  var handleAutoPlay = function () {
+  const handleAutoPlay = function () {
     if (hasIntercepted) return;
 
     try {
-      var state = youtubePlayer.getPlayerState ? youtubePlayer.getPlayerState() : undefined;
+      const state = youtubePlayer.getPlayerState ? youtubePlayer.getPlayerState() : undefined;
       if (state === PS_PLAYING || state === PS_BUFFERING) {
         hasIntercepted = true;
         youtubePlayer.pauseVideo();
@@ -80,13 +81,13 @@ export function stopVideoPlayback(youtubePlayer, videoElement) {
  * @returns {boolean} true if player was found and processed
  */
 export function checkForPlayer() {
-  var playerElement = document.querySelector('ytd-player');
-  var videoElement = document.querySelector('.html5-main-video');
+  const playerElement = document.querySelector('ytd-player');
+  const videoElement = document.querySelector('.html5-main-video');
 
   // Bugfix: removed "|| document.getElementById('movie_player')".
   // Requiring the player API on the element prevents ghost players
   // from prior videos triggering too early.
-  var youtubePlayer = playerElement ? playerElement.player_ : undefined;
+  const youtubePlayer = playerElement ? playerElement.player_ : undefined;
 
   if (youtubePlayer && videoElement && youtubePlayer.getPlayerState) {
     stopVideoPlayback(youtubePlayer, videoElement);
@@ -111,7 +112,7 @@ export function initAutoStop() {
   if (checkForPlayer()) return;
 
   if (stopObs) stopObs.disconnect();
-  stopObs = observeMutations(function (addedNode, obs) {
+  stopObs = observeMutations(function (_, obs) {
     if (checkForPlayer()) obs.disconnect();
   }, document.documentElement);
 

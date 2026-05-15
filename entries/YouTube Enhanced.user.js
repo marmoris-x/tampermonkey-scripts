@@ -1,74 +1,41 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.1
-// @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
+// @version      1.8.0
 // @author       marmoris-x
+// @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
+// @license      MIT
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=youtube.com
+// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
+// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/YouTube%20Enhanced.user.js
+// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/YouTube%20Enhanced.user.js
 // @match        *://*.youtube.com/*
-// @grant        GM_getValue
-// @grant        GM_setValue
+// @sandbox      JavaScript
 // @grant        GM.getValue
 // @grant        GM.setValue
-// @run-at       document-start
-// @sandbox      JavaScript
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @inject-into  content
+// @run-at       document-start
 // @noframes
 // @unwrap
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/YouTube%20Enhanced.user.js
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/YouTube%20Enhanced.user.js
-// @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @license      MIT
 // ==/UserScript==
 
 /*
- * YouTube Enhanced -- three modules:
- *   auto-hd.js         -- Patches localStorage & YouTube player for max quality
- *   channel-speed.js   -- Per-channel speed control with native-UI panel
- *   auto-stop.js       -- Pauses auto-play on video pages
+ * YouTube Enhanced — modular ESM build
+ *   auto-hd.js         — Patches localStorage & YouTube player for max quality
+ *   channel-speed.js   — Per-channel speed control with native-UI panel
+ *   auto-stop.js       — Pauses auto-play on video pages
+ *   boot.js            — Orchestrator for boot and SPA navigation
  *
  * All modules use ES module imports/exports instead of window.__YTE__.
- * This entry file imports from all three and bootstraps.
+ * This entry file imports boot and bootstraps.
  */
 
-import { createLogger } from '../src/youtube-enhanced/_logger.js';
-import { CFG, patchQuality, resetHDTrackers } from '../src/youtube-enhanced/auto-hd.js';
-import { loadSpeedData, initSpeed, cleanupSpeed } from '../src/youtube-enhanced/channel-speed.js';
-import { initAutoStop, cleanupAutoStop, resetStopTrackers } from '../src/youtube-enhanced/auto-stop.js';
-
-var log = createLogger('YouTube Enhanced', CFG.debug);
-
-// ─────────────────────────────────────────────────────────────────────────
-// BOOTSTRAP
-// ─────────────────────────────────────────────────────────────────────────
-
-patchQuality();
-
-window.addEventListener('yt-navigate-finish', async function () {
-  resetHDTrackers(); // Mandatory for SPAs so auto-stop and HD apply to subsequent videos
-  resetStopTrackers();
-  await loadSpeedData();
-  patchQuality();
-
-  cleanupSpeed();
-  if (location.pathname.startsWith('/watch') || location.pathname.startsWith('/shorts')) {
-    initSpeed();
-  }
-
-  cleanupAutoStop();
-  initAutoStop();
-});
-
-async function boot() {
-  await loadSpeedData();
-  if (location.pathname.startsWith('/watch') || location.pathname.startsWith('/shorts')) {
-    initSpeed();
-  }
-  initAutoStop();
-}
+import { boot } from '../src/youtube-enhanced/boot.js';
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function () { boot(); });
+  document.addEventListener('DOMContentLoaded', () => { boot(); });
 } else {
   boot();
 }

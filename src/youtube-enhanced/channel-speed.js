@@ -9,9 +9,10 @@
 import { createLogger } from './_logger.js';
 import { loadSetting, saveSetting } from './_storage.js';
 import { observeMutations } from './_dom.js';
-import { matchAnyTerm } from './_i18n.js';
+import { matchAnyTerm } from './_text.js';
+import { LANG } from './_i18n.js';
 
-var log = createLogger('YouTube Enhanced');
+const log = createLogger('YouTube Enhanced');
 
 // =========================================================
 // Utility helpers
@@ -24,51 +25,28 @@ function clampSpeed(v) { return Math.max(0.25, Math.min(3, v)); }
 // Constants
 // =========================================================
 
-var SPEED_KEY    = 'yt_suite_channel_speeds';
-var MENU_DELAY   = 50;
-var SPEED_RETRY  = 1000;
-var INIT_TIMEOUT = 15000;
-
-// =========================================================
-// Language
-// =========================================================
-
-function getLanguage() {
-  var browserLang = navigator.language;
-  if (browserLang && browserLang.toLowerCase().startsWith('de')) return 'de';
-  return 'en';
-}
-
-var LANG = (function () {
-  var isGerman = getLanguage() === 'de';
-  return {
-    isGerman: isGerman,
-    backToPreviousMenu: isGerman ? 'Zuruck zum vorherigen Menu' : 'Back to previous menu',
-    channelSpeed: isGerman ? 'Kanalgeschwindigkeit' : 'Channel speed',
-    decreaseSpeed: isGerman ? 'Kanalgeschwindigkeit reduzieren 0.05' : 'Decrease speed 0.05',
-    increaseSpeed: isGerman ? 'Kanalgeschwindigkeit erhoben 0.05' : 'Increase speed 0.05',
-    standard: isGerman ? 'Standard' : 'Normal',
-    channelSpeedLabel: isGerman ? 'Kanalgeschwindigkeit' : 'Channel speed'
-  };
-})();
+const SPEED_KEY    = 'yt_suite_channel_speeds';
+const MENU_DELAY   = 50;
+const SPEED_RETRY  = 1000;
+const INIT_TIMEOUT = 15000;
 
 // =========================================================
 // State
 // =========================================================
 
-var speedCache        = {};
-var speedObs          = new Set();
-var speedAbort        = null;
-var speedRetryTimeout = null;
-var speedInitTimeout  = null;
-var currentChannelId  = null;
-var isApplyingSpeed   = false;
-var menuPanel         = null;
-var customPanel       = null;
-var inCustomPanel     = false;
+let speedCache        = {};
+const speedObs          = new Set();
+let speedAbort        = null;
+let speedRetryTimeout = null;
+let speedInitTimeout  = null;
+let currentChannelId  = null;
+let isApplyingSpeed   = false;
+let menuPanel         = null;
+let customPanel       = null;
+let inCustomPanel     = false;
 
-var origMenuWidth  = '';
-var origMenuHeight = '';
+let origMenuWidth  = '';
+let origMenuHeight = '';
 
 // =========================================================
 // Speed data persistence
@@ -111,7 +89,7 @@ async function saveSpeed(cid, val) {
  */
 function applySpeed(val) {
   try {
-    var vid = document.querySelector('.html5-main-video');
+    const vid = document.querySelector('.html5-main-video');
     if (vid && Math.abs(vid.playbackRate - val) > 0.001) {
       isApplyingSpeed = true;
       try {
@@ -130,13 +108,13 @@ function applySpeed(val) {
  */
 function getChannelId() {
   try {
-    var a = document.querySelector('#upload-info #channel-name #text a');
+    const a = document.querySelector('#upload-info #channel-name #text a');
     if (a) return new URL(a.href).pathname.split('/').pop();
 
-    var shortsChannel = document.querySelector('ytd-reel-player-header-renderer #channel-name a, ytd-reel-player-overlay-renderer #channel-name a');
+    const shortsChannel = document.querySelector('ytd-reel-player-header-renderer #channel-name a, ytd-reel-player-overlay-renderer #channel-name a');
     if (shortsChannel) return new URL(shortsChannel.href).pathname.split('/').pop();
 
-    var anyChannel = document.querySelector('a[href*="/@"]') || document.querySelector('a[href*="/channel/"]');
+    const anyChannel = document.querySelector('a[href*="/@"]') || document.querySelector('a[href*="/channel/"]');
     if (anyChannel) return new URL(anyChannel.href).pathname.split('/').pop();
   } catch (_) {}
   return null;
@@ -154,34 +132,34 @@ function getChannelId() {
  * @returns {HTMLElement} The constructed panel element
  */
 function buildSpeedPanel(settingsMenu) {
-  var tempDiv = document.createElement('div');
+  const tempDiv = document.createElement('div');
   tempDiv.innerHTML = '<div class="ytp-panel" style="width: 330px; height: 250px;"><div class="ytp-panel-header"><div class="ytp-panel-back-button-container"><button class="ytp-button ytp-panel-back-button" aria-label="' + LANG.backToPreviousMenu + '"></button></div><span class="ytp-panel-title" role="heading" aria-level="2">' + LANG.channelSpeed + '</span></div><div class="ytp-variable-speed-panel-content" tabindex="0" style="height: 193px;"><div class="ytp-speed-display-container"><div class="ytp-variable-speed-panel-display" aria-live="polite"><div class="ytp-variable-speed-panel-premium-badge" tabindex="-1"><div class="ytp-variable-speed-panel-badge"></div></div><span>1.00x</span></div></div><div class="ytp-variable-speed-panel-slider-container"><button class="ytp-button ytp-variable-speed-panel-button ytp-variable-speed-panel-increment-button" aria-label="' + LANG.decreaseSpeed + '"><span>-</span></button><div class="ytp-input-slider-section"><div class="ytp-speedslider-indicator-container"><div class="ytp-speedslider-badge" aria-label=""><\/div><p class="ytp-speedslider-text">1.00x<\/p><\/div><input class="ytp-input-slider ytp-speedslider ytp-varispeed-input-slider" role="slider" tabindex="0" type="range" min="0.25" max="3" step="0.05" value="1" aria-valuenow="1" aria-valuemin="0.25" aria-valuemax="3" aria-valuetext="1.00" style="--yt-slider-shape-gradient-percent: 42.857142857142854%;"><\/div><button class="ytp-button ytp-variable-speed-panel-button ytp-variable-speed-panel-increment-button" aria-label="' + LANG.increaseSpeed + '"><span>+<\/span><\/button><\/div><div class="ytp-variable-speed-panel-chips"><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="5" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1<\/span><\/button><div class="ytp-variable-speed-panel-preset-button-label-text">' + LANG.standard + '<\/div><\/div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="2" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1,25<\/span><\/button><\/div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="3" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1,5<\/span><\/button><\/div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="0" aria-hidden="true" style="display: none;"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1,75<\/span><\/button><\/div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="4" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>2<\/span><\/button><\/div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="1" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><div class="ytp-variable-speed-panel-premium-upsell-icon"><\/div><span>3.0<\/span><\/button><\/div><\/div><\/div><\/div>';
-  var panel = tempDiv.firstChild;
+  const panel = tempDiv.firstChild;
 
-  var cid = currentChannelId;
+  let cid = currentChannelId;
   if (!cid) cid = getChannelId();
-  var stored = getSpeeds();
-  var curSpeed = cid && stored[cid] ? stored[cid] : 1.0;
+  const stored = getSpeeds();
+  let curSpeed = cid && stored[cid] ? stored[cid] : 1.0;
 
-  var backBtn = panel.querySelector('.ytp-panel-back-button');
-  var displayTxt = panel.querySelector('.ytp-variable-speed-panel-display span');
-  var sliderTxt = panel.querySelector('.ytp-speedslider-text');
-  var slider = panel.querySelector('input[type="range"]');
-  var btns = panel.querySelectorAll('.ytp-variable-speed-panel-increment-button');
-  var btnDec = btns[0];
-  var btnInc = btns[1];
-  var chips = panel.querySelectorAll('.ytp-variable-speed-panel-preset-button-wrapper button');
+  const backBtn = panel.querySelector('.ytp-panel-back-button');
+  const displayTxt = panel.querySelector('.ytp-variable-speed-panel-display span');
+  const sliderTxt = panel.querySelector('.ytp-speedslider-text');
+  const slider = panel.querySelector('input[type="range"]');
+  const btns = panel.querySelectorAll('.ytp-variable-speed-panel-increment-button');
+  const btnDec = btns[0];
+  const btnInc = btns[1];
+  const chips = panel.querySelectorAll('.ytp-variable-speed-panel-preset-button-wrapper button');
 
   // Localize chip numbers based on language
   if (!LANG.isGerman) {
     chips.forEach(function (btn) {
-      var span = btn.querySelector('span');
+      const span = btn.querySelector('span');
       if (!span) return;
       span.textContent = span.textContent.replace(',', '.');
     });
   } else {
     chips.forEach(function (btn) {
-      var span = btn.querySelector('span');
+      const span = btn.querySelector('span');
       if (!span) return;
       span.textContent = span.textContent.replace('.', ',');
     });
@@ -193,17 +171,17 @@ function buildSpeedPanel(settingsMenu) {
   });
 
   function getSliderPercent(v) {
-    var clamped = clampSpeed(v);
+    const clamped = clampSpeed(v);
     return (Math.max(0, Math.min(1, (clamped - 0.25) / (3 - 0.25))) * 100).toFixed(6) + '%';
   }
 
   function refreshUI(v) {
     curSpeed = v;
-    var strVal = v.toFixed(2) + 'x';
+    const strVal = v.toFixed(2) + 'x';
     if (displayTxt) displayTxt.textContent = strVal;
     if (sliderTxt) sliderTxt.textContent = strVal;
 
-    var clampedSlider = clampSpeed(v);
+    const clampedSlider = clampSpeed(v);
     if (slider) {
       slider.value = String(clampedSlider);
       slider.setAttribute('aria-valuenow', String(v));
@@ -212,9 +190,9 @@ function buildSpeedPanel(settingsMenu) {
     }
 
     chips.forEach(function (btn) {
-      var span = btn.querySelector('span');
+      const span = btn.querySelector('span');
       if (!span) return;
-      var btnVal = parseFloat(span.textContent.replace(',', '.'));
+      const btnVal = parseFloat(span.textContent.replace(',', '.'));
       if (Math.abs(btnVal - v) < 0.001) {
         btn.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
       } else {
@@ -224,7 +202,7 @@ function buildSpeedPanel(settingsMenu) {
   }
 
   function commit(v) {
-    var rounded = roundSpeed(v);
+    const rounded = roundSpeed(v);
     refreshUI(rounded);
     if (cid) {
       saveSpeed(cid, rounded);
@@ -250,9 +228,9 @@ function buildSpeedPanel(settingsMenu) {
   }
 
   chips.forEach(function (btn) {
-    var span = btn.querySelector('span');
+    const span = btn.querySelector('span');
     if (!span) return;
-    var speedVal = parseFloat(span.textContent.replace(',', '.'));
+    const speedVal = parseFloat(span.textContent.replace(',', '.'));
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
       commit(speedVal);
@@ -306,7 +284,7 @@ function closeSpeedPanel(settingsMenu) {
  * @param {number} speed
  */
 function updateMenuItemText(speed) {
-  var el = document.querySelector('#yts-chan-speed .ytp-menuitem-content');
+  const el = document.querySelector('#yts-chan-speed .ytp-menuitem-content');
   if (el) el.textContent = speed === 1 ? LANG.standard : speed.toFixed(2) + 'x';
 }
 
@@ -314,7 +292,7 @@ function updateMenuItemText(speed) {
 // Menu item injection
 // =========================================================
 
-var SPEED_TERMS = ['speed','geschwindigkeit','velocidad','vitesse','速度','속도','velocita','hizi','snelheid','kecepatan','toc do','ความเร็ว','predkosc','скорость','سرعة','velocidade','hastighet','rychlost'];
+const SPEED_TERMS = ['speed','geschwindigkeit','velocidad','vitesse','速度','속도','velocita','hizi','snelheid','kecepatan','toc do','ความเร็ว','predkosc','скорость','سرعة','velocidade','hastighet','rychlost'];
 
 /**
  * Inserts a "Channel speed" menu item into YouTube's settings panel,
@@ -322,17 +300,17 @@ var SPEED_TERMS = ['speed','geschwindigkeit','velocidad','vitesse','速度','속
  * @returns {boolean} true if the item was inserted (or already exists)
  */
 function insertSpeedMenuItem() {
-  var menu = document.querySelector('.ytp-settings-menu');
+  const menu = document.querySelector('.ytp-settings-menu');
   if (!menu) return false;
-  var panelMenu = menu.querySelector('.ytp-panel-menu');
+  const panelMenu = menu.querySelector('.ytp-panel-menu');
   if (!panelMenu) return false;
 
   if (document.querySelector('#yts-chan-speed')) return true;
 
-  var ytSpeedItem = null;
-  var items = panelMenu.querySelectorAll('.ytp-menuitem');
-  for (var i = 0; i < items.length; i++) {
-    var lbl = items[i].querySelector('.ytp-menuitem-label');
+  let ytSpeedItem = null;
+  const items = panelMenu.querySelectorAll('.ytp-menuitem');
+  for (let i = 0; i < items.length; i++) {
+    const lbl = items[i].querySelector('.ytp-menuitem-label');
     if (lbl && matchAnyTerm(lbl.textContent, SPEED_TERMS)) {
       ytSpeedItem = items[i];
       break;
@@ -340,12 +318,12 @@ function insertSpeedMenuItem() {
   }
   if (!ytSpeedItem) return false;
 
-  var cid   = getChannelId();
-  var stored = getSpeeds();
-  var saved = cid ? stored[cid] : undefined;
-  var label = saved && saved !== 1 ? saved.toFixed(2) + 'x' : LANG.standard;
+  const cid   = getChannelId();
+  const stored = getSpeeds();
+  const saved = cid ? stored[cid] : undefined;
+  const label = saved && saved !== 1 ? saved.toFixed(2) + 'x' : LANG.standard;
 
-  var item = document.createElement('div');
+  const item = document.createElement('div');
   item.id        = 'yts-chan-speed';
   item.className = 'ytp-menuitem';
   item.setAttribute('role',         'menuitem');
@@ -368,7 +346,7 @@ function insertSpeedMenuItem() {
  */
 export function syncSpeedMenuDisplay() {
   insertSpeedMenuItem();
-  var s = getSpeeds()[getChannelId()];
+  const s = getSpeeds()[getChannelId()];
   if (s) updateMenuItemText(s);
 }
 
@@ -384,8 +362,8 @@ export function syncSpeedMenuDisplay() {
  */
 function watchSettingsMenu(signal, retryCount) {
   if (retryCount === undefined) retryCount = 3;
-  var menu = document.querySelector('.ytp-settings-menu');
-  var btn  = document.querySelector('.ytp-settings-button');
+  const menu = document.querySelector('.ytp-settings-menu');
+  const btn  = document.querySelector('.ytp-settings-button');
   if (!menu || !btn) {
     if (retryCount > 0) {
       setTimeout(function () { watchSettingsMenu(signal, retryCount - 1); }, 500);
@@ -393,7 +371,7 @@ function watchSettingsMenu(signal, retryCount) {
     return;
   }
 
-  var obs = new MutationObserver(function () {
+  const obs = new MutationObserver(function () {
     if (menu.style.display === 'none') {
       if (inCustomPanel) closeSpeedPanel(menu);
     } else {
@@ -405,7 +383,7 @@ function watchSettingsMenu(signal, retryCount) {
 
   btn.addEventListener('click', function () {
     setTimeout(function () {
-      var m = document.querySelector('.ytp-settings-menu');
+      const m = document.querySelector('.ytp-settings-menu');
       if (m && m.style.display !== 'none') syncSpeedMenuDisplay();
     }, MENU_DELAY);
   }, { signal: signal });
@@ -426,8 +404,8 @@ export function initSpeed() {
 
   function checkAndSetup(obs) {
     try {
-      var vid = document.querySelector('.html5-main-video');
-      var chan = document.querySelector('#upload-info #channel-name #text a') ||
+      const vid = document.querySelector('.html5-main-video');
+      const chan = document.querySelector('#upload-info #channel-name #text a') ||
                    document.querySelector('ytd-reel-player-header-renderer #channel-name a, ytd-reel-player-overlay-renderer #channel-name a') ||
                    document.querySelector('a[href*="/@"]') || document.querySelector('a[href*="/channel/"]');
       if (!vid || !chan) return;
@@ -435,9 +413,9 @@ export function initSpeed() {
       obs.disconnect();
       speedObs.delete(obs);
 
-      var cid = new URL(chan.href).pathname.split('/').pop();
-      var stored = getSpeeds();
-      var saved = stored[cid];
+      const cid = new URL(chan.href).pathname.split('/').pop();
+      const stored = getSpeeds();
+      const saved = stored[cid];
       currentChannelId = cid;
 
       if (speedAbort) speedAbort.abort();
@@ -445,7 +423,7 @@ export function initSpeed() {
 
       vid.addEventListener('ratechange', function () {
         if (isApplyingSpeed) return;
-        var currentSaved = getSpeeds()[currentChannelId];
+        const currentSaved = getSpeeds()[currentChannelId];
         if (currentSaved && Math.abs(vid.playbackRate - currentSaved) > 0.01) {
           isApplyingSpeed = true;
           vid.playbackRate = currentSaved;
@@ -462,7 +440,7 @@ export function initSpeed() {
     } catch (e) { log.debug('initSpeed error:', e); }
   }
 
-  var obs = observeMutations(function (addedNode, obs) {
+  const obs = observeMutations(function (_, obs) {
     checkAndSetup(obs);
   }, document.documentElement);
   speedObs.add(obs);
