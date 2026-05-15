@@ -27,24 +27,22 @@ export function isVideoThumbnail(img) {
   // Check 1: directly inside a video player
   if (img.closest(SELECTORS.SHREDDIT_PLAYER)) return true;
 
-  // Check 2: inside a blurred container with video in revealed slot
+  // Check 2: inside a blurred container
   const blurredContainer = img.closest(SELECTORS.SHREDDIT_BLURRED_CONTAINER);
   if (blurredContainer) {
+    // 2a: revealed slot with video content
     const revealed = blurredContainer.querySelector(`[slot="${SLOTS.REVEALED}"]`);
-    if (revealed) {
-      if (revealed.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
-    } else {
-      // No revealed slot — cannot determine. Conservative: skip.
-      return true;
-    }
+    if (revealed && revealed.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
+    // 2b: any video elements in the container
+    if (blurredContainer.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
   }
 
   // Check 3: inside a post container with video content
   const post = img.closest(SELECTORS.SHREDDIT_POST);
   if (post && post.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
 
-  // Uncertain context — skip replacement (blurred > broken 404)
-  return true;
+  // No video indicators found — assume it's an image (safe to replace)
+  return false;
 }
 
 /**

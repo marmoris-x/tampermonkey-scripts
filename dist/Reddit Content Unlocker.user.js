@@ -365,15 +365,12 @@ node,
     const blurredContainer = img.closest(SELECTORS.SHREDDIT_BLURRED_CONTAINER);
     if (blurredContainer) {
       const revealed = blurredContainer.querySelector(`[slot="${SLOTS.REVEALED}"]`);
-      if (revealed) {
-        if (revealed.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
-      } else {
-        return true;
-      }
+      if (revealed && revealed.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
+      if (blurredContainer.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
     }
     const post = img.closest(SELECTORS.SHREDDIT_POST);
     if (post && post.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
-    return true;
+    return false;
   }
   function unblurImageUrl(src) {
     const match = src.match(/https?:\/\/(?:preview|external-preview)\.redd\.it\/([^?]+)/);
