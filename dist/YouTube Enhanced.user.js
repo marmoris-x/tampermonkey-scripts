@@ -733,6 +733,7 @@
       stopObs = null;
     }
   }
+  createLogger("YouTube Enhanced", false);
   patchQuality();
   async function boot() {
     await loadSpeedData();

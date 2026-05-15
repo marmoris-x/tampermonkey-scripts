@@ -3,9 +3,12 @@
 // Handles initial boot and SPA navigation events.
 'use strict';
 
+import { createLogger } from './_logger.js';
 import { patchQuality, resetHDTrackers } from './auto-hd.js';
 import { loadSpeedData, initSpeed, cleanupSpeed } from './channel-speed.js';
 import { initAutoStop, cleanupAutoStop, resetStopTrackers } from './auto-stop.js';
+
+const log = createLogger('YouTube Enhanced', false);
 
 // Patch localStorage quality settings immediately at module load time,
 // before YouTube's player script reads them.
