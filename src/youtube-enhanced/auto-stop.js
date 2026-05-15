@@ -2,11 +2,11 @@
 // Pauses video playback automatically when navigating to a supported page
 // (/watch, /shorts, /channel, /@, /playlist, /live). Also handles catching
 // auto-play that starts after the initial pause.
+'use strict';
 
 import { createLogger } from './_logger.js';
 import { observeMutations } from './_dom.js';
 import { initAutoHD } from './auto-hd.js';
-'use strict';
 
 const log = createLogger('YouTube Enhanced');
 
@@ -16,8 +16,13 @@ const PS_BUFFERING = 3; // YouTube player state: BUFFERING
 const STOP_PATHS  = ['/channel','/watch','/shorts','/@','/playlist','/live'];
 let stopObs     = null;
 
-export let handledVids = new WeakSet();
+let handledVids = new WeakSet();
 
+/**
+ * Resets the WeakSet tracking which video elements have been handled for auto-stop.
+ * Must be called on SPA navigation (yt-navigate-finish) so that newly loaded
+ * videos are paused as expected.
+ */
 export function resetStopTrackers() {
   handledVids = new WeakSet();
 }
@@ -29,7 +34,7 @@ export function resetStopTrackers() {
  * @param {object} youtubePlayer - YouTube player API object
  * @param {HTMLElement} videoElement - The <video> element
  */
-export function stopVideoPlayback(youtubePlayer, videoElement) {
+function stopVideoPlayback(youtubePlayer, videoElement) {
   if (!youtubePlayer || !videoElement || handledVids.has(videoElement)) return;
 
   handledVids.add(videoElement);
@@ -80,7 +85,7 @@ export function stopVideoPlayback(youtubePlayer, videoElement) {
  * auto-stop and auto-HD. Returns false if the player is not ready yet.
  * @returns {boolean} true if player was found and processed
  */
-export function checkForPlayer() {
+function checkForPlayer() {
   const playerElement = document.querySelector('ytd-player');
   const videoElement = document.querySelector('.html5-main-video');
 

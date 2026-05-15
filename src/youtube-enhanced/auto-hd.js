@@ -2,20 +2,20 @@
 // Patches localStorage before YouTube reads it to set preferred quality,
 // and intervenes via the native player API to force the highest available
 // quality on each video.
+'use strict';
 
 import { createLogger } from './_logger.js';
-'use strict';
 
 const log = createLogger('YouTube Enhanced');
 
 const THIRTY_DAYS_MS = 2592000000;
 
-export const CFG = {
+const CFG = {
   debug: false,
   preferredQuality: 8    // Fallback: 0=Auto  5=720p  6=1080p  7=1440p  8=2160p/4K
 };
 
-export const QUALITY_MAP = {
+const QUALITY_MAP = {
   0: 'auto',
   5: 'hd720',
   6: 'hd1080',
@@ -23,8 +23,13 @@ export const QUALITY_MAP = {
   8: 'hd2160'
 };
 
-export let handledVidsHD = new WeakSet();
+let handledVidsHD = new WeakSet();
 
+/**
+ * Resets the WeakSet tracking which video elements have been processed for HD.
+ * Must be called on SPA navigation (yt-navigate-finish) so that re-visiting
+ * a watch page re-applies HD quality settings.
+ */
 export function resetHDTrackers() {
   handledVidsHD = new WeakSet();
 }
@@ -70,7 +75,7 @@ export function patchQuality() {
  * level up to the user's preferred setting.
  * @param {object} ytPlayer - YouTube player API object
  */
-export function applyAutoHD(ytPlayer) {
+function applyAutoHD(ytPlayer) {
   try {
     if (!ytPlayer || typeof ytPlayer.getAvailableQualityLevels !== 'function') return;
 

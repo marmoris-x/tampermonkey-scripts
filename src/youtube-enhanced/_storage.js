@@ -1,11 +1,13 @@
 // Local copies of loadSetting and saveSetting from shared/storage-utils.js
 // Converted from var to let/const for YouTube Enhanced module isolation.
+'use strict';
 
 /**
  * Loads a single setting with fallback default.
+ * @template T
  * @param {string} key - Storage key
- * @param {*} [defaultValue] - Fallback if key is absent
- * @returns {Promise<*>} Parsed value or default
+ * @param {T} [defaultValue] - Fallback if key is absent
+ * @returns {Promise<T>} Parsed value or default
  */
 export async function loadSetting(key, defaultValue) {
   try {

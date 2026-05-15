@@ -5,6 +5,7 @@
 //
 // UI follows YouTube's native panel structure (ytp-panel) for seamless
 // integration with existing animations and navigation.
+'use strict';
 
 import { createLogger } from './_logger.js';
 import { loadSetting, saveSetting } from './_storage.js';

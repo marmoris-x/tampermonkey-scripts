@@ -1,5 +1,6 @@
 // Local copy of createLogger from shared/logging-utils.js
 // Converted from var to let/const for YouTube Enhanced module isolation.
+'use strict';
 
 /**
  * Creates a prefixed logger instance. All methods prepend `[prefix]` to messages.

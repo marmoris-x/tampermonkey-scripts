@@ -1,5 +1,6 @@
 // Local copy of observeMutations from shared/dom-utils.js
 // Converted from var to let/const for YouTube Enhanced module isolation.
+'use strict';
 
 /**
  * Observes `root` for added elements. Calls `callback` with each added Element node.
