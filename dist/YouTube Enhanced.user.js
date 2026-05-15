@@ -261,32 +261,144 @@
     return null;
   }
   function buildSpeedPanel(settingsMenu) {
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = '<div class="ytp-panel" style="width: 330px; height: 250px;"><div class="ytp-panel-header"><div class="ytp-panel-back-button-container"><button class="ytp-button ytp-panel-back-button" aria-label="' + LANG.backToPreviousMenu + '"></button></div><span class="ytp-panel-title" role="heading" aria-level="2">' + LANG.channelSpeed + '</span></div><div class="ytp-variable-speed-panel-content" tabindex="0" style="height: 193px;"><div class="ytp-speed-display-container"><div class="ytp-variable-speed-panel-display" aria-live="polite"><div class="ytp-variable-speed-panel-premium-badge" tabindex="-1"><div class="ytp-variable-speed-panel-badge"></div></div><span>1.00x</span></div></div><div class="ytp-variable-speed-panel-slider-container"><button class="ytp-button ytp-variable-speed-panel-button ytp-variable-speed-panel-increment-button" aria-label="' + LANG.decreaseSpeed + '"><span>-</span></button><div class="ytp-input-slider-section"><div class="ytp-speedslider-indicator-container"><div class="ytp-speedslider-badge" aria-label=""></div><p class="ytp-speedslider-text">1.00x</p></div><input class="ytp-input-slider ytp-speedslider ytp-varispeed-input-slider" role="slider" tabindex="0" type="range" min="0.25" max="3" step="0.05" value="1" aria-valuenow="1" aria-valuemin="0.25" aria-valuemax="3" aria-valuetext="1.00" style="--yt-slider-shape-gradient-percent: 42.857142857142854%;"></div><button class="ytp-button ytp-variable-speed-panel-button ytp-variable-speed-panel-increment-button" aria-label="' + LANG.increaseSpeed + '"><span>+</span></button></div><div class="ytp-variable-speed-panel-chips"><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="5" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1</span></button><div class="ytp-variable-speed-panel-preset-button-label-text">' + LANG.standard + '</div></div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="2" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1,25</span></button></div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="3" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1,5</span></button></div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="0" aria-hidden="true" style="display: none;"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>1,75</span></button></div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="4" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><span>2</span></button></div><div class="ytp-variable-speed-panel-preset-button-wrapper" data-priority="1" aria-hidden="false"><button class="ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button"><div class="ytp-variable-speed-panel-premium-upsell-icon"></div><span>3.0</span></button></div></div></div></div>';
-    const panel = tempDiv.firstChild;
+    const panel = document.createElement("div");
+    panel.className = "ytp-panel";
+    panel.style.cssText = "width:330px;height:250px";
+    const header = document.createElement("div");
+    header.className = "ytp-panel-header";
+    const backBtnContainer = document.createElement("div");
+    backBtnContainer.className = "ytp-panel-back-button-container";
+    const backBtn = document.createElement("button");
+    backBtn.className = "ytp-button ytp-panel-back-button";
+    backBtn.setAttribute("aria-label", LANG.backToPreviousMenu);
+    backBtnContainer.appendChild(backBtn);
+    header.appendChild(backBtnContainer);
+    const title = document.createElement("span");
+    title.className = "ytp-panel-title";
+    title.setAttribute("role", "heading");
+    title.setAttribute("aria-level", "2");
+    title.textContent = LANG.channelSpeed;
+    header.appendChild(title);
+    panel.appendChild(header);
+    const content = document.createElement("div");
+    content.className = "ytp-variable-speed-panel-content";
+    content.setAttribute("tabindex", "0");
+    content.style.height = "193px";
+    const displayContainer = document.createElement("div");
+    displayContainer.className = "ytp-speed-display-container";
+    const display = document.createElement("div");
+    display.className = "ytp-variable-speed-panel-display";
+    display.setAttribute("aria-live", "polite");
+    const badge = document.createElement("div");
+    badge.className = "ytp-variable-speed-panel-premium-badge";
+    badge.setAttribute("tabindex", "-1");
+    const badgeInner = document.createElement("div");
+    badgeInner.className = "ytp-variable-speed-panel-badge";
+    badge.appendChild(badgeInner);
+    display.appendChild(badge);
+    const displayText = document.createElement("span");
+    displayText.textContent = "1.00x";
+    display.appendChild(displayText);
+    displayContainer.appendChild(display);
+    content.appendChild(displayContainer);
+    const sliderContainer = document.createElement("div");
+    sliderContainer.className = "ytp-variable-speed-panel-slider-container";
+    const btnDec = document.createElement("button");
+    btnDec.className = "ytp-button ytp-variable-speed-panel-button ytp-variable-speed-panel-increment-button";
+    btnDec.setAttribute("aria-label", LANG.decreaseSpeed);
+    const decSpan = document.createElement("span");
+    decSpan.textContent = "-";
+    btnDec.appendChild(decSpan);
+    sliderContainer.appendChild(btnDec);
+    const sliderSection = document.createElement("div");
+    sliderSection.className = "ytp-input-slider-section";
+    const indicator = document.createElement("div");
+    indicator.className = "ytp-speedslider-indicator-container";
+    const sliderBadge = document.createElement("div");
+    sliderBadge.className = "ytp-speedslider-badge";
+    sliderBadge.setAttribute("aria-label", "");
+    indicator.appendChild(sliderBadge);
+    const sliderText = document.createElement("p");
+    sliderText.className = "ytp-speedslider-text";
+    sliderText.textContent = "1.00x";
+    indicator.appendChild(sliderText);
+    sliderSection.appendChild(indicator);
+    const slider = document.createElement("input");
+    slider.className = "ytp-input-slider ytp-speedslider ytp-varispeed-input-slider";
+    slider.setAttribute("role", "slider");
+    slider.setAttribute("tabindex", "0");
+    slider.type = "range";
+    slider.min = "0.25";
+    slider.max = "3";
+    slider.step = "0.05";
+    slider.value = "1";
+    slider.setAttribute("aria-valuenow", "1");
+    slider.setAttribute("aria-valuemin", "0.25");
+    slider.setAttribute("aria-valuemax", "3");
+    slider.setAttribute("aria-valuetext", "1.00");
+    slider.style.setProperty("--yt-slider-shape-gradient-percent", "42.857142857142854%");
+    sliderSection.appendChild(slider);
+    sliderContainer.appendChild(sliderSection);
+    const btnInc = document.createElement("button");
+    btnInc.className = "ytp-button ytp-variable-speed-panel-button ytp-variable-speed-panel-increment-button";
+    btnInc.setAttribute("aria-label", LANG.increaseSpeed);
+    const incSpan = document.createElement("span");
+    incSpan.textContent = "+";
+    btnInc.appendChild(incSpan);
+    sliderContainer.appendChild(btnInc);
+    content.appendChild(sliderContainer);
+    const chips = document.createElement("div");
+    chips.className = "ytp-variable-speed-panel-chips";
+    function makeChip(_value, labelText, priority, hidden) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "ytp-variable-speed-panel-preset-button-wrapper";
+      wrapper.setAttribute("data-priority", String(priority));
+      wrapper.setAttribute("aria-hidden", hidden ? "true" : "false");
+      if (hidden) wrapper.style.display = "none";
+      const btn = document.createElement("button");
+      btn.className = "ytp-button ytp-variable-speed-panel-preset-button ytp-variable-speed-panel-button";
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      btn.appendChild(span);
+      wrapper.appendChild(btn);
+      if (labelText === "3.0") {
+        const upsell = document.createElement("div");
+        upsell.className = "ytp-variable-speed-panel-premium-upsell-icon";
+        btn.insertBefore(upsell, span);
+      }
+      if (labelText === "1") {
+        const lbl = document.createElement("div");
+        lbl.className = "ytp-variable-speed-panel-preset-button-label-text";
+        lbl.textContent = LANG.standard;
+        wrapper.appendChild(lbl);
+      }
+      chips.appendChild(wrapper);
+      return { wrapper, btn, span };
+    }
+    const chipDefs = [
+      { value: "1", label: "1", priority: 5, hidden: false },
+      { value: "1,25", label: "1,25", priority: 2, hidden: false },
+      { value: "1,5", label: "1,5", priority: 3, hidden: false },
+      { value: "1,75", label: "1,75", priority: 0, hidden: true },
+      { value: "2", label: "2", priority: 4, hidden: false },
+      { value: "3.0", label: "3.0", priority: 1, hidden: false }
+    ];
+    const chipElements = chipDefs.map(function(d) {
+      return makeChip(d.value, d.label, d.priority, d.hidden);
+    });
+    content.appendChild(chips);
+    panel.appendChild(content);
     let cid = currentChannelId;
     if (!cid) cid = getChannelId();
     const stored = getSpeeds();
     let curSpeed = cid && stored[cid] ? stored[cid] : 1;
-    const backBtn = panel.querySelector(".ytp-panel-back-button");
-    const displayTxt = panel.querySelector(".ytp-variable-speed-panel-display span");
-    const sliderTxt = panel.querySelector(".ytp-speedslider-text");
-    const slider = panel.querySelector('input[type="range"]');
-    const btns = panel.querySelectorAll(".ytp-variable-speed-panel-increment-button");
-    const btnDec = btns[0];
-    const btnInc = btns[1];
-    const chips = panel.querySelectorAll(".ytp-variable-speed-panel-preset-button-wrapper button");
     if (!LANG.isGerman) {
-      chips.forEach(function(btn) {
-        const span = btn.querySelector("span");
-        if (!span) return;
-        span.textContent = span.textContent.replace(",", ".");
+      chipElements.forEach(function(ce) {
+        ce.span.textContent = ce.span.textContent.replace(",", ".");
       });
     } else {
-      chips.forEach(function(btn) {
-        const span = btn.querySelector("span");
-        if (!span) return;
-        span.textContent = span.textContent.replace(".", ",");
+      chipElements.forEach(function(ce) {
+        ce.span.textContent = ce.span.textContent.replace(".", ",");
       });
     }
     backBtn.addEventListener("click", function(e) {
@@ -300,23 +412,19 @@
     function refreshUI(v) {
       curSpeed = v;
       const strVal = v.toFixed(2) + "x";
-      if (displayTxt) displayTxt.textContent = strVal;
-      if (sliderTxt) sliderTxt.textContent = strVal;
+      displayText.textContent = strVal;
+      sliderText.textContent = strVal;
       const clampedSlider = clampSpeed(v);
-      if (slider) {
-        slider.value = String(clampedSlider);
-        slider.setAttribute("aria-valuenow", String(v));
-        slider.setAttribute("aria-valuetext", v.toFixed(2));
-        slider.style.setProperty("--yt-slider-shape-gradient-percent", getSliderPercent(v));
-      }
-      chips.forEach(function(btn) {
-        const span = btn.querySelector("span");
-        if (!span) return;
-        const btnVal = parseFloat(span.textContent.replace(",", "."));
+      slider.value = String(clampedSlider);
+      slider.setAttribute("aria-valuenow", String(v));
+      slider.setAttribute("aria-valuetext", v.toFixed(2));
+      slider.style.setProperty("--yt-slider-shape-gradient-percent", getSliderPercent(v));
+      chipElements.forEach(function(ce) {
+        const btnVal = parseFloat(ce.span.textContent.replace(",", "."));
         if (Math.abs(btnVal - v) < 1e-3) {
-          btn.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
+          ce.btn.style.backgroundColor = "rgba(255, 255, 255, 0.2)";
         } else {
-          btn.style.backgroundColor = "transparent";
+          ce.btn.style.backgroundColor = "transparent";
         }
       });
     }
@@ -329,28 +437,20 @@
       applySpeed(rounded);
       updateMenuItemText(rounded);
     }
-    if (slider) {
-      slider.addEventListener("input", function(e) {
-        commit(parseFloat(e.target.value));
-      });
-    }
-    if (btnDec) {
-      btnDec.addEventListener("click", function(e) {
-        e.stopPropagation();
-        commit(Math.max(0.25, roundSpeed(curSpeed - 0.05)));
-      });
-    }
-    if (btnInc) {
-      btnInc.addEventListener("click", function(e) {
-        e.stopPropagation();
-        commit(Math.min(3, roundSpeed(curSpeed + 0.05)));
-      });
-    }
-    chips.forEach(function(btn) {
-      const span = btn.querySelector("span");
-      if (!span) return;
-      const speedVal = parseFloat(span.textContent.replace(",", "."));
-      btn.addEventListener("click", function(e) {
+    slider.addEventListener("input", function(e) {
+      commit(parseFloat(e.target.value));
+    });
+    btnDec.addEventListener("click", function(e) {
+      e.stopPropagation();
+      commit(Math.max(0.25, roundSpeed(curSpeed - 0.05)));
+    });
+    btnInc.addEventListener("click", function(e) {
+      e.stopPropagation();
+      commit(Math.min(3, roundSpeed(curSpeed + 0.05)));
+    });
+    chipElements.forEach(function(ce) {
+      const speedVal = parseFloat(ce.span.textContent.replace(",", "."));
+      ce.btn.addEventListener("click", function(e) {
         e.stopPropagation();
         commit(speedVal);
       });
@@ -416,7 +516,29 @@
     item.setAttribute("role", "menuitem");
     item.setAttribute("tabindex", "0");
     item.setAttribute("aria-haspopup", "true");
-    item.innerHTML = '<div class="ytp-menuitem-icon"><svg height="24" viewBox="0 0 24 24" width="24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M9.5 16.5v-9l7 4.5z"/></svg></div><div class="ytp-menuitem-label">' + LANG.channelSpeedLabel + '</div><div class="ytp-menuitem-content">' + label + "</div>";
+    const iconDiv = document.createElement("div");
+    iconDiv.className = "ytp-menuitem-icon";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("height", "24");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "24");
+    svg.setAttribute("fill", "white");
+    const path1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path1.setAttribute("d", "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z");
+    svg.appendChild(path1);
+    const path2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path2.setAttribute("d", "M9.5 16.5v-9l7 4.5z");
+    svg.appendChild(path2);
+    iconDiv.appendChild(svg);
+    item.appendChild(iconDiv);
+    const labelDiv = document.createElement("div");
+    labelDiv.className = "ytp-menuitem-label";
+    labelDiv.textContent = LANG.channelSpeedLabel;
+    item.appendChild(labelDiv);
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "ytp-menuitem-content";
+    contentDiv.textContent = label;
+    item.appendChild(contentDiv);
     item.addEventListener("click", function(e) {
       e.stopPropagation();
       openSpeedPanel(menu);
