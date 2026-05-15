@@ -100,10 +100,7 @@ DIV_PROMPT: "div.prompt",
 BACKDROP_FILTER_FIXED: '[style*="backdrop-filter"]',
 COLOR_SCRIM: '[style*="color-scrim"]',
 REDDIT_APP: "shreddit-app",
-SHREDDIT_BLURRED_CONTAINER: "shreddit-blurred-container",
 ASPECT_RATIO_BLURRED: 'shreddit-aspect-ratio [slot="blurred"]',
-SHREDDIT_PLAYER: "shreddit-player",
-    SHREDDIT_POST: "shreddit-post",
 HEADER_NAV_V2: "header.v2 > nav",
     HEADER_NAV: "header nav",
     HEADER: "header"
@@ -360,18 +357,6 @@ node,
       img.style.setProperty("filter", "none", "important");
     });
   }
-  function isVideoThumbnail(img) {
-    if (img.closest(SELECTORS.SHREDDIT_PLAYER)) return true;
-    const blurredContainer = img.closest(SELECTORS.SHREDDIT_BLURRED_CONTAINER);
-    if (blurredContainer) {
-      const revealed = blurredContainer.querySelector(`[slot="${SLOTS.REVEALED}"]`);
-      if (revealed && revealed.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
-      if (blurredContainer.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
-    }
-    const post = img.closest(SELECTORS.SHREDDIT_POST);
-    if (post && post.querySelector(`${SELECTORS.SHREDDIT_PLAYER}, video`)) return true;
-    return false;
-  }
   function unblurImageUrl(src) {
     const match = src.match(/https?:\/\/(?:preview|external-preview)\.redd\.it\/([^?]+)/);
     if (match) {
@@ -380,11 +365,9 @@ node,
     return src;
   }
   function replacePreviewUrls() {
-    const images = document.querySelectorAll(
+    document.querySelectorAll(
       'img[src*="preview.redd.it/"], img[src*="external-preview.redd.it/"]'
-    );
-    images.forEach((img) => {
-      if (isVideoThumbnail(img)) return;
+    ).forEach((img) => {
       const unblurred = unblurImageUrl(img.src);
       if (unblurred !== img.src) {
         img.src = unblurred;
