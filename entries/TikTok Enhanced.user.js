@@ -1,16 +1,16 @@
 // ==UserScript==
-// @name           TikTok Link Fixer
-// @name:de        TikTok-Link-Reparatur
+// @name           TikTok Enhanced
+// @name:de        TikTok Enhanced
 // @namespace      https://github.com/marmoris-x/tampermonkey-scripts
 // @version        6.0.0
 // @author         marmoris-x
-// @description    Restores middle-click and right-click functionality on TikTok video links. Makes non-clickable links behave normally.
-// @description:de Stellt die Mittelklick- und Rechtsklick-Funktion auf TikTok-Videolinks wieder her. Macht nicht anklickbare Links wieder normal bedienbar.
+// @description    Enhances TikTok by restoring middle-click, right-click, and fixing broken UI interactions.
+// @description:de Verbessert TikTok durch Wiederherstellung von Mittelklick, Rechtsklick und repariert kaputte UI-Interaktionen.
 // @license        MIT
 // @homepageURL    https://github.com/marmoris-x/tampermonkey-scripts
 // @supportURL     https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/tiktok-link-fixer.user.js
-// @updateURL      https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/tiktok-link-fixer.user.js
+// @downloadURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/TikTok%20Enhanced.user.js
+// @updateURL      https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/TikTok%20Enhanced.user.js
 // @icon           https://www.google.com/s2/favicons?sz=64&domain=tiktok.com
 // @tag            social
 // @tag            video
@@ -27,7 +27,7 @@
   // ---------------------------------------------------------------------------
   // Logger
   // ---------------------------------------------------------------------------
-  var LOG_PREFIX = '[TikTok Link Fixer]';
+  var LOG_PREFIX = '[TikTok Enhanced]';
 
   function createLogger() {
     var debugMode = false;
@@ -146,7 +146,7 @@
     if (initialized) return;
     initialized = true;
 
-    log.info('Starting TikTok Link Fixer v6.0.0');
+    log.info('Starting TikTok Enhanced v6.0.0');
     injectStyles();
     attachInterceptors();
     log.info('Initialization complete');
