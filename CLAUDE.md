@@ -76,6 +76,7 @@ tampermonkey-scripts/
 │   ├── marketplace-deal-finder/
 │   ├── notebooklm-source-export/
 │   ├── recaptcha-solver/
+│   ├── reddit-content-unlocker/
 │   └── youtube-enhanced/
 ├── dist/                      # Build output: 18 standalone .user.js files (non-minified)
 ├── docs/                      # Authoritative standards and TM API reference
@@ -124,7 +125,7 @@ import { registerBoot } from '../src/anisearch-endless-scroll/boot.js';
 registerBoot();
 ```
 
-Self-contained pattern (TikTok Enhanced, FlameComics, BotGhost — no `src/` folder):
+Self-contained pattern (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bulk Choice Extractor, Google Search Enhanced, Epic Games Library Export, Google AI Studio Chat Exporter, Picture-in-Picture any site — no `src/` folder):
 ```javascript
 (function () {
   'use strict';
@@ -431,22 +432,22 @@ Scope: script name in kebab-case (`copy-as-markdown`, `youtube-enhanced`, `share
 
 | # | Script | Target | Grants |
 |---|--------|--------|--------|
-| 1 | AniSearch Endless Scroll | anisearch.de | GM_xmlhttpRequest, GM.getValue, GM.setValue, GM_registerMenuCommand |
+| 1 | AniSearch Endless Scroll | anisearch.de | GM_xmlhttpRequest, GM.getValue, GM.setValue, GM_getValue, GM_setValue, GM_registerMenuCommand |
 | 2 | BotGhost Bulk Choice Extractor | botghost.com | GM_setClipboard |
 | 3 | Copy as Markdown for AI | *://*/* | GM_registerMenuCommand, GM_addStyle, GM_setClipboard, GM_download |
-| 4 | Crunchyroll Enhanced | crunchyroll.com | GM_addStyle, GM_getValue, GM_setValue |
+| 4 | Crunchyroll Enhanced | crunchyroll.com | GM_addStyle, GM_getValue, GM_setValue, GM.registerMenuCommand, window.onurlchange |
 | 5 | Epic Games Library Export | epicgames.com | GM_setClipboard, GM_registerMenuCommand |
 | 6 | FlameComics Advanced Sort | flamecomics.com | none |
-| 7 | Global Video Speed Controller | http*://*/* | GM_setValue, GM_getValue, GM_registerMenuCommand, unsafeWindow |
-| 8 | Google AI Studio Chat Exporter | aistudio.google.com | none |
+| 7 | Global Video Speed Controller | http*://*/* | GM_setValue, GM_getValue, GM_registerMenuCommand, unsafeWindow, GM_addStyle, GM_addElement, GM_addValueChangeListener, GM_unregisterMenuCommand |
+| 8 | Google AI Studio Chat Exporter | aistudio.google.com | GM_registerMenuCommand, GM_notification, GM_getValue, GM_setValue, GM_addElement, GM_download, GM_setClipboard |
 | 9 | Google Search Enhanced | google.com/search | none |
-| 10 | Gutefrage Smart Filters | gutefrage.net | GM_addStyle, GM_setValue, GM_getValue, GM_openInTab |
-| 11 | Manga Panel Downloader | various manga sites | GM_addStyle, GM_xmlhttpRequest, GM_registerMenuCommand |
+| 10 | Gutefrage Smart Filters | gutefrage.net | GM_addStyle, GM_setValue, GM_getValue, GM.setValues, GM_openInTab |
+| 11 | Manga Panel Downloader | various manga sites | GM_xmlhttpRequest, GM.xmlHttpRequest, GM_registerMenuCommand, window.onurlchange |
 | 12 | Marketplace Deal Finder | willhaben.at, kleinanzeigen.de | GM_xmlhttpRequest, GM.getValue, GM.setValue |
-| 13 | NotebookLM Source Export | notebooklm.google.com | GM_registerMenuCommand, GM_unregisterMenuCommand |
+| 13 | NotebookLM Source Export | notebooklm.google.com | GM_registerMenuCommand, GM_unregisterMenuCommand, GM_addElement, GM_download, GM_notification |
 | 14 | Picture-in-Picture any site | *://*/* | GM_registerMenuCommand |
-| 15 | Recaptcha Solver | google.com/recaptcha | GM_xmlhttpRequest |
-| 16 | Reddit Content Unlocker | reddit.com | GM_addElement, GM_setValue, GM_getValue |
+| 15 | Recaptcha Solver | google.com/recaptcha | GM_xmlhttpRequest, GM_addElement |
+| 16 | Reddit Content Unlocker | reddit.com | GM_addElement, GM_setValue, GM_getValue, window.onurlchange |
 | 17 | YouTube Enhanced | *.youtube.com/* | GM_getValue, GM_setValue, GM.getValue, GM.setValue |
 | 18 | TikTok Enhanced | *://*.tiktok.com/* | GM_addStyle, window.onurlchange |
 

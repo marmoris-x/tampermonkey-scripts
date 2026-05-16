@@ -92,7 +92,7 @@ tampermonkey-scripts/
 
 **Script-specific modules** (in `src/<slug>/`) export constructors, configuration objects, and utility functions via ES module `export`. The entry file imports from them and wires everything together.
 
-**Self-contained scripts** (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bulk Choice Extractor, Google Search Enhanced) include all code directly in the entry file — no corresponding `src/` folder needed.
+**Self-contained scripts** (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bulk Choice Extractor, Google Search Enhanced, Epic Games Library Export, Google AI Studio Chat Exporter, Picture-in-Picture any site) include all code directly in the entry file — no corresponding `src/` folder needed.
 
 **Entry files** (in `entries/`) follow one of two patterns:
 1. **Thin bootstrap:** Metadata block + ES module `import` + orchestration (most scripts)
