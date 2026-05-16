@@ -2,7 +2,7 @@
 // @name            TikTok Enhanced
 // @name:de         TikTok Enhanced
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         6.0.0
+// @version         6.0.1
 // @author          marmoris-x
 // @description     Enhances TikTok by restoring middle-click, right-click, and fixing broken UI interactions.
 // @description:de  Verbessert TikTok durch Wiederherstellung von Mittelklick, Rechtsklick und repariert kaputte UI-Interaktionen.

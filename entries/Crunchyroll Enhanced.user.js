@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Crunchyroll Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.2.1
+// @version      5.2.2
 // @description  Sidebar (page-push) with multi-filter & sort for Crunchyroll browse — auto-scan, retry, export/clipboard, data-only filter
 // @author       marmoris-x
 // @icon         https://www.google.com/s2/favicons?sz=32&domain=crunchyroll.com

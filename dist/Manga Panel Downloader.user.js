@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manga Panel Downloader
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.5.0
+// @version      2.5.1
 // @author       marmoris-x
 // @description  Downloads manga/manhwa panels as ZIP — pipeline download, retry, abort, fast scrolling
 // @license      MIT

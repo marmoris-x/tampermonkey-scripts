@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AniSearch Endless Scroll
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.5.0
+// @version      3.5.1
 // @author       marmoris-x
 // @description  Infinite scroll pagination for AniSearch with rating filter
 // @license      MIT

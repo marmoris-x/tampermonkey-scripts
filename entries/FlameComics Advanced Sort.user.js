@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FlameComics Advanced Sort
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.7.1
+// @version      1.7.2
 // @description  Adds custom sorting options (alphabetical, hearts count) to FlameComics
 // @author       marmoris-x
 // @match        https://flamecomics.xyz/*
