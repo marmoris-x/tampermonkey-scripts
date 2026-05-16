@@ -2,7 +2,7 @@
 // @name            Global Video Speed Controller
 // @name:de         Globaler Video-Geschwindigkeitsregler
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         2.6.2
+// @version         2.6.3
 // @author          marmoris-x
 // @description     Sets a global playback speed for all HTML5 videos and audios.
 // @description:de  Setzt eine globale Wiedergabegeschwindigkeit für alle HTML5-Videos und -Audios.

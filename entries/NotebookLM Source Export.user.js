@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NotebookLM Source Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      6.2
+// @version      6.3
 // @description  Export NotebookLM sources and chat as ZIP archives
 // @author       marmoris-x
 // @icon          https://www.google.com/s2/favicons?sz=64&domain=https://notebooklm.google/

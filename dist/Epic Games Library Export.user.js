@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Epic Games Library Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      8.0.1
+// @version      8.0.2
 // @author       marmoris-x
 // @description  One-click game library export — clipboard (titles) or ZIP (enriched with prices, order IDs, play time)
 // @license      MIT

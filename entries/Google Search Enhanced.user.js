@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google Search Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.4.1
+// @version      1.4.2
 // @description  Add Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner.
 // @author       marmoris-x
 // @match        *://www.google.com/search*

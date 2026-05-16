@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Picture-in-Picture any site
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.7.2
+// @version      5.7.3
 // @author       marmoris-x
 // @description  Adds a Tampermonkey menu command to force the current tab into PiP mode.
 // @license      MIT

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NotebookLM Source Export
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      6.2
+// @version      6.3
 // @author       marmoris-x
 // @description  Export NotebookLM sources and chat as ZIP archives
 // @license      MIT

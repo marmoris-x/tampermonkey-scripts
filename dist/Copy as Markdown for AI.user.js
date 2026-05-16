@@ -2,7 +2,7 @@
 // @name            Copy as Markdown for AI
 // @name:de         Als Markdown für KI kopieren
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         1.0.2
+// @version         1.0.3
 // @author          marmoris-x
 // @description     Select page elements with Ctrl/Cmd+Click and convert them to clean Markdown for AI prompts
 // @description:de  Wähle Seitenelemente mit Strg/Cmd+Klick aus und konvertiere sie in sauberes Markdown für KI-Prompts

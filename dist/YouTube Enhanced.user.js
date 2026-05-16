@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.8.1
+// @version      1.8.2
 // @author       marmoris-x
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @license      MIT
