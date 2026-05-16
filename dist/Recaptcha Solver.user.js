@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.11.1
+// @version      3.0.1
 // @author       marmoris-x
-// @description  Recaptcha Solver in Browser | Start button in challenge footer
+// @description  Automatically solves reCAPTCHA v2 audio challenges via speech recognition
 // @license      MIT
-// @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
+// @icon         https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/RecaptchaLogo.svg/1280px-RecaptchaLogo.svg.png
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js
@@ -13,69 +13,53 @@
 // @match        https://google.com/recaptcha/*
 // @match        https://www.recaptcha.net/recaptcha/*
 // @match        https://recaptcha.net/recaptcha/*
-// @sandbox      JavaScript
+// @sandbox      raw
 // @connect      engageub.pythonanywhere.com
 // @connect      engageub1.pythonanywhere.com
+// @grant        GM_addElement
 // @grant        GM_xmlhttpRequest
-// @inject-into  content
 // @run-at       document-idle
 // @noframes
-// @unwrap
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  function createLogger(prefix, debugMode) {
-    debugMode = debugMode || false;
-    const tag = "[" + prefix + "]";
+  function createLogger(prefix, debugMode = false) {
+    const tag = `[${prefix}]`;
     return {
-      log: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.log.apply(console, args);
+      log(...args) {
+        console.log(tag, ...args);
       },
-      warn: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.warn.apply(console, args);
+      warn(...args) {
+        console.warn(tag, ...args);
       },
-      error: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.error.apply(console, args);
+      error(...args) {
+        console.error(tag, ...args);
       },
-      info: function() {
-        const args = [tag];
-        for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-        console.info.apply(console, args);
+      info(...args) {
+        console.info(tag, ...args);
       },
-      debug: function() {
-        if (debugMode) {
-          const args = [tag];
-          for (let i = 0; i < arguments.length; i++) args.push(arguments[i]);
-          console.debug.apply(console, args);
-        }
+      debug(...args) {
+        if (debugMode) console.debug(tag, ...args);
       }
     };
   }
-  function waitForElement(selector, timeout, root) {
-    timeout = timeout || 1e4;
-    root = root || document.body;
-    return new Promise(function(resolve, reject) {
+  function waitForElement(selector, timeout = 1e4, root = document.body) {
+    return new Promise((resolve, reject) => {
       const existing = root.querySelector(selector);
       if (existing) return resolve(existing);
-      let timer;
-      const observer = new MutationObserver(function(mutations) {
-        for (let m = 0; m < mutations.length; m++) {
-          const nodes = mutations[m].addedNodes;
-          for (let i = 0; i < nodes.length; i++) {
-            if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
-            if (nodes[i].matches && nodes[i].matches(selector)) {
+      let timer = null;
+      const observer = new MutationObserver((mutations) => {
+        var _a, _b;
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            if ((_a = node.matches) == null ? void 0 : _a.call(node, selector)) {
               cleanup();
-              return resolve(nodes[i]);
+              return resolve(node);
             }
-            const child = nodes[i].querySelector && nodes[i].querySelector(selector);
+            const child = (_b = node.querySelector) == null ? void 0 : _b.call(node, selector);
             if (child) {
               cleanup();
               return resolve(child);
@@ -83,44 +67,51 @@
           }
         }
       });
-      function cleanup() {
+      const cleanup = () => {
         observer.disconnect();
-        if (timer) clearTimeout(timer);
-      }
+        if (timer !== null) clearTimeout(timer);
+      };
       observer.observe(root, { childList: true, subtree: true });
       if (timeout > 0) {
-        timer = setTimeout(function() {
+        timer = setTimeout(() => {
           cleanup();
-          reject(new Error("waitForElement timeout: " + selector));
+          reject(new Error(`waitForElement timeout: ${selector}`));
         }, timeout);
       }
     });
   }
-  function observeMutations(callback, root) {
-    root = root || document.body;
-    const observer = new MutationObserver(function(mutations) {
-      for (let m = 0; m < mutations.length; m++) {
-        const nodes = mutations[m].addedNodes;
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
+  function observeMutations(callback, root = document.body) {
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            callback(node, observer);
+          }
         }
       }
     });
     observer.observe(root, { childList: true, subtree: true });
     return observer;
   }
-  function fetchJSON(url, opts) {
-    opts = opts || {};
+  function isVisible(el) {
+    if (!el || el.offsetParent === null) return false;
+    const style = window.getComputedStyle(el);
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+  function qs(selector, root = document) {
+    return root.querySelector(selector);
+  }
+  function fetchJSON(url, opts = {}) {
     const retries = opts.retries || 0;
     const timeout = opts.timeout || 15e3;
-    return new Promise(function(resolve, reject) {
+    return new Promise((resolve, reject) => {
       function attempt(n) {
         GM_xmlhttpRequest({
           method: "GET",
           url,
           timeout,
           anonymous: opts.anonymous !== false,
-          onload: function(r) {
+          onload(r) {
             if (r.status >= 200 && r.status < 300) {
               try {
                 resolve(JSON.parse(r.responseText));
@@ -133,11 +124,11 @@
               reject(new Error("HTTP " + r.status + " for " + url));
             }
           },
-          onerror: function() {
+          onerror() {
             if (n < retries) attempt(n + 1);
             else reject(new Error("Network error for " + url));
           },
-          ontimeout: function() {
+          ontimeout() {
             if (n < retries) attempt(n + 1);
             else reject(new Error("Timeout for " + url));
           }
@@ -146,187 +137,111 @@
       attempt(0);
     });
   }
-  var log$3 = createLogger("Recaptcha Solver");
-  var SEL$1 = {
-    AUDIO_BUTTON: "#recaptcha-audio-button",
-    AUDIO_SOURCE: "#audio-source",
-    AUDIO_RESPONSE: "#audio-response",
-    VERIFY_BUTTON: "#recaptcha-verify-button"
-  };
-  var MAX_RESPONSE_LEN = 100;
-  var SERVERS = [
-    "https://engageub.pythonanywhere.com",
-    "https://engageub1.pythonanywhere.com"
-  ];
-  var latencies = SERVERS.map(function() {
-    return Infinity;
-  });
-  SERVERS.forEach(function(url, i) {
-    var t0 = Date.now();
-    fetchJSON(url, { timeout: 8e3 }).then(function() {
-      latencies[i] = Date.now() - t0;
-      log$3.log("Ping " + url + ": " + latencies[i] + "ms");
-    }).catch(function() {
-      latencies[i] = Infinity;
-    });
-  });
-  function getLang() {
-    var raw = (document.querySelector("html") ? document.querySelector("html").getAttribute("lang") : null) || navigator.language || "en-US";
-    var map = {
-      af: "af-ZA",
-      am: "am-ET",
-      ar: "ar-SA",
-      az: "az-AZ",
-      be: "be-BY",
-      bg: "bg-BG",
-      bn: "bn-BD",
-      bs: "bs-BA",
-      ca: "ca-ES",
-      cs: "cs-CZ",
-      cy: "cy-GB",
-      da: "da-DK",
-      de: "de-DE",
-      el: "el-GR",
-      es: "es-ES",
-      et: "et-EE",
-      eu: "eu-ES",
-      fa: "fa-IR",
-      fi: "fi-FI",
-      fr: "fr-FR",
-      ga: "ga-IE",
-      gl: "gl-ES",
-      gu: "gu-IN",
-      he: "he-IL",
-      hi: "hi-IN",
-      hr: "hr-HR",
-      hu: "hu-HU",
-      hy: "hy-AM",
-      id: "id-ID",
-      is: "is-IS",
-      it: "it-IT",
-      ja: "ja-JP",
-      ka: "ka-GE",
-      kk: "kk-KZ",
-      km: "km-KH",
-      kn: "kn-IN",
-      ko: "ko-KR",
-      lt: "lt-LT",
-      lv: "lv-LV",
-      mk: "mk-MK",
-      ml: "ml-IN",
-      mn: "mn-MN",
-      mr: "mr-IN",
-      ms: "ms-MY",
-      my: "my-MM",
-      nb: "nb-NO",
-      ne: "ne-NP",
-      nl: "nl-NL",
-      pa: "pa-IN",
-      pl: "pl-PL",
-      pt: "pt-BR",
-      ro: "ro-RO",
-      ru: "ru-RU",
-      si: "si-SK",
-      sk: "sk-SK",
-      sl: "sl-SI",
-      sq: "sq-AL",
-      sr: "sr-RS",
-      sv: "sv-SE",
-      sw: "sw-KE",
-      ta: "ta-IN",
-      te: "te-IN",
-      th: "th-TH",
-      tl: "tl-PH",
-      tr: "tr-TR",
-      uk: "uk-UA",
-      ur: "ur-PK",
-      uz: "uz-UZ",
-      vi: "vi-VN",
-      zh: "zh-CN",
-      zu: "zu-ZA"
-    };
-    return map[raw] || raw;
+  let latencies = [];
+  function measureServerLatencies(servers) {
+    const log2 = createLogger("Recaptcha Solver");
+    latencies = servers.map(() => Infinity);
+    return Promise.all(servers.map((url, i) => {
+      const t0 = Date.now();
+      return fetchJSON(url, { timeout: 8e3 }).then(() => {
+        latencies[i] = Date.now() - t0;
+        log2.log(`Ping ${url}: ${latencies[i]}ms`);
+      }).catch(() => {
+        latencies[i] = Infinity;
+      });
+    }));
   }
-  function getBestServer(exclude) {
-    var best = null;
-    var bestMs = Infinity;
-    for (var i = 0; i < SERVERS.length; i++) {
-      if (SERVERS[i] === exclude) continue;
-      if (latencies[i] < bestMs) {
-        bestMs = latencies[i];
-        best = SERVERS[i];
+  function getBestServer(servers, latenciesArr, exclude) {
+    let best = null;
+    let bestMs = Infinity;
+    for (let i = 0; i < servers.length; i++) {
+      if (servers[i] === exclude) continue;
+      if (latenciesArr[i] < bestMs) {
+        bestMs = latenciesArr[i];
+        best = servers[i];
       }
     }
-    return best || SERVERS.filter(function(s) {
-      return s !== exclude;
-    })[0] || SERVERS[0];
+    return best || servers.filter((s) => s !== exclude)[0] || servers[0];
   }
-  function getTextFromAudio(srcUrl, retry) {
-    var normalizedUrl = srcUrl.replace(/recaptcha\.net/g, "google.com");
-    var lang = getLang();
-    var server = getBestServer(retry);
-    if (!retry) state.requestCount++;
-    state.waitingStart = Date.now();
-    log$3.log("Request to " + server + " | lang:" + lang + " | attempt:" + state.requestCount + (retry ? " [retry]" : ""));
-    GM_xmlhttpRequest({
-      method: "POST",
-      url: server,
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      data: "input=" + encodeURIComponent(normalizedUrl) + "&lang=" + encodeURIComponent(lang),
-      timeout: 3e4,
-      onload: function(response) {
-        try {
-          var text = (response.responseText || "").trim();
-          log$3.log('Response: "' + text.substring(0, 80) + '"');
-          var invalid = !text || text === "0" || text.length < 2 || text.length > MAX_RESPONSE_LEN || /<[a-z][\s\S]*?>/i.test(text);
-          if (invalid) {
-            log$3.log("Invalid response — will reload on next tick");
-            state.waiting = false;
-            return;
-          }
-          var audioBtn = document.querySelector(SEL$1.AUDIO_BUTTON);
-          var audioSrcEl = document.querySelector(SEL$1.AUDIO_SOURCE);
-          var audioRespEl = document.querySelector(SEL$1.AUDIO_RESPONSE);
-          var verifyBtn = document.querySelector(SEL$1.VERIFY_BUTTON);
-          var inAudioMode = audioBtn && window.getComputedStyle(audioBtn).display === "none";
-          if (inAudioMode && audioSrcEl && audioSrcEl.src === srcUrl && audioRespEl && !audioRespEl.value && verifyBtn) {
-            audioRespEl.value = text;
-            audioRespEl.dispatchEvent(new Event("input", { bubbles: true }));
-            audioRespEl.dispatchEvent(new Event("change", { bubbles: true }));
-            verifyBtn.click();
-            state.submittedAt = Date.now();
-            log$3.log('Submitted: "' + text + '"');
-          } else {
-            log$3.log("Page state changed — will retry on next challenge");
-          }
-        } catch (err) {
-          log$3.error("Response handler error: " + err.message);
-        } finally {
-          state.waiting = false;
-        }
-      },
-      onerror: function() {
-        log$3.warn("Network error from " + server);
-        if (!retry) {
-          getTextFromAudio(srcUrl, server);
-        } else {
-          log$3.warn("Both servers failed — releasing lock");
-          state.waiting = false;
-        }
-      },
-      ontimeout: function() {
-        log$3.warn("Timeout from " + server);
-        if (!retry) {
-          getTextFromAudio(srcUrl, server);
-        } else {
-          log$3.warn("Both servers failed — releasing lock");
-          state.waiting = false;
-        }
-      }
-    });
+  const LANG_MAP = {
+    af: "af-ZA",
+    am: "am-ET",
+    ar: "ar-SA",
+    az: "az-AZ",
+    be: "be-BY",
+    bg: "bg-BG",
+    bn: "bn-BD",
+    bs: "bs-BA",
+    ca: "ca-ES",
+    cs: "cs-CZ",
+    cy: "cy-GB",
+    da: "da-DK",
+    de: "de-DE",
+    el: "el-GR",
+    es: "es-ES",
+    et: "et-EE",
+    eu: "eu-ES",
+    fa: "fa-IR",
+    fi: "fi-FI",
+    fr: "fr-FR",
+    ga: "ga-IE",
+    gl: "gl-ES",
+    gu: "gu-IN",
+    he: "he-IL",
+    hi: "hi-IN",
+    hr: "hr-HR",
+    hu: "hu-HU",
+    hy: "hy-AM",
+    id: "id-ID",
+    is: "is-IS",
+    it: "it-IT",
+    ja: "ja-JP",
+    ka: "ka-GE",
+    kk: "kk-KZ",
+    km: "km-KH",
+    kn: "kn-IN",
+    ko: "ko-KR",
+    lt: "lt-LT",
+    lv: "lv-LV",
+    mk: "mk-MK",
+    ml: "ml-IN",
+    mn: "mn-MN",
+    mr: "mr-IN",
+    ms: "ms-MY",
+    my: "my-MM",
+    nb: "nb-NO",
+    ne: "ne-NP",
+    nl: "nl-NL",
+    pa: "pa-IN",
+    pl: "pl-PL",
+    pt: "pt-BR",
+    ro: "ro-RO",
+    ru: "ru-RU",
+    si: "si-SK",
+    sk: "sk-SK",
+    sl: "sl-SI",
+    sq: "sq-AL",
+    sr: "sr-RS",
+    sv: "sv-SE",
+    sw: "sw-KE",
+    ta: "ta-IN",
+    te: "te-IN",
+    th: "th-TH",
+    tl: "tl-PH",
+    tr: "tr-TR",
+    uk: "uk-UA",
+    ur: "ur-PK",
+    uz: "uz-UZ",
+    vi: "vi-VN",
+    zh: "zh-CN",
+    zu: "zu-ZA"
+  };
+  function getLang() {
+    var _a;
+    const raw = ((_a = document.querySelector("html")) == null ? void 0 : _a.getAttribute("lang")) || navigator.language || "en-US";
+    return LANG_MAP[raw] || raw;
   }
-  var log$2 = createLogger("Recaptcha Solver");
-  var SEL = {
+  const SEL = {
     AUDIO_BUTTON: "#recaptcha-audio-button",
     AUDIO_SOURCE: "#audio-source",
     IMAGE_SELECT: "#rc-imageselect",
@@ -340,25 +255,152 @@
     RC_BUTTONS: ".rc-buttons",
     HELP_HOLDER: ".help-button-holder"
   };
-  var CFG = {
-    MAX_ATTEMPTS: 5,
-    INTERVAL_MS: 1e3,
-    SUBMIT_GRACE_MS: 3500,
-    STUCK_TIMEOUT_MS: 45e3,
-    MAX_RESPONSE_LEN: 100,
-    AUDIO_BTN_DEBOUNCE_MS: 4e3
-  };
-  function qs(sel) {
-    return document.querySelector(sel);
+  const MAX_ATTEMPTS = 5;
+  const INTERVAL_MS = 1e3;
+  const SUBMIT_GRACE_MS = 3500;
+  const STUCK_TIMEOUT_MS = 45e3;
+  const MAX_RESPONSE_LEN = 100;
+  const AUDIO_BTN_DEBOUNCE_MS = 4e3;
+  const SERVERS = [
+    "https://engageub.pythonanywhere.com",
+    "https://engageub1.pythonanywhere.com"
+  ];
+  const BUTTON_ID = "rs-solve-btn";
+  const HOST_ID = "rs-solve-host";
+  const HELP_SEL = ".help-button-holder";
+  const log$1 = createLogger("Recaptcha Solver");
+  function finish(result, onStateChange, interval) {
+    if (interval) clearInterval(interval);
+    onStateChange(result);
   }
-  function isVisible(el) {
-    if (!el || el.offsetParent === null) return false;
-    var s = window.getComputedStyle(el);
-    return s.display !== "none" && s.visibility !== "hidden";
+  function getTextFromAudio(srcUrl, solverState, excludeServer) {
+    const normalizedUrl = srcUrl.replace(/recaptcha\.net/g, "google.com");
+    const lang = getLang();
+    const server = getBestServer(SERVERS, latencies, excludeServer);
+    if (!excludeServer) solverState.requestCount++;
+    solverState.waitingStart = Date.now();
+    log$1.log(`Request to ${server} | lang:${lang} | attempt:${solverState.requestCount}${excludeServer ? " [retry]" : ""}`);
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: server,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      data: "input=" + encodeURIComponent(normalizedUrl) + "&lang=" + encodeURIComponent(lang),
+      timeout: 3e4,
+      onload(response) {
+        try {
+          const text = (response.responseText || "").trim();
+          log$1.log('Response: "' + text.substring(0, 80) + '"');
+          const invalid = !text || text === "0" || text.length < 2 || text.length > MAX_RESPONSE_LEN || /<[a-z][\s\S]*?>/i.test(text);
+          if (invalid) {
+            log$1.log("Invalid response — will reload on next tick");
+            solverState.waiting = false;
+            return;
+          }
+          const audioBtn = qs(SEL.AUDIO_BUTTON);
+          const audioSrcEl = qs(SEL.AUDIO_SOURCE);
+          const audioRespEl = qs(SEL.AUDIO_RESPONSE);
+          const verifyBtn = qs(SEL.VERIFY_BUTTON);
+          const inAudioMode = audioBtn && window.getComputedStyle(audioBtn).display === "none";
+          if (inAudioMode && audioSrcEl && audioSrcEl.src === srcUrl && audioRespEl && !audioRespEl.value && verifyBtn) {
+            audioRespEl.value = text;
+            audioRespEl.dispatchEvent(new Event("input", { bubbles: true }));
+            audioRespEl.dispatchEvent(new Event("change", { bubbles: true }));
+            verifyBtn.click();
+            solverState.submittedAt = Date.now();
+            log$1.log('Submitted: "' + text + '"');
+          } else {
+            log$1.log("Page state changed — will retry on next challenge");
+          }
+        } catch (err) {
+          log$1.error("Response handler error: " + err.message);
+        } finally {
+          solverState.waiting = false;
+        }
+      },
+      onerror() {
+        log$1.warn("Network error from " + server);
+        if (!excludeServer) {
+          getTextFromAudio(srcUrl, solverState, server);
+        } else {
+          log$1.warn("Both servers failed — releasing lock");
+          solverState.waiting = false;
+        }
+      },
+      ontimeout() {
+        log$1.warn("Timeout from " + server);
+        if (!excludeServer) {
+          getTextFromAudio(srcUrl, solverState, server);
+        } else {
+          log$1.warn("Both servers failed — releasing lock");
+          solverState.waiting = false;
+        }
+      }
+    });
   }
-  var state = null;
-  var solverInterval = null;
-  function freshState() {
+  function startSolver({ state, onStateChange }) {
+    onStateChange("working");
+    const interval = setInterval(function() {
+      try {
+        const st = state;
+        if (!st) return;
+        const dosEl = qs(SEL.DOSCAPTCHA);
+        if (dosEl && dosEl.innerText.length > 0) {
+          log$1.warn("DoS protection triggered — stopping");
+          finish("dos", onStateChange, interval);
+          return;
+        }
+        if (st.solved || st.stopped) return;
+        const statusEl = qs(SEL.STATUS);
+        if (statusEl && statusEl.innerText !== st.initialStatus) {
+          log$1.log("Solved");
+          st.solved = true;
+          finish("success", onStateChange, interval);
+          return;
+        }
+        if (st.requestCount >= MAX_ATTEMPTS) {
+          log$1.warn(`Max attempts (${MAX_ATTEMPTS}) reached`);
+          st.stopped = true;
+          finish("failed", onStateChange, interval);
+          return;
+        }
+        if (st.waiting && Date.now() - st.waitingStart > STUCK_TIMEOUT_MS) {
+          log$1.warn("XHR appears stuck — releasing lock");
+          st.waiting = false;
+        }
+        const now = Date.now();
+        const audioBtn = qs(SEL.AUDIO_BUTTON);
+        const imageSelect = qs(SEL.IMAGE_SELECT);
+        if (audioBtn && isVisible(audioBtn) && imageSelect && isVisible(imageSelect) && now - st.audioBtnClickAt > AUDIO_BTN_DEBOUNCE_MS) {
+          log$1.log("Switching to audio challenge");
+          audioBtn.click();
+          st.audioBtnClickAt = now;
+          return;
+        }
+        const audioSrcEl = qs(SEL.AUDIO_SOURCE);
+        const reloadBtn = qs(SEL.RELOAD_BUTTON);
+        const audioErrEl = qs(SEL.AUDIO_ERROR);
+        const inGrace = st.submittedAt > 0 && now - st.submittedAt < SUBMIT_GRACE_MS;
+        const isStale = !st.waiting && !inGrace && audioSrcEl && audioSrcEl.src && st.audioUrl === audioSrcEl.src && reloadBtn;
+        const hasError = audioErrEl && audioErrEl.innerText.length > 0 && reloadBtn && !reloadBtn.disabled;
+        if (isStale || hasError) {
+          log$1.log(hasError ? "Error detected — reloading" : "Stale audio — reloading");
+          reloadBtn.click();
+          return;
+        }
+        const responseField = qs(SEL.RESPONSE_FIELD);
+        const audioRespEl = qs(SEL.AUDIO_RESPONSE);
+        if (!st.waiting && responseField && isVisible(responseField) && audioRespEl && !audioRespEl.value && audioSrcEl && audioSrcEl.src && audioSrcEl.src.length > 0 && st.audioUrl !== audioSrcEl.src) {
+          st.audioUrl = audioSrcEl.src;
+          st.waiting = true;
+          getTextFromAudio(st.audioUrl, st);
+        }
+      } catch (err) {
+        log$1.error("Interval error: " + err.message);
+        finish("failed", onStateChange, interval);
+      }
+    }, INTERVAL_MS);
+  }
+  function createFreshState(initialStatus = "") {
     return {
       stopped: false,
       solved: false,
@@ -368,164 +410,178 @@
       requestCount: 0,
       submittedAt: 0,
       audioBtnClickAt: 0,
-      initialStatus: qs(SEL.STATUS) ? qs(SEL.STATUS).innerText : ""
+      initialStatus
     };
   }
-  function startSolver(btn) {
-    state = freshState();
-    setButtonState(btn, "working");
-    solverInterval = setInterval(function() {
-      try {
-        var st = state;
-        if (!st) return;
-        var dosEl = qs(SEL.DOSCAPTCHA);
-        if (dosEl && dosEl.innerText.length > 0) {
-          log$2.warn("DoS protection triggered — stopping");
-          stopSolver(btn, "dos");
-          return;
-        }
-        if (st.solved || st.stopped) return;
-        var statusEl = qs(SEL.STATUS);
-        if (statusEl && statusEl.innerText !== st.initialStatus) {
-          log$2.log("Solved");
-          st.solved = true;
-          stopSolver(btn, "success");
-          return;
-        }
-        if (st.requestCount >= CFG.MAX_ATTEMPTS) {
-          log$2.warn("Max attempts (" + CFG.MAX_ATTEMPTS + ") reached");
-          st.stopped = true;
-          stopSolver(btn, "failed");
-          return;
-        }
-        if (st.waiting && Date.now() - st.waitingStart > CFG.STUCK_TIMEOUT_MS) {
-          log$2.warn("XHR appears stuck — releasing lock");
-          st.waiting = false;
-        }
-        var now = Date.now();
-        var audioBtn = qs(SEL.AUDIO_BUTTON);
-        var imageSelect = qs(SEL.IMAGE_SELECT);
-        if (audioBtn && isVisible(audioBtn) && imageSelect && isVisible(imageSelect) && now - st.audioBtnClickAt > CFG.AUDIO_BTN_DEBOUNCE_MS) {
-          log$2.log("Switching to audio challenge");
-          audioBtn.click();
-          st.audioBtnClickAt = now;
-          return;
-        }
-        var audioSrcEl = qs(SEL.AUDIO_SOURCE);
-        var reloadBtn = qs(SEL.RELOAD_BUTTON);
-        var audioErrEl = qs(SEL.AUDIO_ERROR);
-        var inGrace = st.submittedAt > 0 && now - st.submittedAt < CFG.SUBMIT_GRACE_MS;
-        var isStale = !st.waiting && !inGrace && audioSrcEl && audioSrcEl.src && st.audioUrl === audioSrcEl.src && reloadBtn;
-        var hasError = audioErrEl && audioErrEl.innerText.length > 0 && reloadBtn && !reloadBtn.disabled;
-        if (isStale || hasError) {
-          log$2.log(hasError ? "Error detected — reloading" : "Stale audio — reloading");
-          reloadBtn.click();
-          return;
-        }
-        var responseField = qs(SEL.RESPONSE_FIELD);
-        var audioRespEl = qs(SEL.AUDIO_RESPONSE);
-        if (!st.waiting && responseField && isVisible(responseField) && audioRespEl && !audioRespEl.value && audioSrcEl && audioSrcEl.src && audioSrcEl.src.length > 0 && st.audioUrl !== audioSrcEl.src) {
-          st.audioUrl = audioSrcEl.src;
-          st.waiting = true;
-          getTextFromAudio(st.audioUrl);
-        }
-      } catch (err) {
-        log$2.error("Interval error: " + err.message);
-        stopSolver(btn, "failed");
-      }
-    }, CFG.INTERVAL_MS);
-  }
-  function stopSolver(btn, result) {
-    if (solverInterval) {
-      clearInterval(solverInterval);
-      solverInterval = null;
-    }
-    setButtonState(btn, result);
-  }
-  var log$1 = createLogger("Recaptcha Solver");
-  var SVG = {
+  const SVG = {
     bolt: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block"><path d="M13 2 3 14h9l-1 8L21 10h-9l1-8z"/></svg>',
     spin: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="rs-spin" style="display:block"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>',
     check: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polyline points="20 6 9 17 4 12"/></svg>',
     retry: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:block"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>',
     warn: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="#fff"/></svg>'
   };
-  var BUTTON_ID = "rs-solve-btn";
-  var WRAPPER_ID = "rs-solve-wrapper";
-  var HELP_SEL = ".help-button-holder";
-  var BTN_STATES = {
+  const BTN_STATES = {
     ready: [SVG.bolt, "Solve automatically", "", false],
     working: [SVG.spin, "Solving...", "rs-working", true],
     success: [SVG.check, "Solved!", "rs-success", true],
     failed: [SVG.retry, "Failed — click to retry", "rs-failed", false],
     dos: [SVG.warn, "Automated query limit reached", "rs-dos", true]
   };
+  let _styleSheet = null;
+  function createStyleSheet() {
+    if (_styleSheet) return _styleSheet;
+    _styleSheet = new CSSStyleSheet();
+    _styleSheet.replaceSync(`
+    :host {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      vertical-align: middle !important;
+    }
+    .rs-btn-holder {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+    }
+    .rs-btn {
+      background-image: none;
+      background-color: #1a73e8;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      margin: 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      line-height: 0;
+      vertical-align: middle;
+      transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      outline: none;
+      user-select: none;
+    }
+    .rs-btn:not(:disabled):hover {
+      background-color: #1558b0;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      transform: translateY(-1px);
+    }
+    .rs-btn:not(:disabled):active {
+      transform: translateY(0) scale(0.96);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    }
+    .rs-btn:disabled {
+      cursor: default;
+      opacity: 0.80;
+    }
+    .rs-btn.rs-working { background-color: #f29900; }
+    .rs-btn.rs-success { background-color: #1e8e3e; }
+    .rs-btn.rs-failed  { background-color: #d93025; }
+    .rs-btn.rs-failed:not(:disabled):hover { background-color: #b71c1c; }
+    .rs-btn.rs-dos     { background-color: #e37400; }
+    .rs-spin {
+      animation: rs-rotate 0.9s linear infinite;
+      transform-origin: center;
+    }
+    @keyframes rs-rotate {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    .rs-btn:focus-visible {
+      outline: 2px solid #1a73e8;
+      outline-offset: 2px;
+    }
+  `);
+    return _styleSheet;
+  }
+  const log = createLogger("Recaptcha Solver");
   function setButtonState(btn, stateName) {
     if (!btn) return;
-    var s = BTN_STATES[stateName] || BTN_STATES.ready;
+    const s = BTN_STATES[stateName] || BTN_STATES.ready;
     btn.innerHTML = s[0];
     btn.title = s[1];
     btn.disabled = s[3];
     btn.className = "rc-button goog-inline-block rs-btn" + (s[2] ? " " + s[2] : "");
   }
-  function injectStyles() {
-    var style = document.createElement("style");
-    style.textContent = [
-      ".rs-btn-holder{display:inline-flex!important;align-items:center!important;justify-content:center!important;vertical-align:middle!important}",
-      ".rs-btn{background-image:none!important;background-color:#1a73e8!important;color:#fff!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;padding:0!important;margin:0!important;border:none!important;border-radius:4px!important;cursor:pointer!important;line-height:0!important;vertical-align:middle!important;transition:background-color 0.15s ease,transform 0.1s ease,box-shadow 0.15s ease!important;box-shadow:0 1px 3px rgba(0,0,0,0.25)!important;outline:none!important;user-select:none!important}",
-      ".rs-btn:not(:disabled):hover{background-color:#1558b0!important;box-shadow:0 2px 6px rgba(0,0,0,0.3)!important;transform:translateY(-1px)!important}",
-      ".rs-btn:not(:disabled):active{transform:translateY(0) scale(0.96)!important;box-shadow:0 1px 2px rgba(0,0,0,0.2)!important}",
-      ".rs-btn:disabled{cursor:default!important;opacity:0.80!important}",
-      ".rs-btn.rs-working{background-color:#f29900!important}",
-      ".rs-btn.rs-success{background-color:#1e8e3e!important}",
-      ".rs-btn.rs-failed{background-color:#d93025!important}",
-      ".rs-btn.rs-failed:not(:disabled):hover{background-color:#b71c1c!important}",
-      ".rs-btn.rs-dos{background-color:#e37400!important}",
-      ".rs-spin{animation:rs-rotate 0.9s linear infinite!important;transform-origin:center!important}",
-      "@keyframes rs-rotate{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}",
-      ".rs-btn:focus-visible{outline:2px solid #1a73e8!important;outline-offset:2px!important}"
-    ].join("");
-    document.head.appendChild(style);
-  }
-  function injectButton() {
-    if (document.getElementById(BUTTON_ID)) return;
-    var helpHolder = document.querySelector(HELP_SEL);
-    if (!helpHolder) return;
-    var btn = document.createElement("button");
+  function injectButton({ onClick }) {
+    const helpHolder = qs(HELP_SEL);
+    if (!helpHolder) return null;
+    if (document.getElementById(HOST_ID)) return null;
+    const host = document.createElement("div");
+    host.id = HOST_ID;
+    const shadow = host.attachShadow({ mode: "closed" });
+    shadow.adoptedStyleSheets = [createStyleSheet()];
+    const btn = document.createElement("button");
     btn.id = BUTTON_ID;
     btn.tabIndex = 0;
     setButtonState(btn, "ready");
-    btn.addEventListener("click", function() {
-      var st = state;
-      if (st && st.stopped && !st.solved) {
-        log$1.log("Retrying solver...");
-        startSolver(btn);
+    btn.addEventListener("click", onClick);
+    const wrapper = document.createElement("div");
+    wrapper.className = "rs-btn-holder";
+    wrapper.appendChild(btn);
+    shadow.appendChild(wrapper);
+    helpHolder.insertAdjacentElement("afterend", host);
+    log.log("Solve button injected");
+    return { host, button: btn, shadowRoot: shadow };
+  }
+  function registerBoot() {
+    const log2 = createLogger("Recaptcha Solver");
+    measureServerLatencies(SERVERS);
+    let currentState = null;
+    let currentInterval = null;
+    function handleClick(btn) {
+      if (currentState && currentState.stopped && !currentState.solved) {
+        log2.log("Retrying solver...");
+        const statusEl2 = qs(SEL.STATUS);
+        currentState = createFreshState(statusEl2 ? statusEl2.innerText : "");
+        currentInterval = startSolver({
+          state: currentState,
+          onStateChange: (stateName) => {
+            setButtonState(btn, stateName);
+            if (stateName !== "working") currentInterval = null;
+          }
+        });
         return;
       }
-      if (solverInterval || st && st.solved) return;
-      log$1.log("Solver started by user");
-      startSolver(btn);
+      if (currentInterval || currentState && currentState.solved) return;
+      log2.log("Solver started by user");
+      const statusEl = qs(SEL.STATUS);
+      currentState = createFreshState(statusEl ? statusEl.innerText : "");
+      currentInterval = startSolver({
+        state: currentState,
+        onStateChange: (stateName) => {
+          setButtonState(btn, stateName);
+          if (stateName !== "working") currentInterval = null;
+        }
+      });
+    }
+    createStyleSheet();
+    waitForElement(HELP_SEL, 0).then(() => {
+      const btnData = injectButton({
+        onClick() {
+          handleClick(this);
+        }
+      });
+      if (btnData) {
+        log2.log("Boot complete");
+      }
     });
-    var wrapper = document.createElement("div");
-    wrapper.id = WRAPPER_ID;
-    wrapper.className = "button-holder rs-btn-holder";
-    wrapper.appendChild(btn);
-    helpHolder.insertAdjacentElement("afterend", wrapper);
-    log$1.log("Solve button injected");
+    observeMutations(() => {
+      if (!document.getElementById(HOST_ID) && qs(HELP_SEL)) {
+        log2.log("Button lost — re-injecting");
+        injectButton({
+          onClick() {
+            handleClick(this);
+          }
+        });
+      }
+    });
   }
   
   if (window.location.href.includes("bframe")) {
-    var log = createLogger("Recaptcha Solver");
-    injectStyles();
-    waitForElement(".help-button-holder", 0).then(function() {
-      injectButton();
-    });
-    observeMutations(function() {
-      if (!document.getElementById("rs-solve-btn") && document.querySelector(".help-button-holder")) {
-        log.log("Button lost — re-injecting");
-        injectButton();
-      }
-    });
+    registerBoot();
   }
 
 })();
