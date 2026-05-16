@@ -7,8 +7,8 @@
 // @license      MIT
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=botghost.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js
 // @match        https://dashboard.botghost.com/*
 // @sandbox      JavaScript
 // @grant        GM_setClipboard

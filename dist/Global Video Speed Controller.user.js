@@ -9,8 +9,8 @@
 // @license         MIT
 // @icon            https://lh3.googleusercontent.com/tPBNat6dgVmnj-qBCsqizbjByLu2x-XTgTFR7MGKWiPwDk422k5eF7_9B__pTlfm97JTt4X7YeIgq0za-3qaR6O6vQ=s60
 // @supportURL      https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL     https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Global%20Video%20Speed%20Controller.user.js
-// @updateURL       https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Global%20Video%20Speed%20Controller.user.js
+// @downloadURL     https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Global%20Video%20Speed%20Controller.user.js
+// @updateURL       https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Global%20Video%20Speed%20Controller.user.js
 // @match           http://*/*
 // @match           https://*/*
 // @sandbox         JavaScript

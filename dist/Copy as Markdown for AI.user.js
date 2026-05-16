@@ -9,8 +9,8 @@
 // @license         MIT
 // @icon            https://media.licdn.com/dms/image/v2/D560BAQFyGRIuF2bqeQ/company-logo_200_200/B56ZfTe2EtHoAI-/0/1751599768258/crawl4ai_logo?e=2147483647&v=beta&t=skhRct8O4VaW42IwD7eC9Eqc9Pbavt7n6q7QgaJTQE8
 // @supportURL      https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL     https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Copy%20as%20Markdown%20for%20AI.user.js
-// @updateURL       https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Copy%20as%20Markdown%20for%20AI.user.js
+// @downloadURL     https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Copy%20as%20Markdown%20for%20AI.user.js
+// @updateURL       https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Copy%20as%20Markdown%20for%20AI.user.js
 // @match           *://*/*
 // @require         https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js
 // @grant           GM.download

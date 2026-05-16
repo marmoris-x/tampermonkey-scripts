@@ -9,8 +9,8 @@
 // @license        MIT
 // @homepageURL    https://github.com/marmoris-x/tampermonkey-scripts
 // @supportURL     https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/TikTok%20Enhanced.user.js
-// @updateURL      https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/TikTok%20Enhanced.user.js
+// @downloadURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/TikTok%20Enhanced.user.js
+// @updateURL      https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/TikTok%20Enhanced.user.js
 // @icon           https://www.google.com/s2/favicons?sz=64&domain=tiktok.com
 // @tag            social
 // @tag            video

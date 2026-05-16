@@ -7,8 +7,8 @@
 // @license      MIT
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=gutefrage.net
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Gutefrage%20Smart%20Filters.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Gutefrage%20Smart%20Filters.user.js
 // @match        https://www.gutefrage.net/*
 // @sandbox      raw
 // @grant        GM.getValue

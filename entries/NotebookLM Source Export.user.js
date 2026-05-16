@@ -14,8 +14,8 @@
 // @run-at       document-idle
 // @noframes
 // @sandbox      JavaScript
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/NotebookLM%20Source%20Export.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/NotebookLM%20Source%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @license      MIT
 // ==/UserScript==

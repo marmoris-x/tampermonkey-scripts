@@ -7,8 +7,8 @@
 // @license      MIT
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=epicgames.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Epic%20Games%20Library%20Export.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Epic%20Games%20Library%20Export.user.js
 // @match        https://accounts.epicgames.com/account/transactions*
 // @match        https://www.epicgames.com/account/transactions*
 // @require      https://cdn.jsdelivr.net/npm/jszip@3.9.1/dist/jszip.min.js#sha256-aSPPIlJfSHQ5T7wunbPcp7tM0rlq5dHoUGeN8O5odMg=

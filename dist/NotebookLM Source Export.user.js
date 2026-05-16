@@ -7,8 +7,8 @@
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=https://notebooklm.google/
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/NotebookLM%20Source%20Export.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/NotebookLM%20Source%20Export.user.js
 // @match        https://notebooklm.google.com/*
 // @sandbox      JavaScript
 // @grant        GM_addElement

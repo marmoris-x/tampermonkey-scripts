@@ -8,8 +8,8 @@
 // @icon         https://www.google.com/s2/favicons?sz=32&domain=crunchyroll.com
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=crunchyroll.com
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Crunchyroll%20Enhanced.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Crunchyroll%20Enhanced.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Crunchyroll%20Enhanced.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Crunchyroll%20Enhanced.user.js
 // @match        https://*.crunchyroll.com/*
 // @sandbox      raw
 // @grant        GM.getValue

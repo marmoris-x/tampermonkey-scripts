@@ -12,8 +12,8 @@
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
 // @require      https://cdn.jsdelivr.net/npm/jszip@3.9.1/dist/jszip.min.js#sha256-aSPPIlJfSHQ5T7wunbPcp7tM0rlq5dHoUGeN8O5odMg=
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Epic%20Games%20Library%20Export.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Epic%20Games%20Library%20Export.user.js
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
 // @run-at       document-idle
 // @sandbox      JavaScript
