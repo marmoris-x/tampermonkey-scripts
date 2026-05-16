@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.4.3
+// @version      5.4.4
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
-// @icon64       https://www.google.com/s2/favicons?sz=64&domain=google.com
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=https://aistudio.google.com/
 // @grant        GM_registerMenuCommand
 // @grant        GM_notification
 // @grant        GM_getValue
