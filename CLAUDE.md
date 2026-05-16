@@ -40,7 +40,7 @@ This is not optional. Even for a one-line fix — spawn an Explore agent. Contex
 
 ## Project Identity
 
-Monorepo of 17 standalone Tampermonkey userscripts maintained by `marmoris-x`, distributed via jsDelivr CDN to GreasyFork. Every script is self-contained, built from modular ESM source through a Vite 6 + vite-plugin-monkey 7 pipeline, and published as non-minified `.user.js` files.
+Monorepo of 18 standalone Tampermonkey userscripts maintained by `marmoris-x`, distributed via jsDelivr CDN to GreasyFork. Every script is self-contained, built from modular ESM source through a Vite 6 + vite-plugin-monkey 7 pipeline, and published as non-minified `.user.js` files.
 
 - **Owner:** marmoris-x (GitHub) — **License:** MIT
 - **Package:** `"private": true`, `"type": "module"`
@@ -65,7 +65,7 @@ Zero production/runtime dependencies beyond the CDN `@require` for `marked`.
 ```
 tampermonkey-scripts/
 ├── build.mjs                  # Custom build script — iterates entries/, runs Vite per script
-├── entries/                   # 17 thin entry .user.js files — metadata + imports + bootstrap
+├── entries/                   # 18 entry files — metadata + imports + bootstrap
 ├── src/                       # Per-script ESM modules
 │   ├── anisearch-endless-scroll/
 │   ├── copy-as-markdown-for-ai/
@@ -77,7 +77,7 @@ tampermonkey-scripts/
 │   ├── notebooklm-source-export/
 │   ├── recaptcha-solver/
 │   └── youtube-enhanced/
-├── dist/                      # Build output: 17 standalone .user.js files (non-minified)
+├── dist/                      # Build output: 18 standalone .user.js files (non-minified)
 ├── docs/                      # Authoritative standards and TM API reference
 └── .claude/                   # Claude Code configuration
 ```
@@ -89,7 +89,7 @@ Each `src/<script>/` directory contains local utility modules (`_logger.js`, `_s
 **Requires Node.js ≥18.18** (Vite 6 minimum). Check with `node --version`.
 
 ```bash
-node build.mjs          # Build all 17 scripts → dist/ (must succeed: "17 built, 0 failed")
+node build.mjs          # Build all 18 scripts → dist/ (must succeed: "18 built, 0 failed")
 ```
 
 There is no dev server, no watch mode, no HMR. Build output is **not minified** (`build.minify: false`) — a GreasyFork requirement for transparency review.
@@ -122,6 +122,14 @@ Simple boot pattern (AniSearch):
 ```javascript
 import { registerBoot } from '../src/anisearch-endless-scroll/boot.js';
 registerBoot();
+```
+
+Self-contained pattern (TikTok Enhanced, FlameComics, BotGhost — no `src/` folder):
+```javascript
+(function () {
+  'use strict';
+  // all code inline, no imports
+})();
 ```
 
 ## Metadata Conventions
@@ -413,7 +421,7 @@ Scope: script name in kebab-case (`copy-as-markdown`, `youtube-enhanced`, `share
 ### Pre-Commit Checklist
 
 - `@version` bumped
-- `node build.mjs` succeeds (17 built, 0 failed)
+- `node build.mjs` succeeds (18 built, 0 failed)
 - Dist changes reviewed (non-minified)
 - No debug `console.log` (use `createLogger`)
 - New `@grant` entries added if new GM APIs used
@@ -440,4 +448,5 @@ Scope: script name in kebab-case (`copy-as-markdown`, `youtube-enhanced`, `share
 | 15 | Recaptcha Solver | google.com/recaptcha | GM_xmlhttpRequest |
 | 16 | Reddit Content Unlocker | reddit.com | GM_addElement, GM_setValue, GM_getValue |
 | 17 | YouTube Enhanced | *.youtube.com/* | GM_getValue, GM_setValue, GM.getValue, GM.setValue |
+| 18 | TikTok Enhanced | *://*.tiktok.com/* | GM_addStyle, window.onurlchange |
 
