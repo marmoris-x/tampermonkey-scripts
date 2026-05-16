@@ -1,57 +1,92 @@
+'use strict';
+
 /**
- * Returns a promise that resolves when an element matching `selector` appears in the DOM.
- * Uses MutationObserver internally; disconnects immediately upon match.
- * @param {string} selector - CSS selector string
- * @param {number} [timeout=10000] - Max wait time in ms (0 = no timeout)
+ * Waits for an element to appear in the DOM using MutationObserver.
+ * @param {string} selector - CSS selector to watch for
+ * @param {number} [timeout=10000] - Milliseconds before rejecting (0 = no timeout)
  * @param {Element} [root=document.body] - Root element to observe
- * @returns {Promise<Element>} Resolves with the found element, rejects on timeout
+ * @returns {Promise<Element>} Resolves with the found element
+ * @throws {Error} If element not found within timeout
  */
-export function waitForElement(selector, timeout, root) {
-  timeout = timeout || 10000;
-  root = root || document.body;
-  return new Promise(function (resolve, reject) {
+export function waitForElement(selector, timeout = 10000, root = document.body) {
+  return new Promise((resolve, reject) => {
     const existing = root.querySelector(selector);
     if (existing) return resolve(existing);
-    let timer;
-    const observer = new MutationObserver(function (mutations) {
-      for (let m = 0; m < mutations.length; m++) {
-        const nodes = mutations[m].addedNodes;
-        for (let i = 0; i < nodes.length; i++) {
-          if (nodes[i].nodeType !== Node.ELEMENT_NODE) continue;
-          if (nodes[i].matches && nodes[i].matches(selector)) { cleanup(); return resolve(nodes[i]); }
-          const child = nodes[i].querySelector && nodes[i].querySelector(selector);
-          if (child) { cleanup(); return resolve(child); }
+
+    let timer = null;
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          if (node.matches?.(selector)) {
+            cleanup();
+            return resolve(node);
+          }
+          const child = node.querySelector?.(selector);
+          if (child) {
+            cleanup();
+            return resolve(child);
+          }
         }
       }
     });
-    function cleanup() {
+
+    const cleanup = () => {
       observer.disconnect();
-      if (timer) clearTimeout(timer);
-    }
+      if (timer !== null) clearTimeout(timer);
+    };
+
     observer.observe(root, { childList: true, subtree: true });
+
     if (timeout > 0) {
-      timer = setTimeout(function () { cleanup(); reject(new Error('waitForElement timeout: ' + selector)); }, timeout);
+      timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`waitForElement timeout: ${selector}`));
+      }, timeout);
     }
   });
 }
 
 /**
- * Observes `root` for added elements. Calls `callback` with each added Element node.
- * Returns the MutationObserver instance for .disconnect() when no longer needed.
- * @param {Function} callback - Called with each added Element
- * @param {Element} [root=document.body] - Root element to observe
+ * Observes added elements in the DOM and invokes callback for each.
+ * Call observer.disconnect() to stop observing.
+ * @param {(element: Element, observer: MutationObserver) => void} callback
+ * @param {Element} [root=document.body]
  * @returns {MutationObserver}
  */
-export function observeMutations(callback, root) {
-  root = root || document.body;
-  const observer = new MutationObserver(function (mutations) {
-    for (let m = 0; m < mutations.length; m++) {
-      const nodes = mutations[m].addedNodes;
-      for (let i = 0; i < nodes.length; i++) {
-        if (nodes[i].nodeType === Node.ELEMENT_NODE) callback(nodes[i], observer);
+export function observeMutations(callback, root = document.body) {
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          callback(node, observer);
+        }
       }
     }
   });
+
   observer.observe(root, { childList: true, subtree: true });
   return observer;
+}
+
+/**
+ * Checks if an element is visible (not display:none, visibility:hidden, or detached).
+ * @param {Element} el
+ * @returns {boolean}
+ */
+export function isVisible(el) {
+  if (!el || el.offsetParent === null) return false;
+  const style = window.getComputedStyle(el);
+  return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+/**
+ * Safe querySelector shorthand.
+ * @param {string} selector
+ * @param {Document|Element} [root=document]
+ * @returns {Element|null}
+ */
+export function qs(selector, root = document) {
+  return root.querySelector(selector);
 }

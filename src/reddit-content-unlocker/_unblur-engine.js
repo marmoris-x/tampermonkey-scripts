@@ -12,7 +12,7 @@
 import { SELECTORS, ATTRS, SLOTS, BUNDLE_PATTERNS } from './_selectors.js';
 import { injectGlobalCSS } from './_css.js';
 import { removeAll, reveal, unblurImgs } from './_dom-utils.js';
-import { replacePreviewUrls } from './_image-cleaner.js';
+import { removeImageBlur } from './_image-cleaner.js';
 import { stateManager } from './_state.js';
 
 /**
@@ -80,6 +80,7 @@ export function unblurCallback() {
     const style = document.createElement('style');
     style.id = 'u-reveal';
     style.textContent = [
+      `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
       `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
       'div.prompt{display:none!important}'
     ].join('');
@@ -109,6 +110,10 @@ export function unblurCallback() {
     blurred.removeAttribute(ATTRS.BLURRED);
     blurred.setAttribute(ATTRS.CLICKED, '');
 
+    // Trigger Reddit's own reveal handler via click simulation
+    try { blurred.click(); } catch {}
+    try { blurred.firstElementChild?.click(); } catch {}
+
     // Handle slotted content
     const blurredSlot = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
     const revealedSlot = blurred.querySelector(`[slot="${SLOTS.REVEALED}"]`);
@@ -123,15 +128,6 @@ export function unblurCallback() {
       unblurImgs(blurredSlot);
     }
 
-    // Handle shadow root slot mismatch: post pages may have only a "revealed" slot
-    // in the shadow DOM while light DOM content is still in the "blurred" slot
-    const sr = blurred.shadowRoot;
-    if (sr && !sr.querySelector('slot[name="blurred"]') && sr.querySelector('slot[name="revealed"]')) {
-      const lightBlurred = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
-      if (lightBlurred) {
-        lightBlurred.setAttribute('slot', SLOTS.REVEALED);
-      }
-    }
   }
 
   // --- Phase 9: Handle blurred slots in aspect-ratio containers ---
@@ -140,10 +136,18 @@ export function unblurCallback() {
     unblurImgs(el);
   });
 
-  // --- Phase 10: Replace preview CDN URLs with direct image URLs ---
-  replacePreviewUrls();
+  // --- Phase 10: Remove blur from images with blur URL params and inline styles ---
+  // Removes ?blur=N from image URLs AND inline filter:blur(N) styles.
+  // Works on ALL image domains (preview.redd.it, v.redd.it, etc.) —
+  // unlike a domain swap (preview→i.redd.it) which breaks external
+  // video link thumbnails with 404s.
+  removeImageBlur();
 
   // --- Phase 11: Restore page scrolling ---
-  document.body.style.removeProperty('overflow');
-  document.documentElement.style.removeProperty('overflow');
+  if (document.body) {
+    document.body.style.removeProperty('overflow');
+  }
+  if (document.documentElement) {
+    document.documentElement.style.removeProperty('overflow');
+  }
 }

@@ -7,7 +7,7 @@
  * @module _manga-mode
  */
 
-import { navigateNext, waitForUrlChange } from './_navigation.js';
+import { navigateNext, waitForUrlChange, guessNextUrl } from './_navigation.js';
 
 /* --- Constants --- */
 
@@ -20,6 +20,12 @@ export const CONCURRENT_DL = 6;
 /** Navigation timing constants (ms) — matching _download-controller */
 const NAV_CLICK_WAIT_MS = 50;
 const NAV_LOAD_WAIT_MS = 150;
+
+/** Temporary debug flag — toggle to enable/disable manga-mode diagnostic logs */
+const DEBUG_MANGA = false;
+function dbg(...args) {
+  if (DEBUG_MANGA) console.log('[MPD-DBG]', ...args);
+}
 
 /* --- Abort Control --- */
 
@@ -90,6 +96,8 @@ export async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, exter
   let page = 1;
   let currentUrl = location.href;
 
+  dbg('>> harvestPages: page', page, 'start (URL:', currentUrl, ')');
+
   while (page <= maxPages) {
     // Check abort signals before processing a page
     if (externalAbort && externalAbort()) return;
@@ -107,21 +115,38 @@ export async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, exter
 
     // Step 3: Yield page result or stop if no images found
     if (!images || images.length === 0) {
+      dbg('   page', page, '→ no-images, stopping');
       yield { page, images: [], status: 'no-images', stop: true };
       return;
     }
 
+    dbg('   getPageImages →', images.length, 'images');
     yield { page, images };
 
     // Step 4: Navigate to the next page
+    dbg('   navigateNext()');
     navigateNext();
     await sleep(NAV_CLICK_WAIT_MS);
 
     // Step 5: Wait for URL change (with timeout)
+    const navStart = Date.now();
     const changed = await waitForUrlChange(currentUrl);
+    const navMs = Date.now() - navStart;
 
     if (!changed) {
+      dbg('   waitForUrlChange → TIMEOUT after', navMs, 'ms (prev:', currentUrl, ')');
       yield { page, status: 'nav-timeout', stop: true };
+      return;
+    }
+
+    dbg('   waitForUrlChange → OK (' + navMs + 'ms)', currentUrl, '→', location.href);
+
+    // Detect navigation to non-manga page (e.g., gallery/overview after last page).
+    // If the old URL had a recognizable page-number pattern and the new URL doesn't,
+    // we've gone past the manga → stop before collecting gallery thumbnails.
+    if (guessNextUrl(currentUrl) !== null && guessNextUrl(location.href) === null) {
+      dbg('   URL pattern lost → gallery/overview page, stopping');
+      yield { page: page + 1, images: [], status: 'no-images', stop: true };
       return;
     }
 
@@ -130,5 +155,6 @@ export async function* harvestPages({ getPageImages, maxPages = MAX_PAGES, exter
 
     currentUrl = location.href;
     page++;
+    dbg('>> harvestPages: page', page, 'start (URL:', currentUrl, ')');
   }
 }

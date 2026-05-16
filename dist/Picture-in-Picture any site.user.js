@@ -10,9 +10,8 @@
 // @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js
 // @match        *://*/*
-// @sandbox      JavaScript
+// @sandbox      raw
 // @grant        GM_registerMenuCommand
-// @inject-into  content
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==

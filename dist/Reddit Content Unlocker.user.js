@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Content Unlocker
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.0.0
+// @version      3.2.0
 // @author       marmoris-x
 // @description  Removes NSFW popup, un-blurs content, and makes Reddit accessible
 // @license      MIT
@@ -12,7 +12,7 @@
 // @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js
 // @match        https://www.reddit.com/*
 // @match        https://sh.reddit.com/*
-// @sandbox      JavaScript
+// @match        https://old.reddit.com/*
 // @grant        GM_addElement
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -119,6 +119,15 @@ HEADER_NAV_V2: "header.v2 > nav",
     REVEALED: "revealed"
   };
   const OPACITY_CLASSES = ["opacity-30", "opacity-50"];
+  const URL_PATTERNS = {
+    BLUR_PARAM: /[?&]blur=\d+/g,
+    FORMAT_PJPG: /[?&]format=pjpg/g,
+    DOUBLE_AMPERSAND: /&&/g,
+    QUESTION_AMPERSAND: /\?&/
+  };
+  const STYLE_PATTERNS = {
+    BLUR_FILTER: /filter:\s*blur\([^)]+\)/g
+  };
   const SHADOW_STYLE_IDS = {
     U_REVEAL: "u-reveal",
     UNBLUR_CSS: "unblur-css"
@@ -275,35 +284,37 @@ HEADER_NAV_V2: "header.v2 > nav",
   function injectGlobalCSS() {
     if (globalCSSInjected) return;
     globalCSSInjected = true;
-    const style = GM_addElement("style", {
-      id: SHADOW_STYLE_IDS.UNBLUR_CSS,
-      textContent: GLOBAL_CSS
-    });
+    const style = document.createElement("style");
+    style.id = SHADOW_STYLE_IDS.UNBLUR_CSS;
+    style.textContent = GLOBAL_CSS;
     document.head.appendChild(style);
   }
   function injectMenuCSS() {
     if (menuCSSInjected) return;
     menuCSSInjected = true;
-    const style = GM_addElement("style", {
-      textContent: MENU_CSS
-    });
+    const style = document.createElement("style");
+    style.textContent = MENU_CSS;
     document.head.appendChild(style);
   }
   const REVEAL_SHADOW_CSS = [
+    `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
     `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
     "div.prompt{display:none!important}"
   ].join("");
+  const PROMPT_HIDE_CSS = "div.prompt{display:none!important}";
   const originalAttachShadow = Element.prototype.attachShadow;
   function patchedAttachShadow(init) {
     var _a;
     const shadowRoot = originalAttachShadow.call(this, init);
+    const style = document.createElement("style");
     const tagName = (_a = this.tagName) == null ? void 0 : _a.toLowerCase();
     if (tagName === "shreddit-blurred-container") {
-      const style = document.createElement("style");
       style.id = SHADOW_STYLE_IDS.U_REVEAL;
       style.textContent = REVEAL_SHADOW_CSS;
-      shadowRoot.appendChild(style);
+    } else {
+      style.textContent = PROMPT_HIDE_CSS;
     }
+    shadowRoot.appendChild(style);
     return shadowRoot;
   }
   function patchAttachShadow() {
@@ -357,24 +368,27 @@ node,
       img.style.setProperty("filter", "none", "important");
     });
   }
-  function unblurImageUrl(src) {
-    const match = src.match(/https?:\/\/(?:preview|external-preview)\.redd\.it\/([^?]+)/);
-    if (match) {
-      return "https://i.redd.it/" + match[1];
-    }
-    return src;
-  }
-  function replacePreviewUrls() {
-    document.querySelectorAll(
-      'img[src*="preview.redd.it/"], img[src*="external-preview.redd.it/"]'
-    ).forEach((img) => {
-      const unblurred = unblurImageUrl(img.src);
-      if (unblurred !== img.src) {
-        img.src = unblurred;
+  function removeImageBlur() {
+    const selector = [
+      'img[src*="blur="]:not([data-unblurred])',
+      'img[style*="blur"]:not([data-unblurred])'
+    ].join(",");
+    document.querySelectorAll(selector).forEach((img) => {
+      img.setAttribute(ATTRS.DATA_UNBLURRED, "1");
+      if (img.src.includes("blur=")) {
+        let fixed = img.src.replace(URL_PATTERNS.BLUR_PARAM, "").replace(URL_PATTERNS.FORMAT_PJPG, "").replace(URL_PATTERNS.DOUBLE_AMPERSAND, "&").replace(URL_PATTERNS.QUESTION_AMPERSAND, "?");
+        if (fixed !== img.src) {
+          img.src = fixed;
+        }
+      }
+      const st = img.getAttribute("style") || "";
+      if (st.includes("blur")) {
+        img.setAttribute("style", st.replace(STYLE_PATTERNS.BLUR_FILTER, ""));
       }
     });
   }
   function unblurCallback() {
+    var _a;
     if (!stateManager.getState()) return;
     injectGlobalCSS();
     removeAll(SELECTORS.FACEPLATE_MODAL_BLOCKING);
@@ -409,6 +423,7 @@ node,
       const style = document.createElement("style");
       style.id = "u-reveal";
       style.textContent = [
+        `slot[name="${SLOTS.BLURRED}"]{display:none!important}`,
         `slot[name="${SLOTS.REVEALED}"]{display:block!important;opacity:1!important;height:100%!important}`,
         "div.prompt{display:none!important}"
       ].join("");
@@ -427,6 +442,14 @@ node,
       if (reason === "spoiler" && !state.spoiler) continue;
       blurred.removeAttribute(ATTRS.BLURRED);
       blurred.setAttribute(ATTRS.CLICKED, "");
+      try {
+        blurred.click();
+      } catch {
+      }
+      try {
+        (_a = blurred.firstElementChild) == null ? void 0 : _a.click();
+      } catch {
+      }
       const blurredSlot = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
       const revealedSlot = blurred.querySelector(`[slot="${SLOTS.REVEALED}"]`);
       if (revealedSlot) {
@@ -436,21 +459,18 @@ node,
         reveal(blurredSlot);
         unblurImgs(blurredSlot);
       }
-      const sr = blurred.shadowRoot;
-      if (sr && !sr.querySelector('slot[name="blurred"]') && sr.querySelector('slot[name="revealed"]')) {
-        const lightBlurred = blurred.querySelector(`[slot="${SLOTS.BLURRED}"]`);
-        if (lightBlurred) {
-          lightBlurred.setAttribute("slot", SLOTS.REVEALED);
-        }
-      }
     }
     document.querySelectorAll(SELECTORS.ASPECT_RATIO_BLURRED).forEach((el) => {
       reveal(el);
       unblurImgs(el);
     });
-    replacePreviewUrls();
-    document.body.style.removeProperty("overflow");
-    document.documentElement.style.removeProperty("overflow");
+    removeImageBlur();
+    if (document.body) {
+      document.body.style.removeProperty("overflow");
+    }
+    if (document.documentElement) {
+      document.documentElement.style.removeProperty("overflow");
+    }
   }
   let menuElement = null;
   let initialized = false;
@@ -545,19 +565,108 @@ e.target
       menuElement.classList.remove("active");
     }
   }
-  function resetMenu() {
-    menuElement = null;
-    initialized = false;
+  const SEG_POST_CODES = [99, 111, 109, 109, 101, 110, 116, 115];
+  const SEG_TYPE_IDX = 2;
+  const SOURCE_HOSTS = ["www.reddit.com", "sh.reddit.com"];
+  const OLD_HOST = "old.reddit.com";
+  function extractPostInfo(url) {
+    try {
+      const parsed = new URL(url);
+      if (!SOURCE_HOSTS.includes(parsed.hostname)) return null;
+      const path = parsed.pathname;
+      const segments = path.split("/").filter(Boolean);
+      if (segments.length < 4) return null;
+      if (segments[0].toLowerCase() !== "r") return null;
+      if (segments[SEG_TYPE_IDX].length !== SEG_POST_CODES.length) return null;
+      for (let i = 0; i < SEG_POST_CODES.length; i++) {
+        if (segments[SEG_TYPE_IDX].charCodeAt(i) !== SEG_POST_CODES[i]) {
+          return null;
+        }
+      }
+      if (!/^[a-z0-9]+$/i.test(segments[3])) return null;
+      if (segments.includes("media") || segments.includes("gallery")) return null;
+      return { subreddit: segments[1], postId: segments[3] };
+    } catch {
+      return null;
+    }
+  }
+  function performRedirect(url) {
+    const newUrl = url.replace(/^https?:\/\/(www|sh)\.reddit\.com/, `https://${OLD_HOST}`);
+    if (newUrl !== url) {
+      location.replace(newUrl);
+    }
+  }
+  async function checkNsfw(subreddit, postId, timeoutMs = 3e3) {
+    var _a, _b, _c, _d, _e;
+    const apiUrl = `/r/${encodeURIComponent(subreddit)}/comments/${encodeURIComponent(postId)}/.json`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(apiUrl, { signal: controller.signal });
+      if (!response.ok) return false;
+      const data = await response.json();
+      return ((_e = (_d = (_c = (_b = (_a = data == null ? void 0 : data[0]) == null ? void 0 : _a.data) == null ? void 0 : _b.children) == null ? void 0 : _c[0]) == null ? void 0 : _d.data) == null ? void 0 : _e.over_18) === true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  function setupSPAListener() {
+    const w = (
+window
+    );
+    if (w.onurlchange === null) {
+      window.addEventListener("urlchange", (info) => {
+        const evt = info;
+        const postInfo = extractPostInfo(evt.url);
+        if (!postInfo) return;
+        checkNsfw(postInfo.subreddit, postInfo.postId).then((isNsfw) => {
+          if (isNsfw) {
+            performRedirect(evt.url);
+          }
+        });
+      });
+    }
+  }
+  function handleAgeGate() {
+    document.cookie = "over18=1; domain=.reddit.com; path=/; max-age=31536000";
+    const clickAgeGate = () => {
+      const buttons = document.querySelectorAll(
+        '.c-btn-primary, button, input[type="submit"], a[href*="over18"]'
+      );
+      for (const btn of buttons) {
+        const text = (btn.textContent || btn.value || "").toLowerCase();
+        if (/continue|over\s*18|yes|confirm/i.test(text)) {
+          btn.click();
+          return;
+        }
+      }
+    };
+    if (document.body) {
+      clickAgeGate();
+    } else {
+      document.addEventListener("DOMContentLoaded", clickAgeGate, { once: true });
+    }
   }
   let observer = null;
   let menuInitialized = false;
   function registerBoot() {
+    if (location.hostname === "old.reddit.com") {
+      handleAgeGate();
+      return;
+    }
+    const postInfo = extractPostInfo(location.href);
+    const nsfwPromise = postInfo ? checkNsfw(postInfo.subreddit, postInfo.postId) : Promise.resolve(false);
     patchAttachShadow();
+    injectPromptCSS();
     injectGlobalCSS();
     const debouncedCallback = debounce(handleMutations, 150);
     observer = observeMutations(debouncedCallback, document);
-    window.addEventListener("urlchange", onUrlChange);
     unblurCallback();
+    document.addEventListener("DOMContentLoaded", () => {
+      unblurCallback();
+    }, { once: true });
     setTimeout(() => {
       initMenuWithFallback();
       unblurCallback();
@@ -567,19 +676,33 @@ e.target
         observer == null ? void 0 : observer.disconnect();
       }
     }, 8e3);
+    setupSPAListener();
+    nsfwPromise.then((isNsfw) => {
+      if (isNsfw) {
+        performRedirect(location.href);
+      }
+    });
+  }
+  function injectPromptCSS() {
+    document.querySelectorAll("*").forEach((el) => {
+      const sr = el.shadowRoot;
+      if (!sr) return;
+      for (const child of sr.children) {
+        if (child.tagName === "STYLE" && child.textContent.includes("div.prompt{display:none}")) {
+          return;
+        }
+      }
+      if (sr.querySelector("div.prompt")) {
+        const s = document.createElement("style");
+        s.textContent = "div.prompt{display:none!important}";
+        sr.appendChild(s);
+      }
+    });
   }
   function handleMutations(_node, _obs) {
     initMenuWithFallback();
     if (!stateManager.getState()) return;
     unblurCallback();
-  }
-  function onUrlChange() {
-    menuInitialized = false;
-    resetMenu();
-    initMenuWithFallback();
-    if (stateManager.getState()) {
-      unblurCallback();
-    }
   }
   function initMenuWithFallback() {
     if (!menuInitialized) {

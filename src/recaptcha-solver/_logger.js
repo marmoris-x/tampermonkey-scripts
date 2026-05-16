@@ -1,17 +1,18 @@
+'use strict';
+
 /**
- * Creates a prefixed logger instance. All methods prepend `[prefix]` to messages.
- * @param {string} prefix - Script identifier (e.g. "Recaptcha Solver")
- * @param {boolean} [debugMode=false] - When false, debug() calls are no-ops
+ * Creates a namespaced logger with [prefix] tagging.
+ * @param {string} prefix - Displayed as [prefix] in all log lines
+ * @param {boolean} [debugMode=false] - When false, .debug() calls are no-ops
  * @returns {{ log: Function, warn: Function, error: Function, info: Function, debug: Function }}
  */
-export function createLogger(prefix, debugMode) {
-  debugMode = debugMode || false;
-  const tag = '[' + prefix + ']';
+export function createLogger(prefix, debugMode = false) {
+  const tag = `[${prefix}]`;
   return {
-    log:   function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.log.apply(console, args); },
-    warn:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.warn.apply(console, args); },
-    error: function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.error.apply(console, args); },
-    info:  function () { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.info.apply(console, args); },
-    debug: function () { if (debugMode) { const args = [tag]; for (let i = 0; i < arguments.length; i++) args.push(arguments[i]); console.debug.apply(console, args); } }
+    log(...args)     { console.log(tag, ...args); },
+    warn(...args)    { console.warn(tag, ...args); },
+    error(...args)   { console.error(tag, ...args); },
+    info(...args)    { console.info(tag, ...args); },
+    debug(...args)   { if (debugMode) console.debug(tag, ...args); }
   };
 }

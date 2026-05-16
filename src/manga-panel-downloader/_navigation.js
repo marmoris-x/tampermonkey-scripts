@@ -22,7 +22,7 @@ function sleep(ms) {
  * @param {string} url - Current page URL
  * @returns {string|null} Next page URL or null if not detectable
  */
-function guessNextUrl(url) {
+export function guessNextUrl(url) {
   try {
     const u = new URL(url);
     if (u.searchParams.has('page')) {
@@ -99,17 +99,35 @@ export function waitForUrlChange(prevUrl, timeout = 5000) {
   return new Promise((resolve) => {
     // window.onurlchange is null when granted via @grant — use SPA event
     if (window.onurlchange === null) {
+      // 1) Immediate check: URL may already have changed during el.click()
+      //    (pushState fires synchronously before we can register a listener)
+      if (location.href !== prevUrl) { resolve(true); return; }
+
       const handler = (info) => {
         if (info.url !== prevUrl) {
           window.removeEventListener('urlchange', handler);
+          clearInterval(fallbackId);
           resolve(true);
         }
       };
       window.addEventListener('urlchange', handler);
-      setTimeout(() => {
+
+      // 2) Backup polling for async urlchange events (Chrome extension
+      //    messaging has non-deterministic timing)
+      const fallbackId = setInterval(() => {
+        if (location.href !== prevUrl) {
+          window.removeEventListener('urlchange', handler);
+          clearInterval(fallbackId);
+          resolve(true);
+        }
+      }, 80);
+
+      const done = () => {
         window.removeEventListener('urlchange', handler);
+        clearInterval(fallbackId);
         resolve(false);
-      }, timeout);
+      };
+      setTimeout(done, timeout);
     } else {
       // Fallback: poll location.href at 80ms intervals
       const id = setInterval(() => {

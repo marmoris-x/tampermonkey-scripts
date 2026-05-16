@@ -171,17 +171,17 @@ let menuCSSInjected = false;
 
 /**
  * Injects global hide/unblur CSS into document head.
- * Uses GM_addElement to bypass Content Security Policy.
+ * Uses document.createElement (NOT GM_addElement) to match
+ * the old script's behavior exactly.
  * Idempotent — safe to call multiple times.
  */
 export function injectGlobalCSS() {
   if (globalCSSInjected) return;
   globalCSSInjected = true;
 
-  const style = GM_addElement('style', {
-    id: SHADOW_STYLE_IDS.UNBLUR_CSS,
-    textContent: GLOBAL_CSS
-  });
+  const style = document.createElement('style');
+  style.id = SHADOW_STYLE_IDS.UNBLUR_CSS;
+  style.textContent = GLOBAL_CSS;
   document.head.appendChild(style);
 }
 
@@ -193,8 +193,7 @@ export function injectMenuCSS() {
   if (menuCSSInjected) return;
   menuCSSInjected = true;
 
-  const style = GM_addElement('style', {
-    textContent: MENU_CSS
-  });
+  const style = document.createElement('style');
+  style.textContent = MENU_CSS;
   document.head.appendChild(style);
 }

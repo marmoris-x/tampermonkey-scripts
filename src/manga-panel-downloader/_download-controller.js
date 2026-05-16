@@ -21,6 +21,12 @@ const NAV_TIMEOUT_MS = 5000;
 const MANGA_POLL_MS = 50;
 const MANGA_MAX_WAIT_MS = 3000;
 
+/** Temporary debug flag — toggle to enable/disable manga-mode diagnostic logs */
+const DEBUG_MANGA = false;
+function dbg(...args) {
+  if (DEBUG_MANGA) console.log('[MPD-DBG]', ...args);
+}
+
 /**
  * Main download controller for Manga Panel Downloader.
  * Manages the full lifecycle: UI, scanning, downloading, and ZIP export.
@@ -237,15 +243,21 @@ export class MangaDownloader {
     // In manga mode, wait for images to appear (single-panel pages may
     // take a moment to load the image after navigation)
     if (this.mangaMode) {
+      const pollStart = Date.now();
+      let pollIters = 0;
       const deadline = Date.now() + MANGA_MAX_WAIT_MS;
       while (Date.now() < deadline) {
         const imgs = findImages(document);
+        pollIters++;
         if (imgs.length > 0) break;
         await this._sleep(MANGA_POLL_MS);
       }
+      dbg('== _collectPageUrls == Poll:', pollIters, 'iterations,', Date.now() - pollStart, 'ms');
     }
 
     const candidates = findImages(document);
+    dbg('   findImages →', candidates.length, 'candidates');
+
     const withY = candidates.map(c => ({
       c,
       y: (c.el.getBoundingClientRect ? c.el.getBoundingClientRect().top : 0) + window.scrollY
@@ -253,18 +265,59 @@ export class MangaDownloader {
     withY.sort((a, b) => a.y - b.y);
     const sorted = withY.map(w => w.c);
 
+    // Debug: show Y positions and viewport status of each candidate
+    if (DEBUG_MANGA) {
+      const vpTolerance = window.innerHeight * 0.2;
+      for (let i = 0; i < sorted.length; i++) {
+        const c = sorted[i];
+        const rect = c.el.getBoundingClientRect();
+        const centerY = rect.top + rect.height / 2;
+        const inVp = centerY >= -vpTolerance && centerY <= window.innerHeight + vpTolerance;
+        const url = (c.src || '').slice(0, 100);
+        dbg('   #' + (i + 1), 'y=' + Math.round(withY[i] ? withY[i].y : 0),
+          'cy=' + Math.round(centerY),
+          inVp ? 'IN' : 'OUT', url);
+      }
+    }
+
     const fresh = [];
+    let vpIn = 0, vpOut = 0;
     for (let i = 0; i < sorted.length; i++) {
       const c = sorted[i];
-      if (this.scannedUrls.has(c.src)) continue;
+      if (this.scannedUrls.has(c.src)) {
+        dbg('     SKIP (src in set):', (c.src || '').slice(0, 80));
+        continue;
+      }
       const srcs = allSrcsOf(c.el);
       let seen = false;
       srcs.forEach(v => { if (this.scannedUrls.has(v)) seen = true; });
-      if (seen) continue;
+      if (seen) {
+        dbg('     SKIP (lazy in set):', (c.src || '').slice(0, 80));
+        continue;
+      }
+
+      // Manga mode: filter out images outside the viewport. SPA readers often
+      // keep preloaded adjacent-page images in the DOM. Without this check,
+      // they'd be collected as duplicates when their URLs differ (preview vs.
+      // full-res, or CDN rotation). 20% tolerance catches images just off-screen.
+      if (this.mangaMode) {
+        const rect = c.el.getBoundingClientRect();
+        const centerY = rect.top + rect.height / 2;
+        const tolerance = 0;
+        if (centerY < -tolerance || centerY > window.innerHeight + tolerance) {
+          vpOut++;
+          continue;
+        }
+        vpIn++;
+      }
+
       this.scannedUrls.add(c.src);
       srcs.forEach(v => this.scannedUrls.add(v));
       fresh.push(c);
+      dbg('     FRESH:', (c.src || '').slice(0, 100));
     }
+
+    dbg('   Viewport:', vpIn, 'in,', vpOut, 'out  →', fresh.length, 'fresh images');
     return fresh;
   }
 
@@ -324,9 +377,15 @@ export class MangaDownloader {
             pageResult.images.forEach(c => { c.num = ++seqNum; });
             queue.push(...pageResult.images);
             totalExpected += pageResult.images.length;
+            dbg('PRODUCER: pageResult { page:', pageResult.page, ', images:', pageResult.images.length,
+              '} → seqNum', seqNum - pageResult.images.length + 1, '..', seqNum,
+              '| queue:', queue.length, 'total:', totalExpected);
             this._setStatus(`Page ${pageResult.page} OK — ${totalExpected} panel(s) found`);
           }
-          if (pageResult.stop) break;
+          if (pageResult.stop) {
+            dbg('PRODUCER: pageResult STOP ({ page:', pageResult.page, '})');
+            break;
+          }
         }
       } else {
         // Single-page mode: scroll-load current page, then collect

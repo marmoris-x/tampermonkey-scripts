@@ -433,17 +433,31 @@
   function waitForUrlChange(prevUrl, timeout = 5e3) {
     return new Promise((resolve) => {
       if (window.onurlchange === null) {
+        if (location.href !== prevUrl) {
+          resolve(true);
+          return;
+        }
         const handler = (info) => {
           if (info.url !== prevUrl) {
             window.removeEventListener("urlchange", handler);
+            clearInterval(fallbackId);
             resolve(true);
           }
         };
         window.addEventListener("urlchange", handler);
-        setTimeout(() => {
+        const fallbackId = setInterval(() => {
+          if (location.href !== prevUrl) {
+            window.removeEventListener("urlchange", handler);
+            clearInterval(fallbackId);
+            resolve(true);
+          }
+        }, 80);
+        const done = () => {
           window.removeEventListener("urlchange", handler);
+          clearInterval(fallbackId);
           resolve(false);
-        }, timeout);
+        };
+        setTimeout(done, timeout);
       } else {
         const id = setInterval(() => {
           if (location.href !== prevUrl) {
@@ -461,6 +475,8 @@
   const MAX_PAGES = 200;
   const NAV_CLICK_WAIT_MS = 50;
   const NAV_LOAD_WAIT_MS = 150;
+  function dbg$1(...args) {
+  }
   function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
   }
@@ -475,12 +491,17 @@
         yield { page, images: [], status: "no-images", stop: true };
         return;
       }
+      dbg$1("   getPageImages →", images.length, "images");
       yield { page, images };
       navigateNext();
       await sleep(NAV_CLICK_WAIT_MS);
       const changed = await waitForUrlChange(currentUrl);
       if (!changed) {
         yield { page, status: "nav-timeout", stop: true };
+        return;
+      }
+      if (guessNextUrl(currentUrl) !== null && guessNextUrl(location.href) === null) {
+        yield { page: page + 1, images: [], status: "no-images", stop: true };
         return;
       }
       await sleep(NAV_LOAD_WAIT_MS);
@@ -927,6 +948,8 @@
   const CONCURRENT_DL = 6;
   const MANGA_POLL_MS = 50;
   const MANGA_MAX_WAIT_MS = 3e3;
+  function dbg(...args) {
+  }
   class MangaDownloader {
 constructor(logger2) {
       this.log = logger2;
@@ -1050,19 +1073,38 @@ async _collectPageUrls() {
       withY.sort((a, b) => a.y - b.y);
       const sorted = withY.map((w) => w.c);
       const fresh = [];
+      let vpIn = 0, vpOut = 0;
       for (let i = 0; i < sorted.length; i++) {
         const c = sorted[i];
-        if (this.scannedUrls.has(c.src)) continue;
+        if (this.scannedUrls.has(c.src)) {
+          dbg("     SKIP (src in set):", (c.src || "").slice(0, 80));
+          continue;
+        }
         const srcs = allSrcsOf(c.el);
         let seen = false;
         srcs.forEach((v) => {
           if (this.scannedUrls.has(v)) seen = true;
         });
-        if (seen) continue;
+        if (seen) {
+          dbg("     SKIP (lazy in set):", (c.src || "").slice(0, 80));
+          continue;
+        }
+        if (this.mangaMode) {
+          const rect = c.el.getBoundingClientRect();
+          const centerY = rect.top + rect.height / 2;
+          const tolerance = 0;
+          if (centerY < -tolerance || centerY > window.innerHeight + tolerance) {
+            vpOut++;
+            continue;
+          }
+          vpIn++;
+        }
         this.scannedUrls.add(c.src);
         srcs.forEach((v) => this.scannedUrls.add(v));
         fresh.push(c);
+        dbg("     FRESH:", (c.src || "").slice(0, 100));
       }
+      dbg("   Viewport:", vpIn, "in,", vpOut, "out  →", fresh.length, "fresh images");
       return fresh;
     }
 
@@ -1106,9 +1148,26 @@ async _scan() {
               });
               queue.push(...pageResult.images);
               totalExpected += pageResult.images.length;
+              dbg(
+                "PRODUCER: pageResult { page:",
+                pageResult.page,
+                ", images:",
+                pageResult.images.length,
+                "} → seqNum",
+                seqNum - pageResult.images.length + 1,
+                "..",
+                seqNum,
+                "| queue:",
+                queue.length,
+                "total:",
+                totalExpected
+              );
               this._setStatus(`Page ${pageResult.page} OK — ${totalExpected} panel(s) found`);
             }
-            if (pageResult.stop) break;
+            if (pageResult.stop) {
+              dbg("PRODUCER: pageResult STOP ({ page:", pageResult.page, "})");
+              break;
+            }
           }
         } else {
           const scrollGen = scrollLoad(() => signal.aborted);
