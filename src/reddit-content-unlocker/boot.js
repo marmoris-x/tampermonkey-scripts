@@ -7,26 +7,24 @@
  * @module boot
  */
 
-import { stateManager } from './_state.js';
 import { SELECTORS } from './_selectors.js';
-import { injectGlobalCSS, injectMenuCSS } from './_css.js';
-import { patchAttachShadow, PROMPT_HIDE_CSS } from './_shadow-patch.js';
+import { injectGlobalCSS } from './_css.js';
+import { patchAttachShadow } from './_shadow-patch.js';
 import { observeMutations, debounce } from './_dom-utils.js';
 import { unblurCallback } from './_unblur-engine.js';
-import { initMenu } from './_menu-ui.js';
 import { extractPostInfo, checkNsfw, performRedirect, setupSPAListener, handleAgeGate } from './_redirect.js';
+import { enable as enableDebug } from './_debug.js';
 
 /** @type {MutationObserver|null} */
 let observer = null;
-
-/** @type {boolean} */
-let menuInitialized = false;
 
 /**
  * Main initialization routine.
  * Called once at document-start.
  */
 export function registerBoot() {
+  enableDebug();
+
   // 0. On old.reddit.com, only handle age gate — no unblur needed
   if (location.hostname === 'old.reddit.com') {
     handleAgeGate();
@@ -66,9 +64,8 @@ export function registerBoot() {
     unblurCallback();
   }, { once: true });
 
-  // 5. Delayed init: ensure menu + full scan even if no mutations fire
+  // 5. Delayed full scan: ensures all content is unblurred even if no mutations fire
   setTimeout(() => {
-    initMenuWithFallback();
     unblurCallback();
   }, 1500);
 
@@ -117,28 +114,10 @@ function injectPromptCSS() {
 }
 
 /**
- * Handles each mutation batch.
- * Ensures menu is initialized once, then delegates to unblur engine.
+ * Handles each mutation batch. Delegates directly to unblur engine.
  * @param {Element} node - Added element node
  * @param {MutationObserver} obs - The observer instance
  */
 function handleMutations(_node, _obs) {
-  initMenuWithFallback();
-
-  // Skip unblur if master toggle is off
-  if (!stateManager.getState()) return;
-
   unblurCallback();
-}
-
-/**
- * Initialize menu UI if not already done.
- * Safe to call after SPA navigation when the header is replaced.
- */
-function initMenuWithFallback() {
-  if (!menuInitialized) {
-    menuInitialized = true;
-    injectMenuCSS();
-    initMenu();
-  }
 }

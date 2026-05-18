@@ -15,6 +15,10 @@ export const SELECTORS = {
   FACEPLATE_DIALOG_QR: 'faceplate-dialog[id*="qr"]',
   FACEPLATE_DIALOG_NSFW_QR: 'faceplate-dialog#nsfw-qr-dialog',
 
+  // Login/age-blocking dialog (rpl-dialog, Lit-based)
+  RPL_DIALOG_BLOCKING: 'rpl-dialog[blocking]',
+  AUTH_FLOW_MANAGER: 'auth-flow-manager',
+
   // NSFW blocking containers
   XPROMPO_NSFW_VIEW_APP: 'xpromo-nsfw-blocking-container a[slot="view-in-app-button"]',
   VIEW_IN_APP_BUTTON: '[slot="view-in-app-button"]',
@@ -45,10 +49,7 @@ export const SELECTORS = {
   IMAGES_WITH_BLUR_SRC: 'img[src*="blur="]:not([data-unblurred])',
   IMAGES_WITH_BLUR_STYLE: 'img[style*="blur"]:not([data-unblurred])',
 
-  // Menu anchor points (tried in order)
-  HEADER_NAV_V2: 'header.v2 > nav',
-  HEADER_NAV: 'header nav',
-  HEADER: 'header'
+  // (menu removed — no anchor selectors needed)
 };
 
 /** Attribute names */

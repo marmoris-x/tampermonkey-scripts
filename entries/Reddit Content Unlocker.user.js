@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Content Unlocker
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.2.2
+// @version      3.4.0
 // @author       marmoris-x
 // @description  Removes NSFW popup, un-blurs content, and makes Reddit accessible
 // @homepage     https://github.com/marmoris-x/tampermonkey-scripts
@@ -12,10 +12,7 @@
 // @match        https://www.reddit.com/*
 // @match        https://sh.reddit.com/*
 // @match        https://old.reddit.com/*
-// @grant        GM_addElement
 // @grant        window.onurlchange
-// @grant        GM_getValue
-// @grant        GM_setValue
 // @run-at       document-start
 // @noframes
 // @license      MIT
