@@ -13,7 +13,7 @@
 // @match        https://google.com/recaptcha/*
 // @match        https://www.recaptcha.net/recaptcha/*
 // @match        https://recaptcha.net/recaptcha/*
-// @match        https://www.google.com/sorry/index
+// @match        https://www.google.com/sorry/index*
 // @sandbox      raw
 // @connect      engageub.pythonanywhere.com
 // @connect      engageub1.pythonanywhere.com
