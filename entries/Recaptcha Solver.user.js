@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.0.4
+// @version      3.0.5
 // @author       marmoris-x
 // @description  Automatically solves reCAPTCHA v2 audio challenges via speech recognition
 // @license      MIT
@@ -20,7 +20,6 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addElement
 // @run-at       document-idle
-// @noframes
 // ==/UserScript==
 
 'use strict';
