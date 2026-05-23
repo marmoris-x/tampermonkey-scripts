@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Recaptcha Solver
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.0.3
+// @version      3.0.4
 // @author       marmoris-x
 // @description  Automatically solves reCAPTCHA v2 audio challenges via speech recognition
 // @license      MIT
@@ -13,6 +13,7 @@
 // @match        https://google.com/recaptcha/*
 // @match        https://www.recaptcha.net/recaptcha/*
 // @match        https://recaptcha.net/recaptcha/*
+// @match        https://www.google.com/sorry/index
 // @sandbox      raw
 // @connect      engageub.pythonanywhere.com
 // @connect      engageub1.pythonanywhere.com
