@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.4.6
+// @version      5.5.0
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -233,21 +233,118 @@ function getContent(turnEl) {
     return out.trim();
 }
 
-function extractAllTurns() {
-    const result = [];
-    const turnEls = document.querySelectorAll('ms-chat-turn');
-    for (let i = 0; i < turnEls.length; i++) {
-        const el = turnEls[i];
-        const container = el.querySelector('.virtual-scroll-container');
-        if (!container) continue;
-        const role      = container.getAttribute('data-turn-role') || 'Unknown';
-        const tsEl      = el.querySelector('.author-label .timestamp');
-        const timestamp = tsEl ? tsEl.textContent.trim() : '';
-        const thoughts  = getThoughts(el);
-        const content   = getContent(el);
-        if (!thoughts && !content) continue;
-        result.push({ role, timestamp, thoughts, content });
+function extractTurn(el) {
+    const container = el.querySelector('.virtual-scroll-container');
+    if (!container) return null;
+    const role      = container.getAttribute('data-turn-role') || 'Unknown';
+    const tsEl      = el.querySelector('.author-label .timestamp');
+    const timestamp = tsEl ? tsEl.textContent.trim() : '';
+    const thoughts  = getThoughts(el);
+    const content   = getContent(el);
+    if (!thoughts && !content) return null;
+    return { role, timestamp, thoughts, content };
+}
+
+function collectTurnIdsFromScrollbar() {
+    const buttons = document.querySelectorAll('.items-scrollbar-item button');
+    const ids = [];
+    for (let i = 0; i < buttons.length; i++) {
+        const id = buttons[i].getAttribute('data-test-item-id');
+        if (id) ids.push(id);
     }
+    return ids.length > 0 ? ids : null;
+}
+
+function waitForTurnElement(turnId, timeoutMs) {
+    timeoutMs = timeoutMs || 5000;
+    return new Promise(function (resolve) {
+        const selector = 'ms-chat-turn[data-test-item-id="' + turnId + '"]';
+        const existing = document.querySelector(selector);
+        if (existing) {
+            // Small delay for Angular to finish rendering content
+            setTimeout(resolve, 200);
+            return;
+        }
+        const observer = new MutationObserver(function () {
+            if (document.querySelector(selector)) {
+                observer.disconnect();
+                setTimeout(resolve, 200);
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(function () {
+            observer.disconnect();
+            log.warn('waitForTurnElement timeout: ' + turnId);
+            resolve();
+        }, timeoutMs);
+    });
+}
+
+async function extractAllTurns() {
+    const turnIds = collectTurnIdsFromScrollbar();
+
+    // Fallback: no scrollbar → DOM-only extraction (original behavior)
+    if (!turnIds) {
+        log.log('No scrollbar items found — using DOM-only extraction');
+        const result = [];
+        const turnEls = document.querySelectorAll('ms-chat-turn');
+        for (let i = 0; i < turnEls.length; i++) {
+            const data = extractTurn(turnEls[i]);
+            if (data) result.push(data);
+        }
+        return result;
+    }
+
+    log.log('Found ' + turnIds.length + ' turns via scrollbar');
+    const resultMap = new Map();
+
+    // Step 1: extract already-visible turns without scrolling
+    const existingTurns = document.querySelectorAll('ms-chat-turn');
+    for (let i = 0; i < existingTurns.length; i++) {
+        const el = existingTurns[i];
+        const id = el.getAttribute('data-test-item-id');
+        const data = extractTurn(el);
+        if (data && id) resultMap.set(id, data);
+    }
+
+    log.log('Pre-extracted ' + resultMap.size + ' already-visible turns');
+
+    // Step 2: iterate scrollbar items for missing turns
+    for (let i = 0; i < turnIds.length; i++) {
+        const id = turnIds[i];
+        if (resultMap.has(id)) continue;
+
+        const btn = document.querySelector(
+            '.items-scrollbar-item button[data-test-item-id="' + id + '"]'
+        );
+        if (!btn) {
+            log.warn('No scrollbar button for turn: ' + id);
+            continue;
+        }
+
+        btn.click();
+        await waitForTurnElement(id);
+
+        const el = document.querySelector('ms-chat-turn[data-test-item-id="' + id + '"]');
+        if (el) {
+            const data = extractTurn(el);
+            if (data) resultMap.set(id, data);
+        } else {
+            log.warn('Turn element not found after click: ' + id);
+        }
+
+        // Brief debounce before the next scrollbar click
+        await new Promise(function (r) { setTimeout(r, 100); });
+    }
+
+    // Return in original scrollbar order (deduplication by Map key)
+    const result = [];
+    for (let i = 0; i < turnIds.length; i++) {
+        const data = resultMap.get(turnIds[i]);
+        if (data) result.push(data);
+    }
+
+    log.log('Extraction complete: ' + result.length + ' turns');
     return result;
 }
 
@@ -293,8 +390,8 @@ function turnsToPlainText(turns) {
  * @param {string} format - 'markdown' or 'text'
  * @returns {{ text: string, turnCount: number }|null}
  */
-function exportChat(format) {
-    const turns = extractAllTurns();
+async function exportChat(format) {
+    const turns = await extractAllTurns();
     if (!turns.length) return null;
     const text = format === 'text' ? turnsToPlainText(turns) : turnsToMarkdown(turns);
     return { text, turnCount: turns.length };
@@ -303,7 +400,7 @@ function exportChat(format) {
 // ==================== MENU COMMAND HANDLERS ====================
 
 async function handleCopy() {
-    const result = exportChat('markdown');
+    const result = await exportChat('markdown');
     if (!result) {
         GM.notification({
             title: 'AI Studio Exporter',
@@ -324,7 +421,7 @@ async function handleCopy() {
 }
 
 async function handleDownload() {
-    const result = exportChat('markdown');
+    const result = await exportChat('markdown');
     if (!result) {
         GM.notification({
             title: 'AI Studio Exporter',
