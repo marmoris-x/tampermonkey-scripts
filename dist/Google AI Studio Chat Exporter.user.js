@@ -11,13 +11,13 @@
 // @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @match        https://aistudio.google.com/*
 // @tag          ai
-// @grant        GM.download
 // @grant        GM.getValue
 // @grant        GM.notification
 // @grant        GM.registerMenuCommand
 // @grant        GM.setClipboard
 // @grant        GM.setValue
 // @grant        GM_addElement
+// @grant        GM_download
 // @grant        GM_getValue
 // @grant        GM_notification
 // @grant        GM_registerMenuCommand
@@ -342,104 +342,67 @@
       if (!thoughts && !content) return null;
       return { role, timestamp, thoughts, content };
     }
-    function collectTurnIdsFromScrollbar() {
-      const buttons = document.querySelectorAll(".items-scrollbar-item button");
-      const ids = [];
-      for (let i = 0; i < buttons.length; i++) {
-        const id = buttons[i].getAttribute("aria-controls");
-        if (id) ids.push(id);
-      }
-      return ids.length > 0 ? ids : null;
-    }
-    function waitForTurnElement(turnId, timeoutMs) {
+    function waitForTurnAtIndex(targetIndex, timeoutMs) {
       timeoutMs = timeoutMs || 5e3;
       return new Promise(function(resolve) {
-        const existing = document.getElementById(turnId);
-        if (existing) {
-          setTimeout(resolve, 200);
-          return;
-        }
-        const observer = new MutationObserver(function() {
-          if (document.getElementById(turnId)) {
-            observer.disconnect();
+        var start = Date.now();
+        function check() {
+          var turns = document.querySelectorAll("ms-chat-turn");
+          if (turns[targetIndex]) {
             setTimeout(resolve, 200);
+            return;
           }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        setTimeout(function() {
-          observer.disconnect();
-          warn("waitForTurnElement timeout: " + turnId);
-          resolve();
-        }, timeoutMs);
+          if (Date.now() - start > timeoutMs) {
+            warn("Timeout waiting for turn at index " + targetIndex);
+            resolve();
+            return;
+          }
+          requestAnimationFrame(check);
+        }
+        check();
       });
     }
-    async function collectTurnIdsWithRetry(maxWaitMs) {
-      maxWaitMs = maxWaitMs || 3e3;
-      const step = 300;
-      let waited = 0;
-      while (waited < maxWaitMs) {
-        const ids = collectTurnIdsFromScrollbar();
-        if (ids) return ids;
-        await new Promise(function(r) {
-          setTimeout(r, step);
-        });
-        waited += step;
-      }
-      return null;
-    }
     async function extractAllTurns() {
-      const turnIds = await collectTurnIdsWithRetry(3e3);
-      if (!turnIds) {
+      var scrollButtons = document.querySelectorAll(".items-scrollbar-item button");
+      if (!scrollButtons.length) {
         log("No scrollbar items found — using DOM-only extraction");
-        const result2 = [];
-        const turnEls = document.querySelectorAll("ms-chat-turn");
-        for (let i = 0; i < turnEls.length; i++) {
-          const data = extractTurn(turnEls[i]);
-          if (data) result2.push(data);
+        var result = [];
+        var turnEls = document.querySelectorAll("ms-chat-turn");
+        for (var i = 0; i < turnEls.length; i++) {
+          var data = extractTurn(turnEls[i]);
+          if (data) result.push(data);
         }
-        return result2;
+        return result;
       }
-      log("Found " + turnIds.length + " turns via scrollbar");
-      const resultMap = new Map();
-      const existingTurns = document.querySelectorAll("ms-chat-turn");
-      for (let i = 0; i < existingTurns.length; i++) {
-        const el = existingTurns[i];
-        const id = el.id || (el.querySelector('[id^="turn-"]') || {}).id;
-        const data = extractTurn(el);
-        if (data && id) resultMap.set(id, data);
+      log("Found " + scrollButtons.length + " scrollbar items");
+      var extractedByIndex = new Map();
+      var existingTurns = document.querySelectorAll("ms-chat-turn");
+      for (var i = 0; i < existingTurns.length; i++) {
+        var data = extractTurn(existingTurns[i]);
+        if (data) extractedByIndex.set(i, data);
       }
-      log("Pre-extracted " + resultMap.size + " already-visible turns");
-      for (let i = 0; i < turnIds.length; i++) {
-        const id = turnIds[i];
-        if (resultMap.has(id)) continue;
-        const btn = document.querySelector(
-          '.items-scrollbar-item button[aria-controls="' + id + '"]'
-        );
-        if (!btn) {
-          warn("No scrollbar button for turn: " + id);
-          continue;
-        }
-        btn.click();
-        await waitForTurnElement(id);
-        const target = document.getElementById(id);
-        const el = target && (target.matches("ms-chat-turn") ? target : target.closest("ms-chat-turn"));
-        if (el) {
-          const data = extractTurn(el);
-          if (data) resultMap.set(id, data);
+      log("Pre-extracted " + extractedByIndex.size + " already-visible turns");
+      for (var i = 0; i < scrollButtons.length; i++) {
+        if (extractedByIndex.has(i)) continue;
+        scrollButtons[i].click();
+        await waitForTurnAtIndex(i);
+        var allTurns = document.querySelectorAll("ms-chat-turn");
+        if (allTurns[i]) {
+          var data = extractTurn(allTurns[i]);
+          if (data) extractedByIndex.set(i, data);
         } else {
-          warn("Turn element not found after click: " + id);
+          warn("Turn at index " + i + " not found after click");
         }
         await new Promise(function(r) {
           setTimeout(r, 100);
         });
       }
-      const result = [];
-      for (let i = 0; i < turnIds.length; i++) {
-        const data = resultMap.get(turnIds[i]);
-        if (data) result.push(data);
+      var result2 = [];
+      for (var i = 0; i < scrollButtons.length; i++) {
+        if (extractedByIndex.has(i)) result2.push(extractedByIndex.get(i));
       }
-      log("Extraction complete: " + result.length + " turns");
-      return result;
+      log("Extraction complete: " + result2.length + " turns");
+      return result2;
     }
     function turnsToMarkdown(turns) {
       const lines = [];
@@ -501,22 +464,27 @@
       const filename = "ai-studio-chat-" + dateStr + ".md";
       const blob = new Blob([result.text], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
-      try {
-        await GM.download({ url, name: filename, saveAs: true });
-      } catch (_err) {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function() {
-          a.remove();
-        }, 2e3);
-      }
-      setTimeout(function() {
-        URL.revokeObjectURL(url);
-      }, 3e3);
+      GM_download({
+        url,
+        name: filename,
+        saveAs: true,
+        onload: function() {
+          URL.revokeObjectURL(url);
+        },
+        onerror: function() {
+          const fallbackUrl = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = fallbackUrl;
+          a.download = filename;
+          a.style.display = "none";
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function() {
+            a.remove();
+            URL.revokeObjectURL(fallbackUrl);
+          }, 2e3);
+        }
+      });
       GM.notification({
         title: "AI Studio Exporter",
         text: `${result.turnCount} turns saved as ${filename}`,
