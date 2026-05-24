@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.5.3
+// @version      5.5.4
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -224,13 +224,14 @@ function getThoughts(turnEl) {
 }
 
 function getContent(turnEl) {
-    let out = '';
-    const chunks = turnEl.querySelectorAll('ms-text-chunk');
-    for (let i = 0; i < chunks.length; i++) {
-        if (chunks[i].closest('ms-thought-chunk')) continue;
-        out += htmlToMarkdown(chunks[i]);
-    }
-    return out.trim();
+    const turnContent = turnEl.querySelector('.turn-content');
+    if (!turnContent) return '';
+    // Clone to avoid mutating the live DOM during extraction
+    const clone = turnContent.cloneNode(true);
+    // Remove author label, turn info, and search suggestions
+    const excludes = clone.querySelectorAll('.author-label, .turn-information, .search-entry-point');
+    for (let i = 0; i < excludes.length; i++) excludes[i].remove();
+    return htmlToMarkdown(clone).trim();
 }
 
 function extractTurn(el) {
@@ -241,20 +242,7 @@ function extractTurn(el) {
     const timestamp = tsEl ? tsEl.textContent.trim() : '';
     const thoughts  = getThoughts(el);
     const content   = getContent(el);
-    if (!thoughts && !content) {
-        // Diagnostic: log DOM structure when a turn yields empty content
-        const kids = [];
-        for (let c = 0; c < el.children.length; c++) {
-            const child = el.children[c];
-            const grandkids = [];
-            for (let g = 0; g < child.children.length && grandkids.length < 8; g++) {
-                grandkids.push(child.children[g].tagName);
-            }
-            kids.push(child.tagName + ' > [' + grandkids.join(', ') + ']');
-        }
-        log('Empty turn (' + role + ') — children: ' + kids.join(' | '));
-        return null;
-    }
+    if (!thoughts && !content) return null;
     return { role, timestamp, thoughts, content };
 }
 
