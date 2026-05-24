@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.5.6
+// @version      5.5.7
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -224,14 +224,22 @@ function getThoughts(turnEl) {
 }
 
 function getContent(turnEl) {
-    let out = '';
-    const selectors = 'ms-prompt-chunk, ms-cmark-node, ms-text-chunk';
-    const chunks = turnEl.querySelectorAll(selectors);
-    for (let i = 0; i < chunks.length; i++) {
-        if (chunks[i].closest('ms-thought-chunk')) continue;
-        out += htmlToMarkdown(chunks[i]);
-    }
-    return out.trim();
+    // Target ONLY the leaf-level rendered Markdown element (ms-cmark-node).
+    // The flat selector ms-prompt-chunk, ms-text-chunk, ms-cmark-node causes
+    // 3× duplication since each element contains the next. ms-cmark-node alone
+    // is the canonical cmark-rendered AST root — all parent elements are wrappers.
+    var primary = turnEl.querySelector('ms-cmark-node');
+    if (primary) return htmlToMarkdown(primary).trim();
+
+    // Fallback: raw-mode text container (when cmark rendering is disabled)
+    var raw = turnEl.querySelector('.very-large-text-container');
+    if (raw) return raw.textContent.trim();
+
+    // Last resort: any known leaf content element
+    var fallback = turnEl.querySelector('ms-prompt-chunk, ms-text-chunk');
+    if (fallback) return htmlToMarkdown(fallback).trim();
+
+    return '';
 }
 
 function extractTurn(el) {
@@ -317,10 +325,20 @@ async function extractAllTurns() {
         await new Promise(function (r) { setTimeout(r, 100); });
     }
 
-    // Build ordered result
+    // Build ordered result with fingerprint dedup
     var result2 = [];
+    var prevFingerprint = '';
     for (var i = 0; i < scrollButtons.length; i++) {
-        if (extractedByIndex.has(i)) result2.push(extractedByIndex.get(i));
+        if (extractedByIndex.has(i)) {
+            var data = extractedByIndex.get(i);
+            var fp = data.role + '|' + data.timestamp + '|' + (data.content || '').slice(0, 100);
+            if (fp === prevFingerprint) {
+                warn('Skipping duplicate turn at index ' + i);
+                continue;
+            }
+            prevFingerprint = fp;
+            result2.push(data);
+        }
     }
 
     log('Extraction complete: ' + result2.length + ' turns');
@@ -328,6 +346,19 @@ async function extractAllTurns() {
 }
 
 // ==================== FORMATTERS ====================
+
+function deduplicateParagraphs(markdown) {
+    const blocks = markdown.split(/\n\n+/);
+    const seen = new Set();
+    const unique = [];
+    for (let i = 0; i < blocks.length; i++) {
+        var n = blocks[i].trim();
+        if (!n || seen.has(n)) continue;
+        seen.add(n);
+        unique.push(blocks[i]);
+    }
+    return unique.join('\n\n');
+}
 
 function turnsToMarkdown(turns) {
     const lines = [];
@@ -340,9 +371,16 @@ function turnsToMarkdown(turns) {
         const ts    = t.timestamp ? ' _(' + t.timestamp + ')_' : '';
         const parts = [label + ts + ':'];
         if (showThoughts) {
-            parts.push('<details>\n<summary>Thinking</summary>\n\n' + t.thoughts + '\n\n</details>');
+            // Skip thoughts if identical to content (avoid duplication)
+            const tn = t.thoughts.replace(/\s+/g, ' ').trim();
+            const cn = (t.content || '').replace(/\s+/g, ' ').trim();
+            if (tn !== cn) {
+                parts.push('<details>\n<summary>Thinking</summary>\n\n' + t.thoughts + '\n\n</details>');
+            }
         }
-        if (showContent) parts.push(t.content);
+        if (showContent) {
+            parts.push(deduplicateParagraphs(t.content));
+        }
         lines.push(parts.join('\n\n'));
     }
     return lines.join('\n\n---\n\n');

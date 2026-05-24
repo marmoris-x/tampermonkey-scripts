@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.5.6
+// @version      5.5.7
 // @author       marmoris-x
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @license      MIT
@@ -319,14 +319,13 @@
       return body ? htmlToMarkdown(body) : "";
     }
     function getContent(turnEl) {
-      let out = "";
-      const selectors = "ms-prompt-chunk, ms-cmark-node, ms-text-chunk";
-      const chunks = turnEl.querySelectorAll(selectors);
-      for (let i = 0; i < chunks.length; i++) {
-        if (chunks[i].closest("ms-thought-chunk")) continue;
-        out += htmlToMarkdown(chunks[i]);
-      }
-      return out.trim();
+      var primary = turnEl.querySelector("ms-cmark-node");
+      if (primary) return htmlToMarkdown(primary).trim();
+      var raw = turnEl.querySelector(".very-large-text-container");
+      if (raw) return raw.textContent.trim();
+      var fallback = turnEl.querySelector("ms-prompt-chunk, ms-text-chunk");
+      if (fallback) return htmlToMarkdown(fallback).trim();
+      return "";
     }
     function extractTurn(el) {
       const container = el.querySelector(".virtual-scroll-container") || el;
@@ -398,11 +397,33 @@
         });
       }
       var result2 = [];
+      var prevFingerprint = "";
       for (var i = 0; i < scrollButtons.length; i++) {
-        if (extractedByIndex.has(i)) result2.push(extractedByIndex.get(i));
+        if (extractedByIndex.has(i)) {
+          var data = extractedByIndex.get(i);
+          var fp = data.role + "|" + data.timestamp + "|" + (data.content || "").slice(0, 100);
+          if (fp === prevFingerprint) {
+            warn("Skipping duplicate turn at index " + i);
+            continue;
+          }
+          prevFingerprint = fp;
+          result2.push(data);
+        }
       }
       log("Extraction complete: " + result2.length + " turns");
       return result2;
+    }
+    function deduplicateParagraphs(markdown) {
+      const blocks = markdown.split(/\n\n+/);
+      const seen = new Set();
+      const unique = [];
+      for (let i = 0; i < blocks.length; i++) {
+        var n = blocks[i].trim();
+        if (!n || seen.has(n)) continue;
+        seen.add(n);
+        unique.push(blocks[i]);
+      }
+      return unique.join("\n\n");
     }
     function turnsToMarkdown(turns) {
       const lines = [];
@@ -415,9 +436,15 @@
         const ts = t.timestamp ? " _(" + t.timestamp + ")_" : "";
         const parts = [label + ts + ":"];
         if (showThoughts) {
-          parts.push("<details>\n<summary>Thinking</summary>\n\n" + t.thoughts + "\n\n</details>");
+          const tn = t.thoughts.replace(/\s+/g, " ").trim();
+          const cn = (t.content || "").replace(/\s+/g, " ").trim();
+          if (tn !== cn) {
+            parts.push("<details>\n<summary>Thinking</summary>\n\n" + t.thoughts + "\n\n</details>");
+          }
         }
-        if (showContent) parts.push(t.content);
+        if (showContent) {
+          parts.push(deduplicateParagraphs(t.content));
+        }
         lines.push(parts.join("\n\n"));
       }
       return lines.join("\n\n---\n\n");
