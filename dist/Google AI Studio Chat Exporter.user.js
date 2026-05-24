@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.5.7
+// @version      5.6.0
 // @author       marmoris-x
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @license      MIT
@@ -10,6 +10,7 @@
 // @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @match        https://aistudio.google.com/*
+// @sandbox      raw
 // @tag          ai
 // @grant        GM.getValue
 // @grant        GM.notification
@@ -18,11 +19,6 @@
 // @grant        GM.setValue
 // @grant        GM_addElement
 // @grant        GM_download
-// @grant        GM_getValue
-// @grant        GM_notification
-// @grant        GM_registerMenuCommand
-// @grant        GM_setClipboard
-// @grant        GM_setValue
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
@@ -138,7 +134,8 @@
       let out = "";
       walk(el);
       return out.trim().replace(/\n{3,}/g, "\n\n");
-      function walk(node) {
+      function walk(node, depth) {
+        depth = depth || 1;
         if (!node) return;
         const children = node.childNodes;
         if (!children || children.length === 0) {
@@ -167,13 +164,13 @@
           }
           if (HEADING_TAGS[tag]) {
             out += "\n\n" + HEADING_TAGS[tag] + " ";
-            walk(child);
+            walk(child, depth);
             out += "\n\n";
             continue;
           }
           if (tag === "P" || tag === "DIV") {
             out += "\n\n";
-            walk(child);
+            walk(child, depth);
             out += "\n\n";
             continue;
           }
@@ -189,7 +186,7 @@
           }
           if (tag === "UL" || tag === "OL") {
             out += "\n\n";
-            walkList(child, tag === "OL", 1);
+            walkList(child, tag === "OL", depth);
             out += "\n\n";
             continue;
           }
@@ -207,13 +204,13 @@
           }
           if (tag === "STRONG" || tag === "B") {
             out += "**";
-            walk(child);
+            walk(child, depth);
             out += "**";
             continue;
           }
           if (tag === "EM" || tag === "I") {
             out += "*";
-            walk(child);
+            walk(child, depth);
             out += "*";
             continue;
           }
@@ -224,23 +221,23 @@
           if (tag === "A") {
             const href = child.getAttribute("href") || "";
             out += "[";
-            walk(child);
+            walk(child, depth);
             out += "](" + href + ")";
             continue;
           }
           if (tag === "DEL" || tag === "S") {
             out += "~~";
-            walk(child);
+            walk(child, depth);
             out += "~~";
             continue;
           }
           if (tag === "U") {
             out += "<u>";
-            walk(child);
+            walk(child, depth);
             out += "</u>";
             continue;
           }
-          walk(child);
+          walk(child, depth);
         }
       }
       function walkInline(node) {
@@ -286,7 +283,7 @@
         for (let i = 0; i < items.length; i++) {
           const prefix = ordered ? i + 1 + ". " : "- ";
           out += "  ".repeat(depth - 1) + prefix;
-          walk(items[i]);
+          walk(items[i], depth + 1);
           out += "\n";
         }
       }
@@ -319,17 +316,17 @@
       return body ? htmlToMarkdown(body) : "";
     }
     function getContent(turnEl) {
-      var primary = turnEl.querySelector("ms-cmark-node");
+      const primary = turnEl.querySelector("ms-cmark-node");
       if (primary) return htmlToMarkdown(primary).trim();
-      var raw = turnEl.querySelector(".very-large-text-container");
+      const raw = turnEl.querySelector(".very-large-text-container");
       if (raw) return raw.textContent.trim();
-      var fallback = turnEl.querySelector("ms-prompt-chunk, ms-text-chunk");
+      const fallback = turnEl.querySelector("ms-prompt-chunk, ms-text-chunk");
       if (fallback) return htmlToMarkdown(fallback).trim();
       return "";
     }
     function extractTurn(el) {
       const container = el.querySelector(".virtual-scroll-container") || el;
-      const role = container.getAttribute("data-turn-role") || "";
+      let role = container.getAttribute("data-turn-role") || "";
       if (!role) {
         const mc = el.querySelector(".model-prompt-container");
         role = mc ? "Model" : "Unknown";
@@ -341,18 +338,17 @@
       if (!thoughts && !content) return null;
       return { role, timestamp, thoughts, content };
     }
-    function waitForTurnAtIndex(targetIndex, timeoutMs) {
+    function waitForTurnById(turnId, timeoutMs) {
       timeoutMs = timeoutMs || 5e3;
       return new Promise(function(resolve) {
-        var start = Date.now();
+        const start = Date.now();
         function check() {
-          var turns = document.querySelectorAll("ms-chat-turn");
-          if (turns[targetIndex]) {
+          if (document.getElementById(turnId)) {
             setTimeout(resolve, 200);
             return;
           }
           if (Date.now() - start > timeoutMs) {
-            warn("Timeout waiting for turn at index " + targetIndex);
+            warn("Timeout waiting for turn #" + turnId);
             resolve();
             return;
           }
@@ -362,63 +358,72 @@
       });
     }
     async function extractAllTurns() {
-      var scrollButtons = document.querySelectorAll(".items-scrollbar-item button");
+      const scrollButtons = document.querySelectorAll(".items-scrollbar-item button");
       if (!scrollButtons.length) {
         log("No scrollbar items found — using DOM-only extraction");
-        var result = [];
-        var turnEls = document.querySelectorAll("ms-chat-turn");
-        for (var i = 0; i < turnEls.length; i++) {
-          var data = extractTurn(turnEls[i]);
-          if (data) result.push(data);
+        const result2 = [];
+        const turnEls = document.querySelectorAll("ms-chat-turn");
+        for (let i = 0; i < turnEls.length; i++) {
+          const data = extractTurn(turnEls[i]);
+          if (data) result2.push(data);
         }
-        return result;
+        return result2;
       }
       log("Found " + scrollButtons.length + " scrollbar items");
-      var extractedByIndex = new Map();
-      var existingTurns = document.querySelectorAll("ms-chat-turn");
-      for (var i = 0; i < existingTurns.length; i++) {
-        var data = extractTurn(existingTurns[i]);
-        if (data) extractedByIndex.set(i, data);
+      const extractedByIndex = new Map();
+      for (let i = 0; i < scrollButtons.length; i++) {
+        const turnId = scrollButtons[i].getAttribute("aria-controls");
+        if (!turnId) continue;
+        const turnEl = document.getElementById(turnId);
+        if (turnEl) {
+          const data = extractTurn(turnEl.closest("ms-chat-turn") || turnEl);
+          if (data) extractedByIndex.set(i, data);
+        }
       }
       log("Pre-extracted " + extractedByIndex.size + " already-visible turns");
-      for (var i = 0; i < scrollButtons.length; i++) {
+      for (let i = 0; i < scrollButtons.length; i++) {
         if (extractedByIndex.has(i)) continue;
+        const turnId = scrollButtons[i].getAttribute("aria-controls");
+        if (!turnId) {
+          warn("No aria-controls on scrollbar button " + i);
+          continue;
+        }
         scrollButtons[i].click();
-        await waitForTurnAtIndex(i);
-        var allTurns = document.querySelectorAll("ms-chat-turn");
-        if (allTurns[i]) {
-          var data = extractTurn(allTurns[i]);
+        await waitForTurnById(turnId);
+        const turnEl = document.getElementById(turnId);
+        if (turnEl) {
+          const data = extractTurn(turnEl.closest("ms-chat-turn") || turnEl);
           if (data) extractedByIndex.set(i, data);
         } else {
-          warn("Turn at index " + i + " not found after click");
+          warn("Turn #" + turnId + " not found after click");
         }
         await new Promise(function(r) {
           setTimeout(r, 100);
         });
       }
-      var result2 = [];
-      var prevFingerprint = "";
-      for (var i = 0; i < scrollButtons.length; i++) {
+      const result = [];
+      let prevFingerprint = "";
+      for (let i = 0; i < scrollButtons.length; i++) {
         if (extractedByIndex.has(i)) {
-          var data = extractedByIndex.get(i);
-          var fp = data.role + "|" + data.timestamp + "|" + (data.content || "").slice(0, 100);
+          const data = extractedByIndex.get(i);
+          const fp = data.role + "|" + data.timestamp + "|" + (data.content || "").slice(0, 100);
           if (fp === prevFingerprint) {
             warn("Skipping duplicate turn at index " + i);
             continue;
           }
           prevFingerprint = fp;
-          result2.push(data);
+          result.push(data);
         }
       }
-      log("Extraction complete: " + result2.length + " turns");
-      return result2;
+      log("Extraction complete: " + result.length + " turns");
+      return result;
     }
     function deduplicateParagraphs(markdown) {
       const blocks = markdown.split(/\n\n+/);
       const seen = new Set();
       const unique = [];
       for (let i = 0; i < blocks.length; i++) {
-        var n = blocks[i].trim();
+        const n = blocks[i].trim();
         if (!n || seen.has(n)) continue;
         seen.add(n);
         unique.push(blocks[i]);
