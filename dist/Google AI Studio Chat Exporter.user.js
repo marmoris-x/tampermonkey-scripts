@@ -335,7 +335,19 @@
       const timestamp = tsEl ? tsEl.textContent.trim() : "";
       const thoughts = getThoughts(el);
       const content = getContent(el);
-      if (!thoughts && !content) return null;
+      if (!thoughts && !content) {
+        const kids = [];
+        for (let c = 0; c < el.children.length; c++) {
+          const child = el.children[c];
+          const grandkids = [];
+          for (let g = 0; g < child.children.length && grandkids.length < 8; g++) {
+            grandkids.push(child.children[g].tagName);
+          }
+          kids.push(child.tagName + " > [" + grandkids.join(", ") + "]");
+        }
+        log("Empty turn (" + role + ") — children: " + kids.join(" | "));
+        return null;
+      }
       return { role, timestamp, thoughts, content };
     }
     function collectTurnIdsFromScrollbar() {
