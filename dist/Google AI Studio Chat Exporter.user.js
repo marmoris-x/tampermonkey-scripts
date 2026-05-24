@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.6.0
+// @version      5.7.0
 // @author       marmoris-x
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @license      MIT
@@ -61,7 +61,7 @@
         }
       };
     }
-    const { log, warn } = createLogger("AI Studio Exporter");
+    const { log } = createLogger("AI Studio Exporter");
     GM_addElement("style", { textContent: [
       "/* Native mic dialog: non-blocking, repositioned to bottom-left */",
       ".cdk-overlay-container:has(ms-mic-audio-dialog) .cdk-overlay-backdrop {",
@@ -338,29 +338,10 @@
       if (!thoughts && !content) return null;
       return { role, timestamp, thoughts, content };
     }
-    function waitForTurnById(turnId, timeoutMs) {
-      timeoutMs = timeoutMs || 5e3;
-      return new Promise(function(resolve) {
-        const start = Date.now();
-        function check() {
-          if (document.getElementById(turnId)) {
-            setTimeout(resolve, 200);
-            return;
-          }
-          if (Date.now() - start > timeoutMs) {
-            warn("Timeout waiting for turn #" + turnId);
-            resolve();
-            return;
-          }
-          requestAnimationFrame(check);
-        }
-        check();
-      });
-    }
     async function extractAllTurns() {
       const scrollButtons = document.querySelectorAll(".items-scrollbar-item button");
       if (!scrollButtons.length) {
-        log("No scrollbar items found — using DOM-only extraction");
+        log("No scrollbar items — DOM-only extraction");
         const result2 = [];
         const turnEls = document.querySelectorAll("ms-chat-turn");
         for (let i = 0; i < turnEls.length; i++) {
@@ -370,51 +351,47 @@
         return result2;
       }
       log("Found " + scrollButtons.length + " scrollbar items");
-      const extractedByIndex = new Map();
-      for (let i = 0; i < scrollButtons.length; i++) {
-        const turnId = scrollButtons[i].getAttribute("aria-controls");
-        if (!turnId) continue;
-        const turnEl = document.getElementById(turnId);
-        if (turnEl) {
-          const data = extractTurn(turnEl.closest("ms-chat-turn") || turnEl);
-          if (data) extractedByIndex.set(i, data);
+      const extracted = new Map();
+      function snapshotVisible() {
+        const turnEls = document.querySelectorAll("ms-chat-turn");
+        for (let i = 0; i < turnEls.length; i++) {
+          const el = turnEls[i];
+          const id = el.id || "__noid_" + i;
+          if (extracted.has(id)) continue;
+          const data = extractTurn(el);
+          if (data) extracted.set(id, data);
         }
       }
-      log("Pre-extracted " + extractedByIndex.size + " already-visible turns");
-      for (let i = 0; i < scrollButtons.length; i++) {
-        if (extractedByIndex.has(i)) continue;
-        const turnId = scrollButtons[i].getAttribute("aria-controls");
-        if (!turnId) {
-          warn("No aria-controls on scrollbar button " + i);
-          continue;
-        }
-        scrollButtons[i].click();
-        await waitForTurnById(turnId);
-        const turnEl = document.getElementById(turnId);
-        if (turnEl) {
-          const data = extractTurn(turnEl.closest("ms-chat-turn") || turnEl);
-          if (data) extractedByIndex.set(i, data);
-        } else {
-          warn("Turn #" + turnId + " not found after click");
+      async function waitForRender() {
+        await new Promise(function(r) {
+          setTimeout(r, 300);
+        });
+        const deadline = Date.now() + 3e3;
+        while (Date.now() < deadline) {
+          const nodes = document.querySelectorAll("ms-chat-turn ms-cmark-node");
+          let ready = nodes.length > 0;
+          for (let i = 0; i < nodes.length; i++) {
+            if (nodes[i].childNodes.length === 0) {
+              ready = false;
+              break;
+            }
+          }
+          if (ready) break;
+          await new Promise(function(r) {
+            setTimeout(r, 100);
+          });
         }
         await new Promise(function(r) {
-          setTimeout(r, 100);
+          setTimeout(r, 200);
         });
       }
-      const result = [];
-      let prevFingerprint = "";
       for (let i = 0; i < scrollButtons.length; i++) {
-        if (extractedByIndex.has(i)) {
-          const data = extractedByIndex.get(i);
-          const fp = data.role + "|" + data.timestamp + "|" + (data.content || "").slice(0, 100);
-          if (fp === prevFingerprint) {
-            warn("Skipping duplicate turn at index " + i);
-            continue;
-          }
-          prevFingerprint = fp;
-          result.push(data);
-        }
+        scrollButtons[i].click();
+        await waitForRender();
+        snapshotVisible();
+        log("Step " + (i + 1) + "/" + scrollButtons.length + " — captured " + extracted.size + " turns so far");
       }
+      const result = Array.from(extracted.values());
       log("Extraction complete: " + result.length + " turns");
       return result;
     }

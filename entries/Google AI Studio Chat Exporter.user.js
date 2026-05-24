@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.6.0
+// @version      5.7.0
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -41,7 +41,7 @@ function createLogger(prefix, debugMode) {
     };
 }
 
-const { log, warn } = createLogger('AI Studio Exporter');
+const { log } = createLogger('AI Studio Exporter');
 
 // ==================== STYLES — Microphone Dialog ====================
 
@@ -260,32 +260,12 @@ function extractTurn(el) {
     return { role, timestamp, thoughts, content };
 }
 
-function waitForTurnById(turnId, timeoutMs) {
-    timeoutMs = timeoutMs || 5000;
-    return new Promise(function (resolve) {
-        const start = Date.now();
-        function check() {
-            if (document.getElementById(turnId)) {
-                setTimeout(resolve, 200);
-                return;
-            }
-            if (Date.now() - start > timeoutMs) {
-                warn('Timeout waiting for turn #' + turnId);
-                resolve();
-                return;
-            }
-            requestAnimationFrame(check);
-        }
-        check();
-    });
-}
-
 async function extractAllTurns() {
     const scrollButtons = document.querySelectorAll('.items-scrollbar-item button');
 
-    // Fallback: no scrollbar → DOM-only extraction
+    // No virtual scroll — extract whatever is in the DOM directly
     if (!scrollButtons.length) {
-        log('No scrollbar items found — using DOM-only extraction');
+        log('No scrollbar items — DOM-only extraction');
         const result = [];
         const turnEls = document.querySelectorAll('ms-chat-turn');
         for (let i = 0; i < turnEls.length; i++) {
@@ -296,58 +276,54 @@ async function extractAllTurns() {
     }
 
     log('Found ' + scrollButtons.length + ' scrollbar items');
-    const extractedByIndex = new Map();
 
-    // Step 1: extract already-visible turns by aria-controls ID
-    for (let i = 0; i < scrollButtons.length; i++) {
-        const turnId = scrollButtons[i].getAttribute('aria-controls');
-        if (!turnId) continue;
-        const turnEl = document.getElementById(turnId);
-        if (turnEl) {
-            const data = extractTurn(turnEl.closest('ms-chat-turn') || turnEl);
-            if (data) extractedByIndex.set(i, data);
+    // Dedup map: ms-chat-turn element id → extracted data
+    // Insertion order = first time each turn is seen = conversation order
+    const extracted = new Map();
+
+    // Snapshot ALL currently visible ms-chat-turn elements into the map.
+    // Called after every scroll to capture the full visible window.
+    function snapshotVisible() {
+        const turnEls = document.querySelectorAll('ms-chat-turn');
+        for (let i = 0; i < turnEls.length; i++) {
+            const el = turnEls[i];
+            const id = el.id || ('__noid_' + i);
+            if (extracted.has(id)) continue;
+            const data = extractTurn(el);
+            if (data) extracted.set(id, data);
         }
     }
 
-    log('Pre-extracted ' + extractedByIndex.size + ' already-visible turns');
-
-    // Step 2: click scrollbar items for missing turns (by aria-controls ID)
-    for (let i = 0; i < scrollButtons.length; i++) {
-        if (extractedByIndex.has(i)) continue;
-
-        const turnId = scrollButtons[i].getAttribute('aria-controls');
-        if (!turnId) { warn('No aria-controls on scrollbar button ' + i); continue; }
-
-        scrollButtons[i].click();
-        await waitForTurnById(turnId);
-
-        const turnEl = document.getElementById(turnId);
-        if (turnEl) {
-            const data = extractTurn(turnEl.closest('ms-chat-turn') || turnEl);
-            if (data) extractedByIndex.set(i, data);
-        } else {
-            warn('Turn #' + turnId + ' not found after click');
-        }
-
-        await new Promise(function (r) { setTimeout(r, 100); });
-    }
-
-    // Build ordered result with fingerprint dedup
-    const result = [];
-    let prevFingerprint = '';
-    for (let i = 0; i < scrollButtons.length; i++) {
-        if (extractedByIndex.has(i)) {
-            const data = extractedByIndex.get(i);
-            const fp = data.role + '|' + data.timestamp + '|' + (data.content || '').slice(0, 100);
-            if (fp === prevFingerprint) {
-                warn('Skipping duplicate turn at index ' + i);
-                continue;
+    // Wait for Angular CDK virtual scroll + change detection to finish
+    // rendering newly-scrolled-into-view turns.
+    // Polls for ms-cmark-node content to be populated; falls back after 3 s.
+    async function waitForRender() {
+        await new Promise(function (r) { setTimeout(r, 300); });
+        const deadline = Date.now() + 3000;
+        while (Date.now() < deadline) {
+            const nodes = document.querySelectorAll('ms-chat-turn ms-cmark-node');
+            let ready = nodes.length > 0;
+            for (let i = 0; i < nodes.length; i++) {
+                if (nodes[i].childNodes.length === 0) { ready = false; break; }
             }
-            prevFingerprint = fp;
-            result.push(data);
+            if (ready) break;
+            await new Promise(function (r) { setTimeout(r, 100); });
         }
+        await new Promise(function (r) { setTimeout(r, 200); });
     }
 
+    // Click every scrollbar item in order (first → last).
+    // Each click scrolls the CDK virtual viewport to that conversation section,
+    // bringing the corresponding User+Model turn pair into the DOM.
+    for (let i = 0; i < scrollButtons.length; i++) {
+        scrollButtons[i].click();
+        await waitForRender();
+        snapshotVisible();
+        log('Step ' + (i + 1) + '/' + scrollButtons.length
+            + ' — captured ' + extracted.size + ' turns so far');
+    }
+
+    const result = Array.from(extracted.values());
     log('Extraction complete: ' + result.length + ' turns');
     return result;
 }
