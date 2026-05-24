@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.7.0
+// @version      5.7.1
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -189,7 +189,21 @@ function htmlToMarkdown(el) {
     }
 
     function walkList(node, ordered, depth) {
-        const items = node.querySelectorAll(':scope > li');
+        // Manual recursive collection: Angular wraps <li> inside custom elements
+        // (e.g. ms-cmark-node), so :scope > li finds zero items.
+        const items = [];
+        (function collectLis(parent) {
+            const ch = parent.childNodes;
+            for (let c = 0; c < ch.length; c++) {
+                if (ch[c].nodeType !== Node.ELEMENT_NODE) continue;
+                const t = ch[c].tagName.toUpperCase();
+                if (t === 'LI') {
+                    items.push(ch[c]);
+                } else if (t !== 'UL' && t !== 'OL') {
+                    collectLis(ch[c]);
+                }
+            }
+        }(node));
         for (let i = 0; i < items.length; i++) {
             const prefix = ordered ? (i + 1) + '. ' : '- ';
             out += '  '.repeat(depth - 1) + prefix;
