@@ -65,7 +65,7 @@
         }
       };
     }
-    const { log } = createLogger("AI Studio Exporter");
+    const { log, warn } = createLogger("AI Studio Exporter");
     GM_addElement("style", { textContent: [
       "/* Native mic dialog: non-blocking, repositioned to bottom-left */",
       ".cdk-overlay-container:has(ms-mic-audio-dialog) .cdk-overlay-backdrop {",
@@ -365,7 +365,7 @@
         observer.observe(document.body, { childList: true, subtree: true });
         setTimeout(function() {
           observer.disconnect();
-          log.warn("waitForTurnElement timeout: " + turnId);
+          warn("waitForTurnElement timeout: " + turnId);
           resolve();
         }, timeoutMs);
       });
@@ -373,7 +373,7 @@
     async function extractAllTurns() {
       const turnIds = collectTurnIdsFromScrollbar();
       if (!turnIds) {
-        log.log("No scrollbar items found — using DOM-only extraction");
+        log("No scrollbar items found — using DOM-only extraction");
         const result2 = [];
         const turnEls = document.querySelectorAll("ms-chat-turn");
         for (let i = 0; i < turnEls.length; i++) {
@@ -382,7 +382,7 @@
         }
         return result2;
       }
-      log.log("Found " + turnIds.length + " turns via scrollbar");
+      log("Found " + turnIds.length + " turns via scrollbar");
       const resultMap = new Map();
       const existingTurns = document.querySelectorAll("ms-chat-turn");
       for (let i = 0; i < existingTurns.length; i++) {
@@ -391,7 +391,7 @@
         const data = extractTurn(el);
         if (data && id) resultMap.set(id, data);
       }
-      log.log("Pre-extracted " + resultMap.size + " already-visible turns");
+      log("Pre-extracted " + resultMap.size + " already-visible turns");
       for (let i = 0; i < turnIds.length; i++) {
         const id = turnIds[i];
         if (resultMap.has(id)) continue;
@@ -399,7 +399,7 @@
           '.items-scrollbar-item button[data-test-item-id="' + id + '"]'
         );
         if (!btn) {
-          log.warn("No scrollbar button for turn: " + id);
+          warn("No scrollbar button for turn: " + id);
           continue;
         }
         btn.click();
@@ -409,7 +409,7 @@
           const data = extractTurn(el);
           if (data) resultMap.set(id, data);
         } else {
-          log.warn("Turn element not found after click: " + id);
+          warn("Turn element not found after click: " + id);
         }
         await new Promise(function(r) {
           setTimeout(r, 100);
@@ -420,7 +420,7 @@
         const data = resultMap.get(turnIds[i]);
         if (data) result.push(data);
       }
-      log.log("Extraction complete: " + result.length + " turns");
+      log("Extraction complete: " + result.length + " turns");
       return result;
     }
     function turnsToMarkdown(turns) {

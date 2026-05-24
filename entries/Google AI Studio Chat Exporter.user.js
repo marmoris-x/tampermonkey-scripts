@@ -40,7 +40,7 @@ function createLogger(prefix, debugMode) {
     };
 }
 
-const { log } = createLogger('AI Studio Exporter');
+const { log, warn } = createLogger('AI Studio Exporter');
 
 // ==================== STYLES — Microphone Dialog ====================
 
@@ -274,7 +274,7 @@ function waitForTurnElement(turnId, timeoutMs) {
         observer.observe(document.body, { childList: true, subtree: true });
         setTimeout(function () {
             observer.disconnect();
-            log.warn('waitForTurnElement timeout: ' + turnId);
+            warn('waitForTurnElement timeout: ' + turnId);
             resolve();
         }, timeoutMs);
     });
@@ -285,7 +285,7 @@ async function extractAllTurns() {
 
     // Fallback: no scrollbar → DOM-only extraction (original behavior)
     if (!turnIds) {
-        log.log('No scrollbar items found — using DOM-only extraction');
+        log('No scrollbar items found — using DOM-only extraction');
         const result = [];
         const turnEls = document.querySelectorAll('ms-chat-turn');
         for (let i = 0; i < turnEls.length; i++) {
@@ -295,7 +295,7 @@ async function extractAllTurns() {
         return result;
     }
 
-    log.log('Found ' + turnIds.length + ' turns via scrollbar');
+    log('Found ' + turnIds.length + ' turns via scrollbar');
     const resultMap = new Map();
 
     // Step 1: extract already-visible turns without scrolling
@@ -307,7 +307,7 @@ async function extractAllTurns() {
         if (data && id) resultMap.set(id, data);
     }
 
-    log.log('Pre-extracted ' + resultMap.size + ' already-visible turns');
+    log('Pre-extracted ' + resultMap.size + ' already-visible turns');
 
     // Step 2: iterate scrollbar items for missing turns
     for (let i = 0; i < turnIds.length; i++) {
@@ -318,7 +318,7 @@ async function extractAllTurns() {
             '.items-scrollbar-item button[data-test-item-id="' + id + '"]'
         );
         if (!btn) {
-            log.warn('No scrollbar button for turn: ' + id);
+            warn('No scrollbar button for turn: ' + id);
             continue;
         }
 
@@ -330,7 +330,7 @@ async function extractAllTurns() {
             const data = extractTurn(el);
             if (data) resultMap.set(id, data);
         } else {
-            log.warn('Turn element not found after click: ' + id);
+            warn('Turn element not found after click: ' + id);
         }
 
         // Brief debounce before the next scrollbar click
@@ -344,7 +344,7 @@ async function extractAllTurns() {
         if (data) result.push(data);
     }
 
-    log.log('Extraction complete: ' + result.length + ' turns');
+    log('Extraction complete: ' + result.length + ' turns');
     return result;
 }
 
