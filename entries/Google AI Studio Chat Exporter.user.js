@@ -249,7 +249,7 @@ function collectTurnIdsFromScrollbar() {
     const buttons = document.querySelectorAll('.items-scrollbar-item button');
     const ids = [];
     for (let i = 0; i < buttons.length; i++) {
-        const id = buttons[i].getAttribute('data-test-item-id');
+        const id = buttons[i].getAttribute('aria-controls');
         if (id) ids.push(id);
     }
     return ids.length > 0 ? ids : null;
@@ -258,15 +258,14 @@ function collectTurnIdsFromScrollbar() {
 function waitForTurnElement(turnId, timeoutMs) {
     timeoutMs = timeoutMs || 5000;
     return new Promise(function (resolve) {
-        const selector = 'ms-chat-turn[data-test-item-id="' + turnId + '"]';
-        const existing = document.querySelector(selector);
+        const existing = document.getElementById(turnId);
         if (existing) {
             // Small delay for Angular to finish rendering content
             setTimeout(resolve, 200);
             return;
         }
         const observer = new MutationObserver(function () {
-            if (document.querySelector(selector)) {
+            if (document.getElementById(turnId)) {
                 observer.disconnect();
                 setTimeout(resolve, 200);
             }
@@ -302,7 +301,7 @@ async function extractAllTurns() {
     const existingTurns = document.querySelectorAll('ms-chat-turn');
     for (let i = 0; i < existingTurns.length; i++) {
         const el = existingTurns[i];
-        const id = el.getAttribute('data-test-item-id');
+        const id = el.id || (el.querySelector('[id^="turn-"]') || {}).id;
         const data = extractTurn(el);
         if (data && id) resultMap.set(id, data);
     }
@@ -315,7 +314,7 @@ async function extractAllTurns() {
         if (resultMap.has(id)) continue;
 
         const btn = document.querySelector(
-            '.items-scrollbar-item button[data-test-item-id="' + id + '"]'
+            '.items-scrollbar-item button[aria-controls="' + id + '"]'
         );
         if (!btn) {
             warn('No scrollbar button for turn: ' + id);
@@ -325,7 +324,8 @@ async function extractAllTurns() {
         btn.click();
         await waitForTurnElement(id);
 
-        const el = document.querySelector('ms-chat-turn[data-test-item-id="' + id + '"]');
+        const target = document.getElementById(id);
+        const el = target && (target.matches('ms-chat-turn') ? target : target.closest('ms-chat-turn'));
         if (el) {
             const data = extractTurn(el);
             if (data) resultMap.set(id, data);
