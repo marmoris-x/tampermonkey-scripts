@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.5.4
+// @version      5.5.5
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -11,7 +11,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addElement
-// @grant        GM_download
+// @grant        GM.download
 // @grant        GM_setClipboard
 // @tag          ai
 // @tag          productivity
@@ -224,20 +224,24 @@ function getThoughts(turnEl) {
 }
 
 function getContent(turnEl) {
-    const turnContent = turnEl.querySelector('.turn-content');
-    if (!turnContent) return '';
-    // Clone to avoid mutating the live DOM during extraction
-    const clone = turnContent.cloneNode(true);
-    // Remove author label, turn info, and search suggestions
-    const excludes = clone.querySelectorAll('.author-label, .turn-information, .search-entry-point');
-    for (let i = 0; i < excludes.length; i++) excludes[i].remove();
-    return htmlToMarkdown(clone).trim();
+    let out = '';
+    const selectors = 'ms-prompt-chunk, ms-cmark-node, ms-text-chunk';
+    const chunks = turnEl.querySelectorAll(selectors);
+    for (let i = 0; i < chunks.length; i++) {
+        if (chunks[i].closest('ms-thought-chunk')) continue;
+        out += htmlToMarkdown(chunks[i]);
+    }
+    return out.trim();
 }
 
 function extractTurn(el) {
-    const container = el.querySelector('.virtual-scroll-container');
-    if (!container) return null;
-    const role      = container.getAttribute('data-turn-role') || 'Unknown';
+    const container = el.querySelector('.virtual-scroll-container') || el;
+    const role      = container.getAttribute('data-turn-role') || '';
+    if (!role) {
+        // Fallback: try model-specific container
+        const mc = el.querySelector('.model-prompt-container');
+        role = mc ? 'Model' : 'Unknown';
+    }
     const tsEl      = el.querySelector('.author-label .timestamp');
     const timestamp = tsEl ? tsEl.textContent.trim() : '';
     const thoughts  = getThoughts(el);
@@ -280,8 +284,21 @@ function waitForTurnElement(turnId, timeoutMs) {
     });
 }
 
+async function collectTurnIdsWithRetry(maxWaitMs) {
+    maxWaitMs = maxWaitMs || 3000;
+    const step = 300;
+    let waited = 0;
+    while (waited < maxWaitMs) {
+        const ids = collectTurnIdsFromScrollbar();
+        if (ids) return ids;
+        await new Promise(function (r) { setTimeout(r, step); });
+        waited += step;
+    }
+    return null;
+}
+
 async function extractAllTurns() {
-    const turnIds = collectTurnIdsFromScrollbar();
+    const turnIds = await collectTurnIdsWithRetry(3000);
 
     // Fallback: no scrollbar → DOM-only extraction (original behavior)
     if (!turnIds) {
@@ -438,27 +455,20 @@ async function handleDownload() {
     const filename = 'ai-studio-chat-' + dateStr + '.md';
     const blob = new Blob([result.text], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
-    GM_download({
-        url: blob,
-        name: filename,
-        saveAs: true,
-        onload: function () {
-            URL.revokeObjectURL(url);
-        },
-        onerror: function (_err) {
-            // TM rejected download (not whitelisted / MV3 restriction).
-            // Fallback: DOM anchor click bypasses TM entirely.
-            URL.revokeObjectURL(url);
-            const fallbackUrl = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = fallbackUrl;
-            a.download = filename;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(function () { a.remove(); URL.revokeObjectURL(fallbackUrl); }, 2000);
-        }
-    });
+    try {
+        await GM.download({ url: url, name: filename, saveAs: true });
+    } catch (_err) {
+        // TM download rejected — fallback to DOM anchor click
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { a.remove(); }, 2000);
+    }
+    // Revoke blob URL after download starts (fallback uses same url)
+    setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
     GM.notification({
         title: 'AI Studio Exporter',
         text: `${result.turnCount} turns saved as ${filename}`,

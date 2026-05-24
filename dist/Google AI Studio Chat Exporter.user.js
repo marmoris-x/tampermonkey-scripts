@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.5.4
+// @version      5.5.5
 // @author       marmoris-x
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @license      MIT
@@ -11,13 +11,13 @@
 // @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js
 // @match        https://aistudio.google.com/*
 // @tag          ai
+// @grant        GM.download
 // @grant        GM.getValue
 // @grant        GM.notification
 // @grant        GM.registerMenuCommand
 // @grant        GM.setClipboard
 // @grant        GM.setValue
 // @grant        GM_addElement
-// @grant        GM_download
 // @grant        GM_getValue
 // @grant        GM_notification
 // @grant        GM_registerMenuCommand
@@ -319,17 +319,22 @@
       return body ? htmlToMarkdown(body) : "";
     }
     function getContent(turnEl) {
-      const turnContent = turnEl.querySelector(".turn-content");
-      if (!turnContent) return "";
-      const clone = turnContent.cloneNode(true);
-      const excludes = clone.querySelectorAll(".author-label, .turn-information, .search-entry-point");
-      for (let i = 0; i < excludes.length; i++) excludes[i].remove();
-      return htmlToMarkdown(clone).trim();
+      let out = "";
+      const selectors = "ms-prompt-chunk, ms-cmark-node, ms-text-chunk";
+      const chunks = turnEl.querySelectorAll(selectors);
+      for (let i = 0; i < chunks.length; i++) {
+        if (chunks[i].closest("ms-thought-chunk")) continue;
+        out += htmlToMarkdown(chunks[i]);
+      }
+      return out.trim();
     }
     function extractTurn(el) {
-      const container = el.querySelector(".virtual-scroll-container");
-      if (!container) return null;
-      const role = container.getAttribute("data-turn-role") || "Unknown";
+      const container = el.querySelector(".virtual-scroll-container") || el;
+      const role = container.getAttribute("data-turn-role") || "";
+      if (!role) {
+        const mc = el.querySelector(".model-prompt-container");
+        role = mc ? "Model" : "Unknown";
+      }
       const tsEl = el.querySelector(".author-label .timestamp");
       const timestamp = tsEl ? tsEl.textContent.trim() : "";
       const thoughts = getThoughts(el);
@@ -368,8 +373,22 @@
         }, timeoutMs);
       });
     }
+    async function collectTurnIdsWithRetry(maxWaitMs) {
+      maxWaitMs = maxWaitMs || 3e3;
+      const step = 300;
+      let waited = 0;
+      while (waited < maxWaitMs) {
+        const ids = collectTurnIdsFromScrollbar();
+        if (ids) return ids;
+        await new Promise(function(r) {
+          setTimeout(r, step);
+        });
+        waited += step;
+      }
+      return null;
+    }
     async function extractAllTurns() {
-      const turnIds = collectTurnIdsFromScrollbar();
+      const turnIds = await collectTurnIdsWithRetry(3e3);
       if (!turnIds) {
         log("No scrollbar items found — using DOM-only extraction");
         const result2 = [];
@@ -482,28 +501,22 @@
       const filename = "ai-studio-chat-" + dateStr + ".md";
       const blob = new Blob([result.text], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
-      GM_download({
-        url: blob,
-        name: filename,
-        saveAs: true,
-        onload: function() {
-          URL.revokeObjectURL(url);
-        },
-        onerror: function(_err) {
-          URL.revokeObjectURL(url);
-          const fallbackUrl = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = fallbackUrl;
-          a.download = filename;
-          a.style.display = "none";
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(function() {
-            a.remove();
-            URL.revokeObjectURL(fallbackUrl);
-          }, 2e3);
-        }
-      });
+      try {
+        await GM.download({ url, name: filename, saveAs: true });
+      } catch (_err) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() {
+          a.remove();
+        }, 2e3);
+      }
+      setTimeout(function() {
+        URL.revokeObjectURL(url);
+      }, 3e3);
       GM.notification({
         title: "AI Studio Exporter",
         text: `${result.turnCount} turns saved as ${filename}`,
