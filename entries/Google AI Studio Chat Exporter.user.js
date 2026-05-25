@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Google AI Studio Chat Exporter
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      5.7.1
+// @version      5.7.2
 // @description  Export AI Studio chat as Markdown via Tampermonkey menu command; non-blocking microphone dialog
 // @author       marmoris-x
 // @match        https://aistudio.google.com/*
@@ -164,6 +164,20 @@ function htmlToMarkdown(el) {
             if (tag === 'A') { const href = child.getAttribute('href') || ''; out += '['; walk(child, depth); out += '](' + href + ')'; continue; }
             if (tag === 'DEL' || tag === 'S') { out += '~~'; walk(child, depth); out += '~~'; continue; }
             if (tag === 'U') { out += '<u>'; walk(child, depth); out += '</u>'; continue; }
+            if (tag === 'SPAN') {
+                const style = child.getAttribute('style') || '';
+                if (style.includes('font-style: italic') || style.includes('font-style:italic')) {
+                    if (out.length > 0 && out[out.length - 1] !== ' ' && out[out.length - 1] !== '\n') {
+                        out += ' ';
+                    }
+                    out += '*';
+                    walk(child, depth);
+                    out += '*';
+                } else {
+                    walk(child, depth);
+                }
+                continue;
+            }
 
             walk(child, depth);
         }
@@ -205,10 +219,13 @@ function htmlToMarkdown(el) {
             }
         }(node));
         for (let i = 0; i < items.length; i++) {
-            const prefix = ordered ? (i + 1) + '. ' : '- ';
-            out += '  '.repeat(depth - 1) + prefix;
+            const prefix = '  '.repeat(depth - 1) + (ordered ? (i + 1) + '. ' : '- ');
+            const before = out.length;
             walk(items[i], depth + 1);
-            out += '\n';
+            // Capture what walk appended, strip surrounding whitespace,
+            // collapse internal blank lines so the bullet stays tight
+            const itemContent = out.slice(before).trim().replace(/\n\n+/g, '\n');
+            out = out.slice(0, before) + prefix + itemContent + '\n';
         }
     }
 
