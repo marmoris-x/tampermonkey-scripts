@@ -41,13 +41,73 @@ let speedAbort        = null;
 let speedRetryTimeout = null;
 let speedInitTimeout  = null;
 let currentChannelId  = null;
-let isApplyingSpeed   = false;
+let activeChannelSpeed = null;   // Enforced channel speed; null = pass-through mode
+let browserOrigDesc    = null;   // Browser's original playbackRate descriptor (captured from iframe)
+let previousDescriptor = null;   // Prototype descriptor before our override (another script or browser)
 let menuPanel         = null;
 let customPanel       = null;
 let inCustomPanel     = false;
 
 let origMenuWidth  = '';
 let origMenuHeight = '';
+
+// =========================================================
+// Prototype-level playbackRate override (iframe-based)
+// Executes at module-load time (document-start).
+// Captures the browser's original descriptor from a clean
+// iframe context, then installs a wrapping getter/setter on
+// HTMLMediaElement.prototype.playbackRate.
+//
+// When activeChannelSpeed is set: enforces channel speed
+// via the browser's original setter, bypassing all other
+// prototype overrides (including Global Speed Controller).
+// When activeChannelSpeed is null: delegates to whatever
+// descriptor was on the prototype before us (pass-through).
+// =========================================================
+
+(function installPrototypeOverride() {
+  try {
+    var iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.documentElement.appendChild(iframe);
+    browserOrigDesc = Object.getOwnPropertyDescriptor(
+      iframe.contentWindow.HTMLMediaElement.prototype, 'playbackRate'
+    );
+    iframe.remove();
+
+    if (!browserOrigDesc || !browserOrigDesc.get || !browserOrigDesc.set) {
+      log.error('Prototype override: could not capture browser descriptor');
+      return;
+    }
+
+    previousDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype, 'playbackRate'
+    );
+    if (!previousDescriptor || !previousDescriptor.get || !previousDescriptor.set) {
+      previousDescriptor = browserOrigDesc;
+    }
+
+    Object.defineProperty(HTMLMediaElement.prototype, 'playbackRate', {
+      configurable: true,
+      enumerable: true,
+      get: function () {
+        if (activeChannelSpeed !== null) return activeChannelSpeed;
+        return previousDescriptor.get.call(this);
+      },
+      set: function (rate) {
+        if (activeChannelSpeed !== null) {
+          browserOrigDesc.set.call(this, activeChannelSpeed);
+        } else {
+          previousDescriptor.set.call(this, rate);
+        }
+      }
+    });
+
+    log.debug('Prototype override installed for channel speed protection');
+  } catch (e) {
+    log.error('Failed to install prototype override:', e);
+  }
+})();
 
 // =========================================================
 // Speed data persistence
@@ -85,19 +145,31 @@ async function saveSpeed(cid, val) {
 // =========================================================
 
 /**
- * Directly sets playbackRate on the main YouTube <video> element.
+ * Sets playbackRate on the main YouTube <video> element using
+ * the browser's original setter, bypassing all prototype overrides.
+ * Active when a channel speed is set.
  * @param {number} val - Desired playback speed
  */
 function applySpeed(val) {
   try {
     const vid = document.querySelector('.html5-main-video');
-    if (vid && Math.abs(vid.playbackRate - val) > 0.001) {
-      isApplyingSpeed = true;
-      try {
-        vid.playbackRate = val;
-      } finally {
-        isApplyingSpeed = false;
-      }
+    if (!vid) return;
+    // Read REAL browser rate (bypasses all prototype overrides)
+    const realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
+    if (Math.abs(realRate - val) < 0.001) return;
+
+    // Activate enforcement before writing so the prototype getter
+    // returns our value if anything reads during the set.
+    activeChannelSpeed = val;
+
+    // Suppress GSC to prevent ratechange correction fight
+    try { window.__GS_ENABLED__ = false; } catch (_) {}
+
+    // Write via browser's original setter (bypasses all overrides)
+    if (browserOrigDesc) {
+      browserOrigDesc.set.call(vid, val);
+    } else {
+      vid.playbackRate = val;
     }
   } catch (e) { log.debug('applySpeed error:', e); }
 }
@@ -568,12 +640,17 @@ export function initSpeed() {
       speedAbort = new AbortController();
 
       vid.addEventListener('ratechange', function () {
-        if (isApplyingSpeed) return;
-        const currentSaved = getSpeeds()[currentChannelId];
-        if (currentSaved && Math.abs(vid.playbackRate - currentSaved) > 0.01) {
-          isApplyingSpeed = true;
-          vid.playbackRate = currentSaved;
-          isApplyingSpeed = false;
+        var currentSaved = getSpeeds()[currentChannelId];
+        if (!currentSaved) return;
+        // Read REAL browser rate (bypasses all overrides)
+        var realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
+        if (activeChannelSpeed !== null && Math.abs(realRate - currentSaved) > 0.01) {
+          // Rate drift detected — re-enforce channel speed
+          if (browserOrigDesc) {
+            browserOrigDesc.set.call(vid, currentSaved);
+          } else {
+            vid.playbackRate = currentSaved;
+          }
         }
       }, { signal: speedAbort.signal });
 
@@ -606,6 +683,11 @@ export function initSpeed() {
  * Called on SPA navigation to reset state for the new page.
  */
 export function cleanupSpeed() {
+  activeChannelSpeed = null;  // Release prototype-level enforcement
+
+  // Restore GSC
+  try { window.__GS_ENABLED__ = true; } catch (_) {}
+
   speedObs.forEach(function (o) { try { o.disconnect(); } catch (_) {} });
   speedObs.clear();
 

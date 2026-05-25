@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.8.2
+// @version      1.9.0
 // @author       marmoris-x
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @license      MIT
@@ -209,12 +209,55 @@
   let speedRetryTimeout = null;
   let speedInitTimeout = null;
   let currentChannelId = null;
-  let isApplyingSpeed = false;
+  let activeChannelSpeed = null;
+  let browserOrigDesc = null;
+  let previousDescriptor = null;
   let menuPanel = null;
   let customPanel = null;
   let inCustomPanel = false;
   let origMenuWidth = "";
   let origMenuHeight = "";
+  (function installPrototypeOverride() {
+    try {
+      var iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      document.documentElement.appendChild(iframe);
+      browserOrigDesc = Object.getOwnPropertyDescriptor(
+        iframe.contentWindow.HTMLMediaElement.prototype,
+        "playbackRate"
+      );
+      iframe.remove();
+      if (!browserOrigDesc || !browserOrigDesc.get || !browserOrigDesc.set) {
+        log$1.error("Prototype override: could not capture browser descriptor");
+        return;
+      }
+      previousDescriptor = Object.getOwnPropertyDescriptor(
+        HTMLMediaElement.prototype,
+        "playbackRate"
+      );
+      if (!previousDescriptor || !previousDescriptor.get || !previousDescriptor.set) {
+        previousDescriptor = browserOrigDesc;
+      }
+      Object.defineProperty(HTMLMediaElement.prototype, "playbackRate", {
+        configurable: true,
+        enumerable: true,
+        get: function() {
+          if (activeChannelSpeed !== null) return activeChannelSpeed;
+          return previousDescriptor.get.call(this);
+        },
+        set: function(rate) {
+          if (activeChannelSpeed !== null) {
+            browserOrigDesc.set.call(this, activeChannelSpeed);
+          } else {
+            previousDescriptor.set.call(this, rate);
+          }
+        }
+      });
+      log$1.debug("Prototype override installed for channel speed protection");
+    } catch (e) {
+      log$1.error("Failed to install prototype override:", e);
+    }
+  })();
   function getSpeeds() {
     return speedCache;
   }
@@ -236,13 +279,18 @@
   function applySpeed(val) {
     try {
       const vid = document.querySelector(".html5-main-video");
-      if (vid && Math.abs(vid.playbackRate - val) > 1e-3) {
-        isApplyingSpeed = true;
-        try {
-          vid.playbackRate = val;
-        } finally {
-          isApplyingSpeed = false;
-        }
+      if (!vid) return;
+      const realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
+      if (Math.abs(realRate - val) < 1e-3) return;
+      activeChannelSpeed = val;
+      try {
+        window.__GS_ENABLED__ = false;
+      } catch (_) {
+      }
+      if (browserOrigDesc) {
+        browserOrigDesc.set.call(vid, val);
+      } else {
+        vid.playbackRate = val;
       }
     } catch (e) {
       log$1.debug("applySpeed error:", e);
@@ -596,12 +644,15 @@
         if (speedAbort) speedAbort.abort();
         speedAbort = new AbortController();
         vid.addEventListener("ratechange", function() {
-          if (isApplyingSpeed) return;
-          const currentSaved = getSpeeds()[currentChannelId];
-          if (currentSaved && Math.abs(vid.playbackRate - currentSaved) > 0.01) {
-            isApplyingSpeed = true;
-            vid.playbackRate = currentSaved;
-            isApplyingSpeed = false;
+          var currentSaved = getSpeeds()[currentChannelId];
+          if (!currentSaved) return;
+          var realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
+          if (activeChannelSpeed !== null && Math.abs(realRate - currentSaved) > 0.01) {
+            if (browserOrigDesc) {
+              browserOrigDesc.set.call(vid, currentSaved);
+            } else {
+              vid.playbackRate = currentSaved;
+            }
           }
         }, { signal: speedAbort.signal });
         if (saved) {
@@ -627,6 +678,11 @@
     }, INIT_TIMEOUT);
   }
   function cleanupSpeed() {
+    activeChannelSpeed = null;
+    try {
+      window.__GS_ENABLED__ = true;
+    } catch (_) {
+    }
     speedObs.forEach(function(o) {
       try {
         o.disconnect();
