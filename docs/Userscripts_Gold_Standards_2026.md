@@ -53,19 +53,18 @@ Modern enterprise development deploys a lightweight `.meta.js` file for update c
 
 ### 4. Execution Context & Sandboxing (CRITICAL)
 
-Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script isolation. This replaces TWO deprecated directives: `@unwrap` and `@inject-into`.
+Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script isolation. This replaces the deprecated directive: `@unwrap`.
 
 #### `@sandbox` — THE MODERN STANDARD (since TM v4.18+)
 
 | Value | Execution World | Description | Use Case |
 |:---|:---|:---|:---|
-| `raw` | MAIN_WORLD | **(Default when @sandbox is absent.)** Script runs directly in the page context with full access to page JS variables and `unsafeWindow`. Equivalent to old `@inject-into page` + `@unwrap`. | Scripts that need to read/modify page JS state, override prototypes, or interact with page-level APIs (e.g., YouTube player, React fiber). Most common for this repo. |
+| `raw` | MAIN_WORLD | **(Default when @sandbox is absent.)** Script runs directly in the page context with full access to page JS variables and `unsafeWindow`. Equivalent to old `@unwrap`. | Scripts that need to read/modify page JS state, override prototypes, or interact with page-level APIs (e.g., YouTube player, React fiber). Most common for this repo. |
 | `JavaScript` | USERSCRIPT_WORLD (Firefox) / falls back to `raw` (Chrome) | Creates a specialized execution context on Firefox that provides `unsafeWindow` access while bypassing restrictive CSP rules. On Chrome and other non-Firefox browsers: **falls back to `raw`** — identical behavior to the default, no special CSP handling. See TM FAQ Q404. | Scripts that need `unsafeWindow` but encounter CSP blocks — primarily a Firefox feature. |
 | `DOM` | ISOLATED_WORLD | Extension-isolated execution. Access to DOM but NOT to page JavaScript variables or `unsafeWindow`. **Highest security.** | Scripts that only need DOM manipulation without interacting with page JS. Use when security isolation matters more than page JS access. |
 
 **Why `@sandbox` replaced the old directives:**
 - `@unwrap` removed the IIFE wrapper entirely, leaving the script naked in the global scope — a security risk that could cause variable collisions and breakage.
-- `@inject-into` (Violentmonkey-only: `page` / `content` / `auto`) had ambiguous semantics across script managers.
 - `@sandbox` provides three clearly-defined, browser-aware execution worlds that align with Chrome Manifest V3's security model.
 - Active sandbox improvements were shipped in TM v5.4.1 (November 2025), proving this is the actively maintained path forward.
 
@@ -74,7 +73,6 @@ Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script
 | Directive | Status | Why Avoid | Replacement |
 |:---|:---|:---|:---|
 | `@unwrap` | **Avoid for GM API scripts.** Still listed in official TM documentation without a formal deprecation notice, but confirmed by TM maintainers to break GM API access (TM Issue #2024): the sandbox is required to provide GM APIs securely. Removes the IIFE wrapper entirely — script runs raw in global scope without namespace protection. Still recognized by TM for backward compatibility; may be useful for pure scriptlets that need zero GM API access. | Use `@sandbox raw` for page context access. This preserves the IIFE wrapper while giving full MAIN_WORLD access. Note: `@sandbox raw` is the default when `@sandbox` is omitted — most scripts don't need to declare it explicitly. |
-| `@inject-into` | **Violentmonkey-only feature.** Does NOT exist in Tampermonkey — TM silently ignores unknown directives. Values: `page`, `content`, `auto`. For cross-manager compatibility (TM + Violentmonkey), include both `@sandbox` (TM standard) and `@inject-into` (VM equivalent), ensuring they specify consistent modes. | Use `@sandbox` exclusively for Tampermonkey. For dual-manager support, include both directives specifying equivalent modes. |
 
 #### `@run-at` — Injection Timing
 
@@ -154,7 +152,7 @@ Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script
 | `@incompatible` | `Safari` | Warns users about known incompatibilities. Prevents installation friction on unsupported platforms. |
 | `@nocompat` | `Chrome` | Disables TM's internal compatibility shims for a specific engine. Advanced usage — only when you are certain the shim causes issues. Use sparingly. |
 
-**Cross-engine strategy for this repo:** Tampermonkey is the primary target. Violentmonkey compatibility is best-effort. Scripts using `@grant none` (page context) have the broadest cross-manager compatibility. TM silently ignores Violentmonkey-specific directives (`@inject-into`) without throwing errors. For dual-manager support, include both `@sandbox` (TM standard) and `@inject-into` (VM equivalent) specifying consistent modes.
+**Cross-engine strategy for this repo:** Tampermonkey is the primary target. Violentmonkey compatibility is best-effort. Scripts using `@grant none` (page context) have the broadest cross-manager compatibility. TM silently ignores Violentmonkey-specific directives without throwing errors. For dual-manager support, `@sandbox` controls TM behavior while Violentmonkey uses its own equivalent settings.
 
 ---
 
@@ -192,7 +190,6 @@ Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script
 ### Key Changes from Pre-2026 Standards
 
 - **Removed `@unwrap`** — deprecated. Use `@sandbox raw` for page context access. Modern `@sandbox` preserves the IIFE wrapper while granting MAIN_WORLD access.
-- **Removed `@inject-into`** — deprecated (Violentmonkey legacy). Use `@sandbox` exclusively. If both are present, `@inject-into` can override `@sandbox`, causing unpredictable cross-manager behavior.
 - **Added `@homepage`**, `@icon`, `@icon64`, `@tag` — for full TM dashboard UI integration.
 - **Added i18n keys** (`@name:de`, `@description:de`) — for multilingual user bases.
 - **`@grant` uses Promise-based APIs** (`GM.getValue`, not legacy `GM_getValue`).
@@ -464,4 +461,4 @@ https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/<URL-ENCOD
 | **ScriptCat** | latest | Yes | Yes | Yes | Only open-source MV3 alternative. Stable since mid-2025. |
 | **Greasemonkey** | 4.x | Yes | Firefox-only | Yes | Firefox-only. |
 
-**Cross-engine compatibility strategy:** Scripts using `@grant none` (page context) have the broadest cross-manager compatibility. TM silently ignores Violentmonkey-specific directives (`@inject-into`) without errors. For dual-manager support, include both `@sandbox` (TM standard) and `@inject-into` (VM equivalent) specifying consistent modes. This repo targets Tampermonkey as primary; Violentmonkey/Greasemonkey compatibility is best-effort.
+**Cross-engine compatibility strategy:** Scripts using `@grant none` (page context) have the broadest cross-manager compatibility. TM silently ignores Violentmonkey-specific directives without errors. For dual-manager support, `@sandbox` controls TM behavior while Violentmonkey uses its own equivalent settings. This repo targets Tampermonkey as primary; Violentmonkey/Greasemonkey compatibility is best-effort.

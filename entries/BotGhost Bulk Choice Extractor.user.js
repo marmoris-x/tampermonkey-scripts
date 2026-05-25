@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         BotGhost Bulk Choice Extractor
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.9.8
+// @version      1.9.9
 // @description  Adds a "Copy Bulk" button to copy label/value pairs from choice options.
 // @author       marmoris-x
 // @match        https://dashboard.botghost.com/*
 // @icon64       https://www.google.com/s2/favicons?sz=64&domain=botghost.com
 // @sandbox      JavaScript
-// @inject-into  content
 // @grant        GM_setClipboard
 // @noframes
 // @run-at       document-idle

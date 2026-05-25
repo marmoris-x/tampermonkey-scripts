@@ -142,7 +142,7 @@ Self-contained pattern (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bul
 - **MUST use async storage APIs** (`GM.getValue`/`GM.setValue`) — never synchronous `GM_getValue`/`GM_setValue`
 - **MUST add SRI hashes** for any `@require`/`@resource` with external URLs (SHA-256 native, format: `#sha256=<hash>`)
 - **MUST include `@noframes`** unless iframe execution is intentional
-- **MUST use `@sandbox`** for execution context control — NOT `@unwrap` (breaks GM APIs) or `@inject-into` (Violentmonkey-only feature, does NOT exist in Tampermonkey)
+- **MUST use `@sandbox`** for execution context control — NOT `@unwrap` (breaks GM APIs)
 - **MUST NOT use `@connect *`** — always list exact domains
 - **SHOULD use `@sandbox raw`** for page context access, `@sandbox JavaScript` for Firefox USERSCRIPT_WORLD, `@sandbox DOM` for ISOLATED_WORLD
 - **SHOULD use `window.onurlchange`** (requires `@grant window.onurlchange`) for SPA navigation — not History API monkey-patching
@@ -160,10 +160,9 @@ Self-contained pattern (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bul
 Many scripts use this for direct page access:
 ```
 // @sandbox      JavaScript
-// @inject-into  content
 // @unwrap
 ```
-**Note:** `@inject-into` is a Violentmonkey feature — it has no effect in Tampermonkey. `@unwrap` removes ALL sandboxing and breaks any GM API access. This pattern is legacy and should be migrated to `@sandbox raw` with proper `@grant` declarations.
+**Note:** `@unwrap` removes ALL sandboxing and breaks any GM API access. This pattern is legacy and should be migrated to `@sandbox raw` with proper `@grant` declarations.
 
 ## Tampermonkey API Conventions
 

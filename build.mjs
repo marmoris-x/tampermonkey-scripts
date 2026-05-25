@@ -44,7 +44,7 @@ function parseUserscriptBlock(filePath) {
       const locale = key.slice(colonIdx + 1);
 
       // Only name and description support i18n in userscript metadata.
-      // Other colon-keys like @run-at, @inject-into are kept as-is.
+      // Other colon-keys like @run-at are kept as-is.
       if (baseKey === 'name' || baseKey === 'description') {
         if (typeof userscript[baseKey] === 'string') {
           userscript[baseKey] = { '': userscript[baseKey] };
