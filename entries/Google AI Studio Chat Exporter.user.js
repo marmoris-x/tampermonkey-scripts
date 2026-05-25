@@ -329,7 +329,7 @@ async function extractAllTurns() {
     // rendering newly-scrolled-into-view turns.
     // Polls for ms-cmark-node content to be populated; falls back after 3 s.
     async function waitForRender() {
-        await new Promise(function (r) { setTimeout(r, 300); });
+        await new Promise(function (r) { setTimeout(r, 500); });
         const deadline = Date.now() + 3000;
         while (Date.now() < deadline) {
             const nodes = document.querySelectorAll('ms-chat-turn ms-cmark-node');
@@ -340,7 +340,7 @@ async function extractAllTurns() {
             if (ready) break;
             await new Promise(function (r) { setTimeout(r, 100); });
         }
-        await new Promise(function (r) { setTimeout(r, 200); });
+        await new Promise(function (r) { setTimeout(r, 400); });
     }
 
     // Click every scrollbar item in order (first → last).

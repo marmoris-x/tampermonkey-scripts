@@ -391,7 +391,7 @@
       }
       async function waitForRender() {
         await new Promise(function(r) {
-          setTimeout(r, 300);
+          setTimeout(r, 500);
         });
         const deadline = Date.now() + 3e3;
         while (Date.now() < deadline) {
@@ -409,7 +409,7 @@
           });
         }
         await new Promise(function(r) {
-          setTimeout(r, 200);
+          setTimeout(r, 400);
         });
       }
       for (let i = 0; i < scrollButtons.length; i++) {
