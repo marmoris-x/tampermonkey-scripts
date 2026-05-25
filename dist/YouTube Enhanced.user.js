@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Enhanced
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      1.9.0
+// @version      1.9.1
 // @author       marmoris-x
 // @description  Auto max video quality, per-channel playback speed control & auto-stop on page load.
 // @license      MIT
@@ -219,9 +219,9 @@
   let origMenuHeight = "";
   (function installPrototypeOverride() {
     try {
-      var iframe = document.createElement("iframe");
+      const iframe = document.createElement("iframe");
       iframe.style.display = "none";
-      document.documentElement.appendChild(iframe);
+      (document.documentElement || document).appendChild(iframe);
       browserOrigDesc = Object.getOwnPropertyDescriptor(
         iframe.contentWindow.HTMLMediaElement.prototype,
         "playbackRate"
@@ -644,9 +644,9 @@
         if (speedAbort) speedAbort.abort();
         speedAbort = new AbortController();
         vid.addEventListener("ratechange", function() {
-          var currentSaved = getSpeeds()[currentChannelId];
+          const currentSaved = getSpeeds()[currentChannelId];
           if (!currentSaved) return;
-          var realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
+          const realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
           if (activeChannelSpeed !== null && Math.abs(realRate - currentSaved) > 0.01) {
             if (browserOrigDesc) {
               browserOrigDesc.set.call(vid, currentSaved);

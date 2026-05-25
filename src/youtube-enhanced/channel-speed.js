@@ -67,9 +67,9 @@ let origMenuHeight = '';
 
 (function installPrototypeOverride() {
   try {
-    var iframe = document.createElement('iframe');
+    const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
-    document.documentElement.appendChild(iframe);
+    (document.documentElement || document).appendChild(iframe);
     browserOrigDesc = Object.getOwnPropertyDescriptor(
       iframe.contentWindow.HTMLMediaElement.prototype, 'playbackRate'
     );
@@ -640,10 +640,10 @@ export function initSpeed() {
       speedAbort = new AbortController();
 
       vid.addEventListener('ratechange', function () {
-        var currentSaved = getSpeeds()[currentChannelId];
+        const currentSaved = getSpeeds()[currentChannelId];
         if (!currentSaved) return;
         // Read REAL browser rate (bypasses all overrides)
-        var realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
+        const realRate = browserOrigDesc ? browserOrigDesc.get.call(vid) : vid.playbackRate;
         if (activeChannelSpeed !== null && Math.abs(realRate - currentSaved) > 0.01) {
           // Rate drift detected — re-enforce channel speed
           if (browserOrigDesc) {
