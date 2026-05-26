@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PromptInjector
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.1.0
+// @version      3.1.1
 // @author       marmoris-x
 // @description  Injects structured, multi-lingual prompt prefixes into any AI chat input
 // @license      MIT
@@ -482,11 +482,9 @@
       var hostname = location.hostname;
       var domains = await loadDomains();
       var isActive = domains.has(hostname);
-      if (!isActive && hostname === "www.google.com") {
+      if (!isActive && hostname === "www.google.com" && location.pathname === "/search") {
         var params = new URLSearchParams(location.search);
         if (params.get("udm") === "50") {
-          domains.add(hostname);
-          await saveDomains(domains);
           isActive = true;
         }
       }
