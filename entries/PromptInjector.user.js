@@ -468,11 +468,11 @@
     var scrollX = window.scrollX;
     var scrollY = window.scrollY;
 
-    var top = rect.top + scrollY + rect.height / 2 - 11;
-    var left = rect.right + scrollX + 4;
+    var top = rect.top + scrollY + rect.height / 2 - 14;
+    var left = rect.right + scrollX + 6;
 
-    if (rect.right + 30 > window.innerWidth) {
-      left = rect.left + scrollX - 26;
+    if (rect.right + 40 > window.innerWidth) {
+      left = rect.left + scrollX - 34;
     }
 
     if (
@@ -538,24 +538,36 @@
 
   // ── BLOCK H: Gear & Panel Interaction ───────────────────────────────────
   function createGearController(gearEl, panelEl, hostEl) {
-    var focusoutTimer = null;
+    var hideTimer = null;
     var rafId = null;
+
+    function showGearNear(el) {
+      clearTimeout(hideTimer);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(function () {
+        positionGear(hostEl, gearEl, el);
+      });
+    }
 
     document.addEventListener('focusin', function (e) {
       var target = e.target;
       if (target.matches && target.matches(INPUT_SELECTOR)) {
-        clearTimeout(focusoutTimer);
-        cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(function () {
-          positionGear(hostEl, gearEl, target);
-        });
+        showGearNear(target);
       }
     });
 
+    // Click on any matching input also shows the gear (robust fallback)
+    document.addEventListener('click', function (e) {
+      var target = e.target;
+      if (target.matches && target.matches(INPUT_SELECTOR)) {
+        showGearNear(target);
+      }
+    }, true);
+
     document.addEventListener('focusout', function () {
-      focusoutTimer = setTimeout(function () {
+      hideTimer = setTimeout(function () {
         gearEl.hidden = true;
-      }, 150);
+      }, 300);
     });
 
     gearEl.addEventListener('click', function (e) {
@@ -617,27 +629,29 @@
             : 'PromptInjector: ❌ Inaktiv auf ' + host;
         };
 
+        var toggleCb = function () {
+          loadDomains().then(function (currentDomains) {
+            if (currentDomains.has(hostname)) {
+              currentDomains.delete(hostname);
+            } else {
+              currentDomains.add(hostname);
+            }
+            return saveDomains(currentDomains).then(function () {
+              GM.unregisterMenuCommand(menuId);
+              menuId = GM.registerMenuCommand(
+                labelText(!currentDomains.has(hostname), hostname),
+                toggleCb
+              );
+              location.reload();
+            });
+          }).catch(function (e) {
+            debug('toggleCallback failed', e);
+          });
+        };
+
         var menuId = GM.registerMenuCommand(
           labelText(isActive, hostname),
-          function () {
-            loadDomains().then(function (currentDomains) {
-              if (currentDomains.has(hostname)) {
-                currentDomains.delete(hostname);
-              } else {
-                currentDomains.add(hostname);
-              }
-              return saveDomains(currentDomains).then(function () {
-                GM.unregisterMenuCommand(menuId);
-                menuId = GM.registerMenuCommand(
-                  labelText(!currentDomains.has(hostname), hostname),
-                  arguments.callee
-                );
-                location.reload();
-              });
-            }).catch(function (e) {
-              debug('toggleCallback failed', e);
-            });
-          }
+          toggleCb
         );
 
         return { hostname: hostname, isActive: isActive };
@@ -686,8 +700,8 @@
 
         var CSS_TEXT = '' +
           ':host { all: initial; contain: strict; isolation: isolate; position: absolute; z-index: 2147483647; pointer-events: none; }' +
-          '#gear { all: unset; pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #111827; border: 1px solid ' + THEME.border + '; border-radius: 4px; color: ' + THEME.text + '; font-size: 13px; opacity: 0.8; transition: opacity .15s; }' +
-          '#gear:hover { opacity: 1; }' +
+          '#gear { all: unset; pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: #1e293b; border: 1px solid ' + THEME.accent + '; border-radius: 6px; color: #f8fafc; font-size: 16px; opacity: 0.9; transition: opacity .15s, transform .15s; box-shadow: 0 2px 8px rgba(99,102,241,0.3); }' +
+          '#gear:hover { opacity: 1; transform: scale(1.1); }' +
           '#gear:focus-visible { outline: 2px solid ' + THEME.accent + '; outline-offset: 2px; }' +
           '#panel { pointer-events: auto; position: fixed; background: ' + THEME.bg + '; border: 1px solid ' + THEME.border + '; border-radius: 6px; padding: 12px 16px; color: ' + THEME.text + '; font: 13px/1.6 system-ui, sans-serif; display: flex; flex-direction: column; gap: 10px; min-width: 240px; box-shadow: 0 4px 24px rgba(0,0,0,.5); }' +
           '#panel[hidden] { display: none; }' +
@@ -701,8 +715,8 @@
           '.default-option { color: ' + THEME.text + '; }' +
           '.none-option { color: #666; }' +
           '.custom-option { color: #93c5fd; }' +
-          '#inject-btn { pointer-events: auto; background: ' + THEME.accent + '; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 6px 12px; font-size: 13px; font-weight: 600; }' +
-          '#inject-btn:hover { filter: brightness(1.15); }';
+          '#inject-btn { pointer-events: auto; background: ' + THEME.accent + '; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 8px 16px; font-size: 14px; font-weight: 700; letter-spacing: 0.3px; }' +
+          '#inject-btn:hover { filter: brightness(1.2); box-shadow: 0 2px 12px rgba(99,102,241,0.4); }';
 
         if (typeof CSSStyleSheet.prototype.replaceSync === 'function') {
           var sheet = new CSSStyleSheet();
@@ -881,6 +895,14 @@
         createFieldObserver();
         createGearController(gear, panel, host);
 
+        // Boot check: if an input is already focused, show gear immediately
+        var alreadyFocused = document.activeElement;
+        if (alreadyFocused && alreadyFocused.matches && alreadyFocused.matches(INPUT_SELECTOR)) {
+          requestAnimationFrame(function () {
+            positionGear(host, gear, alreadyFocused);
+          });
+        }
+
         // SPA listener
         window.addEventListener('urlchange', function () {
           gear.hidden = true;
@@ -889,6 +911,8 @@
         });
 
         debug('Boot complete, script active on', hostname);
+      }).catch(function (err) {
+        debug('Boot chain error', err);
       });
     });
   })();
