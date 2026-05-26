@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PromptInjector
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      3.1.1
+// @version      3.1.2
 // @author       marmoris-x
 // @description  Injects structured, multi-lingual prompt prefixes into any AI chat input
 // @homepage     https://github.com/marmoris-x/tampermonkey-scripts
@@ -701,6 +701,8 @@
           settings.fatwaSearch = !settings.fatwaSearch;
           if (settings.fatwaSearch) {
             settings.language = 'ar';
+          } else {
+            settings.language = 'none';
           }
           saveSettings(hostname, settings);
           rebuildMenus(settings, hostname);
