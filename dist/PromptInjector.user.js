@@ -307,7 +307,7 @@
       });
     }
     function saveDomains(set) {
-      return GM.setValue(SCRIPT_KEY_DOMAINS, JSON.stringify([].concat.apply([], [set]))).catch(function(e) {
+      return GM.setValue(SCRIPT_KEY_DOMAINS, JSON.stringify(Array.from(set))).catch(function(e) {
       });
     }
     function loadSettings(hostname) {
