@@ -41,14 +41,14 @@ This repository contains a personal collection of userscripts written for the Ta
 
 ## Architecture
 
-The repository is organized as a monorepo of 18 standalone userscripts. Entry files in `entries/` are thin orchestrators that import script-specific modules via ES module `import` syntax. A Vite-based build step (`node build.mjs`) bundles everything into standalone `.user.js` files in `dist/` with all modules inlined.
+The repository is organized as a monorepo of 19 standalone userscripts. Entry files in `entries/` are thin orchestrators that import script-specific modules via ES module `import` syntax. A Vite-based build step (`node build.mjs`) bundles everything into standalone `.user.js` files in `dist/` with all modules inlined.
 
 ### Structure
 
 ```
 tampermonkey-scripts/
 ├── build.mjs                  # Vite build orchestrator (parses entries, bundles with vite-plugin-monkey)
-├── entries/                   # 18 entry files — metadata blocks + ES module imports + self-contained scripts
+├── entries/                   # 19 entry files — metadata blocks + ES module imports + self-contained scripts
 │   ├── AniSearch Endless Scroll.user.js
 │   ├── BotGhost Bulk Choice Extractor.user.js
 │   ├── Copy as Markdown for AI.user.js
@@ -63,6 +63,7 @@ tampermonkey-scripts/
 │   ├── Marketplace Deal Finder.user.js
 │   ├── NotebookLM Source Export.user.js
 │   ├── Picture-in-Picture any site.user.js
+│   ├── PromptInjector.user.js
 │   ├── Recaptcha Solver.user.js
 │   ├── Reddit Content Unlocker.user.js
 │   ├── TikTok Enhanced.user.js
@@ -81,7 +82,7 @@ tampermonkey-scripts/
 │   ├── reddit-content-unlocker/
 │   └── youtube-enhanced/
 │
-├── dist/                      # Build output — 18 standalone .user.js files (all modules inlined)
+├── dist/                      # Build output — 19 standalone .user.js files (all modules inlined)
 ├── docs/                      # Authoritative standards and TM API reference
 ├── build.mjs                  # Build orchestrator
 ├── package.json               # Vite + vite-plugin-monkey only
@@ -92,7 +93,7 @@ tampermonkey-scripts/
 
 **Script-specific modules** (in `src/<slug>/`) export constructors, configuration objects, and utility functions via ES module `export`. The entry file imports from them and wires everything together.
 
-**Self-contained scripts** (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bulk Choice Extractor, Google Search Enhanced, Epic Games Library Export, Google AI Studio Chat Exporter, Picture-in-Picture any site) include all code directly in the entry file — no corresponding `src/` folder needed.
+**Self-contained scripts** (TikTok Enhanced, FlameComics Advanced Sort, BotGhost Bulk Choice Extractor, Google Search Enhanced, Epic Games Library Export, Google AI Studio Chat Exporter, Picture-in-Picture any site, PromptInjector) include all code directly in the entry file — no corresponding `src/` folder needed.
 
 **Entry files** (in `entries/`) follow one of two patterns:
 1. **Thin bootstrap:** Metadata block + ES module `import` + orchestration (most scripts)
@@ -106,7 +107,7 @@ A custom build script (`build.mjs`) uses **Vite 6** + **vite-plugin-monkey 7** t
 3. Inlines all modules into a single IIFE-wrapped `.user.js` file
 4. Outputs to `dist/` (non-minified, GreasyFork-compatible)
 
-Run `node build.mjs` to regenerate all 18 `dist/` files after editing source files.
+Run `node build.mjs` to regenerate all 19 `dist/` files after editing source files.
 
 ## Installation
 
@@ -159,6 +160,7 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 | `AniSearch Endless Scroll.user.js` | **AniSearch Endless Scroll** | Loads ALL pages automatically and appends items seamlessly. Precise rating filter via title attribute. | `GM_setValue`, `GM_getValue`, `GM_xmlhttpRequest` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/AniSearch%20Endless%20Scroll.user.js) |
 | `FlameComics Advanced Sort.user.js` | **FlameComics Advanced Sort** | Custom sorting options (alphabetical, hearts count) for FlameComics. | `none` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/FlameComics%20Advanced%20Sort.user.js) |
 | `Gutefrage Smart Filters.user.js` | **Gutefrage Smart Filters** | Enhanced filtering options and automatic tag management for gutefrage.net. | `GM_addStyle`, `GM_setValue`, `GM_getValue`, `GM_openInTab`, `window.close` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js) |
+| `PromptInjector.user.js` | **PromptInjector** | Injects structured, multi-lingual prompt prefixes into any AI chat input. Menu-driven, auto-inject on empty fields. | `GM.getValue`, `GM.setValue`, `GM.registerMenuCommand`, `GM.unregisterMenuCommand`, `unsafeWindow`, `window.onurlchange` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/PromptInjector.user.js) |
 
 ### Export & Data Tools
 
@@ -190,26 +192,28 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 
 ## Features Comparison
 
-| Feature | Global Video Speed Controller | YouTube Enhanced | PiP any site | Crunchyroll Enhanced | TikTok Enhanced | Marketplace Deal Finder | Google Search Enhanced | AniSearch Endless Scroll | FlameComics Advanced Sort | Gutefrage Smart Filters | Epic Games Library Export | NotebookLM Source Export | Google AI Studio Chat Exporter | BotGhost Bulk Choice Extractor | Reddit Content Unlocker | Manga Panel Downloader | Copy as Markdown for AI | Recaptcha Solver |
-|---------|-------------------------------|------------------|--------------|----------------------|-----------------|-------------------------|------------------------|--------------------------|--------------------------|-------------------------|---------------------------|--------------------------|---------------------------------|--------------------------------|-------------------------|------------------------|-------------------------|-------------------|
-| Video speed control | ✓ | ✓ (per-channel) | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| Auto-quality | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| Picture-in-Picture | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| Advanced filtering | — | — | — | ✓ | — | — | — | ✓ | — | ✓ | — | — | — | — | — | — | — | — |
-| AI integration | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — |
-| Search enhancements | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — |
-| Endless scrolling | — | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — |
-| Custom sorting | — | — | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — |
-| Tag management | — | — | — | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — |
-| Data export | — | — | — | ✓ | — | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — |
-| NSFW unblur | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | — | — | — |
-| Bulk copy | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | — | — | — | — |
-| Multi-page crawling | — | — | — | — | — | ✓ | — | ✓ | — | — | — | — | — | — | — | — | — | — |
-| Markdown export | — | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ | — | — | — | ✓ | — |
-| Cross-site support | ✓ | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ | — |
-| CAPTCHA solving | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ |
-| Right/middle-click fix | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| SPA navigation | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Feature | Global Video Speed Controller | YouTube Enhanced | PiP any site | Crunchyroll Enhanced | TikTok Enhanced | Marketplace Deal Finder | Google Search Enhanced | AniSearch Endless Scroll | FlameComics Advanced Sort | Gutefrage Smart Filters | Epic Games Library Export | NotebookLM Source Export | Google AI Studio Chat Exporter | BotGhost Bulk Choice Extractor | Reddit Content Unlocker | Manga Panel Downloader | Copy as Markdown for AI | Recaptcha Solver | PromptInjector |
+|---------|-------------------------------|------------------|--------------|----------------------|-----------------|-------------------------|------------------------|--------------------------|--------------------------|-------------------------|---------------------------|--------------------------|---------------------------------|--------------------------------|-------------------------|------------------------|-------------------------|-------------------|--------------|
+| Video speed control | ✓ | ✓ (per-channel) | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Auto-quality | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Picture-in-Picture | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Advanced filtering | — | — | — | ✓ | — | — | — | ✓ | — | ✓ | — | — | — | — | — | — | — | — | — |
+| AI integration | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| Search enhancements | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — |
+| Endless scrolling | — | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — |
+| Custom sorting | — | — | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — |
+| Tag management | — | — | — | — | — | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — |
+| Data export | — | — | — | ✓ | — | — | — | — | — | — | ✓ | ✓ | ✓ | ✓ | — | ✓ | — | — | — |
+| NSFW unblur | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | — | — | — | — |
+| Bulk copy | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | — | — | — | — | — |
+| Multi-page crawling | — | — | — | — | — | ✓ | — | ✓ | — | — | — | — | — | — | — | — | — | — | — |
+| Markdown export | — | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ | — | — | — | ✓ | — | — |
+| Cross-site support | ✓ | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | ✓ | — | ✓ |
+| CAPTCHA solving | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ | — |
+| Right/middle-click fix | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| SPA navigation | — | — | — | — | ✓ | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| Prompt injection | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ |
+| Auto-enable (KI Modus) | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | ✓ |
 
 ## Usage & Configuration
 
