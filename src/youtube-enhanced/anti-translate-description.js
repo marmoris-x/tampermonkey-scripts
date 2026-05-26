@@ -86,7 +86,7 @@ function timeStringToSeconds(timeString) {
 
 function parseChaptersFromDescription(description) {
   const TIMESTAMP_REGEX = /(\d{1,3}):(\d{2})(?::(\d{2}))?/;
-  const TRIM_CHARS_REGEX = /^[\s–—•·▪▫‣⁃:→>-]+|[\s–—•·▪▫‣⁃:→>-]+$/g;
+  const TRIM_CHARS_REGEX = /^[–—•·▪▫‣⁃:→>-]+|[–—•·▪▫‣⁃:→>-]+$/g;
   const chapters = [];
   description.split('\n').forEach((rawLine) => {
     const line = rawLine.trim();
@@ -200,13 +200,10 @@ function setupChapterButtonObserver() {
   updateChapterButton();
 }
 
-let _chapterStyleElement = null;
-
 function cleanupChaptersObserver() {
   if (chaptersObserver) { chaptersObserver.disconnect(); chaptersObserver = null; }
   if (chapterButtonObservers.length > 0) { chapterButtonObservers.forEach((o) => o.disconnect()); chapterButtonObservers = []; }
   if (horizontalChaptersObserver) { horizontalChaptersObserver.disconnect(); horizontalChaptersObserver = null; }
-  if (_chapterStyleElement) { _chapterStyleElement.remove(); _chapterStyleElement = null; }
   const style = document.getElementById('ynt-chapters-style'); if (style) style.remove();
   window.YoutubeAntiTranslate.querySelectorAll('[data-original-chapter]').forEach((el) => el.removeAttribute('data-original-chapter'));
   window.YoutubeAntiTranslate.querySelectorAll('[data-original-chapter-button]').forEach((el) => el.removeAttribute('data-original-chapter-button'));
@@ -223,7 +220,7 @@ function setupChapters(originalDescription, videoId = null) {
   cachedChapters.sort((a, b) => a.startTime - b.startTime);
   if (cachedChapters.length === 0) { window.YoutubeAntiTranslate.logInfo('No chapters found in description'); return; }
   window.YoutubeAntiTranslate.logInfo('Found ' + cachedChapters.length + ' original chapters');
-  if (!_chapterStyleElement) _chapterStyleElement = GM_addStyle(CHAPTER_STYLE);
+  GM_addStyle(CHAPTER_STYLE);
   chaptersObserver = new MutationObserver((mutations) => {
     let shouldUpdate = false;
     mutations.forEach((mutation) => {
@@ -553,6 +550,9 @@ function _timecodeClickHandler(event) {
  */
 export function initAntiTranslateDescription() {
   if (!window.YoutubeAntiTranslate) return;
+
+  // Inject chapter CSS via GM_addStyle (CSP-safe)
+  GM_addStyle(CHAPTER_STYLE);
 
   // Register timecode click handler
   document.addEventListener('click', _timecodeClickHandler);

@@ -175,22 +175,122 @@ function applySpeed(val) {
 }
 
 /**
+ * Extrahiert die Channel-ID / den Handle aus einer YouTube-Kanal-URL.
+ * Behandelt alle YouTube-URL-Formate korrekt:
+ *   /@MrBeast          → @MrBeast
+ *   /@MrBeast/shorts   → @MrBeast   (nicht "shorts"!)
+ *   /@MrBeast/videos   → @MrBeast
+ *   /channel/UC...     → UC...
+ *   /channel/UC.../videos → UC...
+ *   /c/ChannelName     → ChannelName
+ *   /user/UserName     → UserName
+ *
+ * @param {string} href - Vollständige URL oder Pfad
+ * @returns {string|null}
+ */
+function extractChannelIdFromUrl(href) {
+  try {
+    const url = new URL(href, location.origin);
+    const parts = url.pathname.split('/').filter(Boolean);
+
+    if (parts.length === 0) return null;
+
+    // /@Handle oder /@Handle/irgendwas
+    if (parts[0].startsWith('@')) {
+      return parts[0];
+    }
+
+    // /channel/UC... oder /channel/UC.../irgendwas
+    if (parts[0] === 'channel' && parts.length >= 2) {
+      return parts[1];
+    }
+
+    // /c/Name oder /c/Name/irgendwas
+    if (parts[0] === 'c' && parts.length >= 2) {
+      return parts[1];
+    }
+
+    // /user/Name oder /user/Name/irgendwas
+    if (parts[0] === 'user' && parts.length >= 2) {
+      return parts[1];
+    }
+
+    // Fallback: letztes Segment (für unbekannte Formate)
+    return parts[parts.length - 1];
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Extracts the current channel ID from YouTube's page DOM.
  * Tries several selectors in order of reliability.
  * @returns {string|null}
  */
 function getChannelId() {
   try {
-    const a = document.querySelector('#upload-info #channel-name #text a');
-    if (a) return new URL(a.href).pathname.split('/').pop();
+    // (A) Watch-Page: Klassischer Kanal-Link im Upload-Info-Bereich
+    const watchChannelLink = document.querySelector(
+      "#upload-info #channel-name #text a, " +
+      "#owner #channel-name a, " +
+      "ytd-video-owner-renderer #channel-name a"
+    );
+    if (watchChannelLink) {
+      const id = extractChannelIdFromUrl(watchChannelLink.href);
+      if (id) return id;
+    }
 
-    const shortsChannel = document.querySelector('ytd-reel-player-header-renderer #channel-name a, ytd-reel-player-overlay-renderer #channel-name a');
-    if (shortsChannel) return new URL(shortsChannel.href).pathname.split('/').pop();
+    // (B) Shorts 2026: yt-reel-channel-bar-view-model (NEU)
+    const shortsChannelBar = document.querySelector(
+      "yt-reel-channel-bar-view-model a.ytAttributedStringLink[href*='/@'], " +
+      "yt-reel-channel-bar-view-model a.ytAttributedStringLink[href*='/channel/']"
+    );
+    if (shortsChannelBar) {
+      const id = extractChannelIdFromUrl(shortsChannelBar.href);
+      if (id) return id;
+    }
 
-    const anyChannel = document.querySelector('a[href*="/@"]') || document.querySelector('a[href*="/channel/"]');
-    if (anyChannel) return new URL(anyChannel.href).pathname.split('/').pop();
-  } catch (_) {}
-  return null;
+    // (C) Shorts ALT (ytd-reel-player-header-renderer) — für alte YouTube-Versionen
+    const shortsChannelLegacy = document.querySelector(
+      "ytd-reel-player-header-renderer #channel-name a, " +
+      "ytd-reel-player-overlay-renderer #channel-name a"
+    );
+    if (shortsChannelLegacy) {
+      const id = extractChannelIdFromUrl(shortsChannelLegacy.href);
+      if (id) return id;
+    }
+
+    // (D) Shorts Avatar aria-label: 'Zu Kanal „@Handle“' (sprachunabhängig via Regex)
+    const shortsAvatar = document.querySelector(
+      "yt-reel-channel-bar-view-model .ytSpecAvatarShapeHost[aria-label]"
+    );
+    if (shortsAvatar) {
+      const match = shortsAvatar.getAttribute('aria-label')?.match(/@(\w+)/);
+      if (match) return '@' + match[1];
+    }
+
+    // (E) Breiter Fallback: beliebiger Kanal-Link auf der Seite
+    const anyChannelLink = document.querySelector(
+      'a[href*="/@"]:not([href*="/shorts?"]):not([href*="/videos?"]), ' +
+      'a[href*="/channel/"]'
+    );
+    if (anyChannelLink) {
+      const id = extractChannelIdFromUrl(anyChannelLink.href);
+      if (id) return id;
+    }
+
+    // (F) ytInitialPlayerResponse als letzter Fallback (funktioniert auf /watch und /shorts)
+    try {
+      const playerResp = window.ytInitialPlayerResponse;
+      if (playerResp?.videoDetails?.channelId) {
+        return playerResp.videoDetails.channelId;
+      }
+    } catch (_) {}
+
+    return null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // =========================================================
@@ -631,7 +731,7 @@ export function initSpeed() {
       obs.disconnect();
       speedObs.delete(obs);
 
-      const cid = new URL(chan.href).pathname.split('/').pop();
+      const cid = extractChannelIdFromUrl(chan.href);
       const stored = getSpeeds();
       const saved = stored[cid];
       currentChannelId = cid;

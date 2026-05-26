@@ -336,17 +336,77 @@
       log$1.debug("applySpeed error:", e);
     }
   }
-  function getChannelId() {
+  function extractChannelIdFromUrl(href) {
     try {
-      const a = document.querySelector("#upload-info #channel-name #text a");
-      if (a) return new URL(a.href).pathname.split("/").pop();
-      const shortsChannel = document.querySelector("ytd-reel-player-header-renderer #channel-name a, ytd-reel-player-overlay-renderer #channel-name a");
-      if (shortsChannel) return new URL(shortsChannel.href).pathname.split("/").pop();
-      const anyChannel = document.querySelector('a[href*="/@"]') || document.querySelector('a[href*="/channel/"]');
-      if (anyChannel) return new URL(anyChannel.href).pathname.split("/").pop();
+      const url = new URL(href, location.origin);
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length === 0) return null;
+      if (parts[0].startsWith("@")) {
+        return parts[0];
+      }
+      if (parts[0] === "channel" && parts.length >= 2) {
+        return parts[1];
+      }
+      if (parts[0] === "c" && parts.length >= 2) {
+        return parts[1];
+      }
+      if (parts[0] === "user" && parts.length >= 2) {
+        return parts[1];
+      }
+      return parts[parts.length - 1];
     } catch (_) {
+      return null;
     }
-    return null;
+  }
+  function getChannelId() {
+    var _a, _b;
+    try {
+      const watchChannelLink = document.querySelector(
+        "#upload-info #channel-name #text a, #owner #channel-name a, ytd-video-owner-renderer #channel-name a"
+      );
+      if (watchChannelLink) {
+        const id = extractChannelIdFromUrl(watchChannelLink.href);
+        if (id) return id;
+      }
+      const shortsChannelBar = document.querySelector(
+        "yt-reel-channel-bar-view-model a.ytAttributedStringLink[href*='/@'], yt-reel-channel-bar-view-model a.ytAttributedStringLink[href*='/channel/']"
+      );
+      if (shortsChannelBar) {
+        const id = extractChannelIdFromUrl(shortsChannelBar.href);
+        if (id) return id;
+      }
+      const shortsChannelLegacy = document.querySelector(
+        "ytd-reel-player-header-renderer #channel-name a, ytd-reel-player-overlay-renderer #channel-name a"
+      );
+      if (shortsChannelLegacy) {
+        const id = extractChannelIdFromUrl(shortsChannelLegacy.href);
+        if (id) return id;
+      }
+      const shortsAvatar = document.querySelector(
+        "yt-reel-channel-bar-view-model .ytSpecAvatarShapeHost[aria-label]"
+      );
+      if (shortsAvatar) {
+        const match = (_a = shortsAvatar.getAttribute("aria-label")) == null ? void 0 : _a.match(/@(\w+)/);
+        if (match) return "@" + match[1];
+      }
+      const anyChannelLink = document.querySelector(
+        'a[href*="/@"]:not([href*="/shorts?"]):not([href*="/videos?"]), a[href*="/channel/"]'
+      );
+      if (anyChannelLink) {
+        const id = extractChannelIdFromUrl(anyChannelLink.href);
+        if (id) return id;
+      }
+      try {
+        const playerResp = window.ytInitialPlayerResponse;
+        if ((_b = playerResp == null ? void 0 : playerResp.videoDetails) == null ? void 0 : _b.channelId) {
+          return playerResp.videoDetails.channelId;
+        }
+      } catch (_) {
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
   function buildSpeedPanel(settingsMenu) {
     const panel = document.createElement("div");
@@ -677,7 +737,7 @@
         if (!vid || !chan) return;
         obs2.disconnect();
         speedObs.delete(obs2);
-        const cid = new URL(chan.href).pathname.split("/").pop();
+        const cid = extractChannelIdFromUrl(chan.href);
         const stored = getSpeeds();
         const saved = stored[cid];
         currentChannelId = cid;
@@ -3239,7 +3299,7 @@ ytd-macro-markers-list-item-renderer h4[data-original-chapter-title]::after {
   }
   function parseChaptersFromDescription(description) {
     const TIMESTAMP_REGEX = /(\d{1,3}):(\d{2})(?::(\d{2}))?/;
-    const TRIM_CHARS_REGEX = /^[\s–—•·▪▫‣⁃:→>-]+|[\s–—•·▪▫‣⁃:→>-]+$/g;
+    const TRIM_CHARS_REGEX = /^[–—•·▪▫‣⁃:→>-]+|[–—•·▪▫‣⁃:→>-]+$/g;
     const chapters = [];
     description.split("\n").forEach((rawLine) => {
       const line = rawLine.trim();
@@ -3372,7 +3432,6 @@ ytd-macro-markers-list-item-renderer h4[data-original-chapter-title]::after {
     });
     updateChapterButton();
   }
-  let _chapterStyleElement = null;
   function cleanupChaptersObserver() {
     if (chaptersObserver) {
       chaptersObserver.disconnect();
@@ -3385,10 +3444,6 @@ ytd-macro-markers-list-item-renderer h4[data-original-chapter-title]::after {
     if (horizontalChaptersObserver) {
       horizontalChaptersObserver.disconnect();
       horizontalChaptersObserver = null;
-    }
-    if (_chapterStyleElement) {
-      _chapterStyleElement.remove();
-      _chapterStyleElement = null;
     }
     const style = document.getElementById("ynt-chapters-style");
     if (style) style.remove();
@@ -3416,7 +3471,7 @@ ytd-macro-markers-list-item-renderer h4[data-original-chapter-title]::after {
       return;
     }
     window.YoutubeAntiTranslate.logInfo("Found " + cachedChapters.length + " original chapters");
-    if (!_chapterStyleElement) _chapterStyleElement = GM_addStyle(CHAPTER_STYLE);
+    GM_addStyle(CHAPTER_STYLE);
     chaptersObserver = new MutationObserver((mutations) => {
       let shouldUpdate = false;
       mutations.forEach((mutation) => {
@@ -3822,6 +3877,7 @@ ytd-macro-markers-list-item-renderer h4[data-original-chapter-title]::after {
   }
   function initAntiTranslateDescription() {
     if (!window.YoutubeAntiTranslate) return;
+    GM_addStyle(CHAPTER_STYLE);
     document.addEventListener("click", _timecodeClickHandler);
     const observer = new MutationObserver(window.YoutubeAntiTranslate.debounce(handleDescriptionMutation));
     observer.observe(document.body, {
