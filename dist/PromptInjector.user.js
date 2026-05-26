@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PromptInjector
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      2.0.0
+// @version      3.1.0
 // @author       marmoris-x
 // @description  Injects structured, multi-lingual prompt prefixes into any AI chat input
 // @license      MIT
@@ -13,7 +13,6 @@
 // @match        *://*/*
 // @sandbox      JavaScript
 // @tag          ai
-// @grant        GM.addElement
 // @grant        GM.getValue
 // @grant        GM.registerMenuCommand
 // @grant        GM.setValue
@@ -32,20 +31,12 @@
   (function() {
     var SCRIPT_KEY_DOMAINS = "promptinjector_domains";
     var SCRIPT_KEY_SETTINGS = "promptinjector_settings_";
-    var SCRIPT_KEY_CUSTOM_LANGS = "promptinjector_customLangs";
-    var HOST_ID = "__promptinjector_ui_host";
-    var INPUT_SELECTOR = 'textarea, input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]), [contenteditable="true"],[contenteditable=""]';
+    var INPUT_SELECTOR = 'textarea, input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]), [contenteditable="true"],[contenteditable=""],[contenteditable="plaintext-only"]';
     var DEFAULT_SETTINGS = {
       webSearch: false,
       language: "none",
-      ahlulAthar: false,
+      fatwaSearch: false,
       customLangs: []
-    };
-    var THEME = {
-      bg: "linear-gradient(135deg, #0d0d1a 0%, #111827 55%, #0a1628 100%)",
-      border: "rgba(99, 102, 241, 0.35)",
-      text: "#e2e8f0",
-      accent: "#6366f1"
     };
     var ISO_639_1_DB = new Map([
       ["aa", { name: "Afar", nativeName: "Afaraf" }],
@@ -233,33 +224,6 @@
       ["zh", { name: "Chinese", nativeName: "中文" }],
       ["zu", { name: "Zulu", nativeName: "isiZulu" }]
     ]);
-    var TOP_25_LANGS = [
-      "en",
-      "zh",
-      "es",
-      "de",
-      "ja",
-      "fr",
-      "ar",
-      "pt",
-      "ru",
-      "ko",
-      "hi",
-      "it",
-      "nl",
-      "tr",
-      "pl",
-      "sv",
-      "vi",
-      "th",
-      "id",
-      "uk",
-      "ro",
-      "cs",
-      "he",
-      "el",
-      "fa"
-    ];
     var PROMPT_PREFIXES = {
       webSearch: "THINK EXTREMELY ULTRA SUPER HARD AND USE MULTIPLE TIMES GOOGLE SEARCH WITH EXTREMELY DIFFERENT SOURCES: ",
       language: {
@@ -267,7 +231,7 @@
         en: "THOROUGHLY RESEARCH ENGLISH-LANGUAGE SOURCES; THOSE WRITTEN IN ENGLISH: ",
         ar: "ابحث بدقة في المصادر العربية؛ تلك المكتوبة باللغة العربية: "
       },
-      ahlulAthar: "GEMÄß AHLUL ATHAR: "
+      fatwaSearch: "ACCORDING TO AHLUL ATHAR: "
     };
     function buildPrompt(userText, settings2) {
       var prefix = "";
@@ -286,8 +250,8 @@
           }
         }
       }
-      if (settings2.ahlulAthar) {
-        prefix += PROMPT_PREFIXES.ahlulAthar;
+      if (settings2.fatwaSearch) {
+        prefix += PROMPT_PREFIXES.fatwaSearch;
       }
       return prefix + (userText || "");
     }
@@ -324,6 +288,10 @@
             result[k2] = stored[k2];
           }
         }
+        if (result.fatwaSearch === void 0 && result.ahlulAthar !== void 0) {
+          result.fatwaSearch = result.ahlulAthar;
+          delete result.ahlulAthar;
+        }
         return result;
       }).catch(function(e) {
         var fallback = {};
@@ -337,17 +305,6 @@
     }
     function saveSettings(hostname, obj) {
       return GM.setValue(SCRIPT_KEY_SETTINGS + hostname, JSON.stringify(obj)).catch(function(e) {
-      });
-    }
-    function loadCustomLangs() {
-      return GM.getValue(SCRIPT_KEY_CUSTOM_LANGS, "[]").then(function(raw) {
-        return JSON.parse(raw);
-      }).catch(function(e) {
-        return [];
-      });
-    }
-    function saveCustomLangs(langs) {
-      return GM.setValue(SCRIPT_KEY_CUSTOM_LANGS, JSON.stringify(langs)).catch(function(e) {
       });
     }
     function readField(element) {
@@ -375,6 +332,22 @@
           if (success) return;
         } catch (e2) {
         }
+        try {
+          element.focus();
+          var range = document.createRange();
+          range.selectNodeContents(element);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          element.dispatchEvent(new InputEvent("input", {
+            inputType: "insertFromPaste",
+            data: value,
+            bubbles: true,
+            cancelable: true
+          }));
+          if (element.innerText === value || element.textContent === value) return;
+        } catch (e3) {
+        }
         element.textContent = value;
         element.dispatchEvent(new Event("input", { bubbles: true }));
         return;
@@ -394,33 +367,8 @@
       element.dispatchEvent(new Event("input", { bubbles: true }));
       element.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    function injectPrefix() {
-      var el = document.activeElement;
-      if (!el || !el.matches || !el.matches(INPUT_SELECTOR)) {
-        return;
-      }
-      var userText = readField(el);
-      var fullText = buildPrompt(userText, settings);
-      writeField(el, fullText);
-    }
-    var lastGearPos = { top: 0, left: 0 };
-    function positionGear(hostEl, gearEl, field) {
-      var rect = field.getBoundingClientRect();
-      var scrollX = window.scrollX;
-      var scrollY = window.scrollY;
-      var top = rect.top + scrollY + rect.height / 2 - 14;
-      var left = rect.right + scrollX + 6;
-      if (rect.right + 40 > window.innerWidth) {
-        left = rect.left + scrollX - 34;
-      }
-      if (Math.abs(top - lastGearPos.top) > 1 || Math.abs(left - lastGearPos.left) > 1) {
-        hostEl.style.top = top + "px";
-        hostEl.style.left = left + "px";
-        lastGearPos = { top, left };
-      }
-      gearEl.hidden = false;
-    }
     var boundFields = new WeakSet();
+    var processingFields = new WeakSet();
     var observerTimeout = null;
     function initFields() {
       document.querySelectorAll(INPUT_SELECTOR).forEach(function(el) {
@@ -460,47 +408,55 @@
       initFields();
       return observer;
     }
-    function createGearController(gearEl, panelEl, hostEl) {
-      var hideTimer = null;
-      var rafId = null;
-      function showGearNear(el) {
-        clearTimeout(hideTimer);
-        cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(function() {
-          positionGear(hostEl, gearEl, el);
-        });
+    function createAutoInjector() {
+      function handleKeydown(e) {
+        var target = e.target;
+        if (!target || !target.matches || !target.matches(INPUT_SELECTOR)) return;
+        if (processingFields.has(target)) return;
+        var hasModifier = e.ctrlKey || e.metaKey || e.altKey;
+        var isNavigation = e.key === "Tab" || e.key === "Escape" || e.key === "Enter";
+        var isDelete = e.key === "Backspace" || e.key === "Delete";
+        if (hasModifier || isNavigation || isDelete) return;
+        var currentText = readField(target);
+        if (currentText.length > 0) return;
+        processingFields.add(target);
+        try {
+          var fullText = buildPrompt(currentText, settings);
+          writeField(target, fullText);
+        } finally {
+          setTimeout(function() {
+            processingFields.delete(target);
+          }, 150);
+        }
       }
-      document.addEventListener("focusin", function(e) {
+      function handlePaste(e) {
         var target = e.target;
-        if (target.matches && target.matches(INPUT_SELECTOR)) {
-          showGearNear(target);
-        }
-      });
-      document.addEventListener("click", function(e) {
-        var target = e.target;
-        if (target.matches && target.matches(INPUT_SELECTOR)) {
-          showGearNear(target);
-        }
-      }, true);
-      document.addEventListener("focusout", function() {
-        hideTimer = setTimeout(function() {
-          gearEl.hidden = true;
-        }, 300);
-      });
-      gearEl.addEventListener("click", function(e) {
-        e.stopPropagation();
-        panelEl.hidden = !panelEl.hidden;
-      });
-      document.addEventListener("click", function(e) {
-        if (!panelEl.hidden && !panelEl.contains(e.target) && e.target !== gearEl) {
-          panelEl.hidden = true;
-        }
-      });
+        if (!target || !target.matches || !target.matches(INPUT_SELECTOR)) return;
+        if (processingFields.has(target)) return;
+        if (readField(target).length > 0) return;
+        setTimeout(function() {
+          if (processingFields.has(target)) return;
+          var currentText = readField(target);
+          if (currentText.length > 0) {
+            processingFields.add(target);
+            try {
+              var fullText = buildPrompt(currentText, settings);
+              writeField(target, fullText);
+            } finally {
+              setTimeout(function() {
+                processingFields.delete(target);
+              }, 150);
+            }
+          }
+        }, 10);
+      }
+      document.addEventListener("keydown", handleKeydown, true);
+      document.addEventListener("paste", handlePaste, true);
     }
     var settings = {
       webSearch: false,
       language: "none",
-      ahlulAthar: false,
+      fatwaSearch: false,
       customLangs: []
     };
     function setupSpaPolyfill() {
@@ -522,223 +478,127 @@
         setInterval(handler, 500);
       }
     }
-    (function() {
-      var bootPromise = (function() {
-        var hostname = location.hostname;
-        return loadDomains().then(function(domains) {
-          var isActive = domains.has(hostname);
-          var labelText = function(active, host) {
-            return active ? "PromptInjector: ✅ Aktiv auf " + host : "PromptInjector: ❌ Inaktiv auf " + host;
-          };
-          var toggleCb = function() {
-            loadDomains().then(function(currentDomains) {
-              if (currentDomains.has(hostname)) {
-                currentDomains.delete(hostname);
-              } else {
-                currentDomains.add(hostname);
-              }
-              return saveDomains(currentDomains).then(function() {
-                GM.unregisterMenuCommand(menuId);
-                menuId = GM.registerMenuCommand(
-                  labelText(!currentDomains.has(hostname), hostname),
-                  toggleCb
-                );
-                location.reload();
-              });
-            }).catch(function(e) {
-            });
-          };
-          var menuId = GM.registerMenuCommand(
-            labelText(isActive, hostname),
-            toggleCb
-          );
-          return { hostname, isActive };
+    (async function() {
+      var hostname = location.hostname;
+      var domains = await loadDomains();
+      var isActive = domains.has(hostname);
+      if (!isActive && hostname === "www.google.com") {
+        var params = new URLSearchParams(location.search);
+        if (params.get("udm") === "50") {
+          domains.add(hostname);
+          await saveDomains(domains);
+          isActive = true;
+        }
+      }
+      var menuIds = new Map();
+      function registerMenuCommand(id, text, callback) {
+        var cmdId = GM.registerMenuCommand(text, callback, {
+          id,
+          autoClose: true
         });
-      })();
-      bootPromise.then(function(guard) {
-        if (!guard.isActive) return;
-        var hostname = guard.hostname;
-        var settingsPromise = loadSettings(hostname).then(function(s) {
-          settings = s;
-          return loadCustomLangs();
-        }).then(function(langs) {
-          var customLangs = langs;
-          if (settings.ahlulAthar && settings.language !== "ar") {
-            settings.language = "ar";
-            return saveSettings(hostname, settings).then(function() {
-              return customLangs;
-            });
-          }
-          return customLangs;
-        });
-        settingsPromise.then(function(customLangs) {
-          setupSpaPolyfill();
-          var host = document.createElement("div");
-          host.id = HOST_ID;
-          host.style.cssText = "position:absolute;z-index:2147483647;pointer-events:none;top:0;left:0";
-          document.body.appendChild(host);
-          var shadowRoot;
-          try {
-            shadowRoot = host.attachShadow({ mode: "closed" });
-          } catch (e) {
-            shadowRoot = host.attachShadow({ mode: "open" });
-          }
-          var CSS_TEXT = ":host { all: initial; contain: strict; isolation: isolate; position: absolute; z-index: 2147483647; pointer-events: none; }#gear { all: unset; pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: #1e293b; border: 1px solid " + THEME.accent + "; border-radius: 6px; color: #f8fafc; font-size: 16px; opacity: 0.9; transition: opacity .15s, transform .15s; box-shadow: 0 2px 8px rgba(99,102,241,0.3); }#gear:hover { opacity: 1; transform: scale(1.1); }#gear:focus-visible { outline: 2px solid " + THEME.accent + "; outline-offset: 2px; }#panel { pointer-events: auto; position: fixed; background: " + THEME.bg + "; border: 1px solid " + THEME.border + "; border-radius: 6px; padding: 12px 16px; color: " + THEME.text + "; font: 13px/1.6 system-ui, sans-serif; display: flex; flex-direction: column; gap: 10px; min-width: 240px; box-shadow: 0 4px 24px rgba(0,0,0,.5); }#panel[hidden] { display: none; }label { display: flex; align-items: center; gap: 6px; cursor: pointer; }select { background: #1a1a2e; color: " + THEME.text + "; border: 1px solid " + THEME.border + '; border-radius: 3px; padding: 2px 4px; min-width: 150px; }select:disabled { opacity: 0.5; cursor: not-allowed; }input[type="checkbox"] { accent-color: ' + THEME.accent + "; }#custom-lang-controls { display: flex; gap: 4px; margin-top: 4px; }#custom-lang-controls button { background: " + THEME.accent + "; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 8px; font-size: 12px; }#custom-lang-controls button:hover { filter: brightness(1.15); }.default-option { color: " + THEME.text + "; }.none-option { color: #666; }.custom-option { color: #93c5fd; }#inject-btn { pointer-events: auto; background: " + THEME.accent + "; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 8px 16px; font-size: 14px; font-weight: 700; letter-spacing: 0.3px; }#inject-btn:hover { filter: brightness(1.2); box-shadow: 0 2px 12px rgba(99,102,241,0.4); }";
-          if (typeof CSSStyleSheet.prototype.replaceSync === "function") {
-            var sheet = new CSSStyleSheet();
-            sheet.replaceSync(CSS_TEXT);
-            shadowRoot.adoptedStyleSheets = [sheet];
+        menuIds.set(id, cmdId);
+        return cmdId;
+      }
+      var toggleCb = function() {
+        loadDomains().then(function(currentDomains) {
+          if (currentDomains.has(hostname)) {
+            currentDomains.delete(hostname);
           } else {
-            var styleEl = document.createElement("style");
-            styleEl.textContent = CSS_TEXT;
-            shadowRoot.appendChild(styleEl);
+            currentDomains.add(hostname);
           }
-          var gear = document.createElement("button");
-          gear.id = "gear";
-          gear.setAttribute("aria-label", "Prompt-Einstellungen");
-          gear.setAttribute("tabindex", "0");
-          gear.textContent = "⚙";
-          shadowRoot.appendChild(gear);
-          var panel = document.createElement("div");
-          panel.id = "panel";
-          panel.hidden = true;
-          function createLabeledCheckbox(id, labelText, checked) {
-            var label = document.createElement("label");
-            var cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.id = id;
-            cb.checked = checked;
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(" " + labelText));
-            return label;
-          }
-          function createOption(value, text, className) {
-            var opt = document.createElement("option");
-            opt.value = value;
-            opt.textContent = text;
-            if (className) opt.className = className;
-            return opt;
-          }
-          panel.appendChild(createLabeledCheckbox("webSearch", "Web Search", settings.webSearch));
-          var langLabel = document.createElement("label");
-          langLabel.textContent = "Sprache: ";
-          var langSelect = document.createElement("select");
-          langSelect.id = "lang-select";
-          langSelect.appendChild(createOption("none", "– (keine)", "none-option"));
-          for (var ti = 0; ti < TOP_25_LANGS.length; ti++) {
-            var code = TOP_25_LANGS[ti];
-            if (ISO_639_1_DB.has(code)) {
-              var lang = ISO_639_1_DB.get(code);
-              langSelect.appendChild(createOption(code, lang.name + " (" + lang.nativeName + ")", "default-option"));
-            }
-          }
-          for (var ci = 0; ci < customLangs.length; ci++) {
-            var cCode = customLangs[ci];
-            if (ISO_639_1_DB.has(cCode) && TOP_25_LANGS.indexOf(cCode) === -1) {
-              var cLang = ISO_639_1_DB.get(cCode);
-              langSelect.appendChild(createOption(cCode, cLang.name + " (" + cLang.nativeName + ")", "custom-option"));
-            }
-          }
-          langSelect.value = settings.language;
-          langLabel.appendChild(langSelect);
-          panel.appendChild(langLabel);
-          panel.appendChild(createLabeledCheckbox("ahlulAthar", "Ahlul Athar", settings.ahlulAthar));
-          var injectBtn = document.createElement("button");
-          injectBtn.id = "inject-btn";
-          injectBtn.textContent = "Prefix einfügen";
-          injectBtn.addEventListener("click", function() {
-            injectPrefix();
-            panel.hidden = true;
+          return saveDomains(currentDomains).then(function() {
+            registerMenuCommand(
+              "pi_toggle_active",
+              "PromptInjector: " + (currentDomains.has(hostname) ? "✅ Aktiv" : "❌ Inaktiv") + " auf " + hostname,
+              toggleCb
+            );
+            location.reload();
           });
-          panel.appendChild(injectBtn);
-          var customLangControls = document.createElement("div");
-          customLangControls.id = "custom-lang-controls";
-          customLangControls.style.display = "none";
-          var addLangBtn = document.createElement("button");
-          addLangBtn.textContent = "+ Sprache";
-          var removeLangBtn = document.createElement("button");
-          removeLangBtn.textContent = "– Sprache";
-          customLangControls.appendChild(addLangBtn);
-          customLangControls.appendChild(removeLangBtn);
-          panel.appendChild(createLabeledCheckbox("enableCustomLangs", "Eigene Sprachen aktivieren", false));
-          panel.appendChild(customLangControls);
-          shadowRoot.appendChild(panel);
-          shadowRoot.getElementById("webSearch").addEventListener("change", function(e) {
-            settings.webSearch = e.target.checked;
-            saveSettings(hostname, settings);
-          });
-          langSelect.addEventListener("change", function(e) {
-            settings.language = e.target.value;
-            saveSettings(hostname, settings);
-          });
-          var ahlulAtharCheckbox = shadowRoot.getElementById("ahlulAthar");
-          ahlulAtharCheckbox.addEventListener("change", function(e) {
-            settings.ahlulAthar = e.target.checked;
-            if (e.target.checked) {
-              settings.language = "ar";
-              langSelect.value = "ar";
-              langSelect.disabled = true;
-            } else {
-              langSelect.disabled = false;
-            }
-            saveSettings(hostname, settings);
-          });
-          ahlulAtharCheckbox.addEventListener("contextmenu", function(e) {
-            e.preventDefault();
-            if (!settings.ahlulAthar) return;
-            if (confirm(
-              "Ahlul Athar ist aktiviert. Möchten Sie die Sprache für diese Session manuell überschreiben?"
-            )) {
-              langSelect.disabled = false;
-              langSelect.focus();
-            }
-          });
-          shadowRoot.getElementById("enableCustomLangs").addEventListener("change", function(e) {
-            customLangControls.style.display = e.target.checked ? "flex" : "none";
-          });
-          addLangBtn.addEventListener("click", function() {
-            var code2 = prompt('ISO-639-1-Code der Sprache eingeben (z.B. "sw" für Swahili):');
-            if (code2 && ISO_639_1_DB.has(code2) && customLangs.indexOf(code2) === -1) {
-              customLangs.push(code2);
-              saveCustomLangs(customLangs);
-              var langData = ISO_639_1_DB.get(code2);
-              langSelect.appendChild(createOption(code2, langData.name + " (" + langData.nativeName + ")", "custom-option"));
-            }
-          });
-          removeLangBtn.addEventListener("click", function() {
-            var code2 = prompt("ISO-639-1-Code der zu entfernenden Sprache eingeben:");
-            if (code2 && customLangs.indexOf(code2) !== -1) {
-              customLangs = customLangs.filter(function(c) {
-                return c !== code2;
-              });
-              saveCustomLangs(customLangs);
-              var opt = langSelect.querySelector('option[value="' + code2 + '"]');
-              if (opt) opt.remove();
-            }
-          });
-          if (settings.ahlulAthar) {
-            langSelect.disabled = true;
-          }
-          panel.addEventListener("keydown", function(e) {
-            if (e.key === "Escape") panel.hidden = true;
-          });
-          createFieldObserver();
-          createGearController(gear, panel, host);
-          var alreadyFocused = document.activeElement;
-          if (alreadyFocused && alreadyFocused.matches && alreadyFocused.matches(INPUT_SELECTOR)) {
-            requestAnimationFrame(function() {
-              positionGear(host, gear, alreadyFocused);
-            });
-          }
-          window.addEventListener("urlchange", function() {
-            gear.hidden = true;
-            panel.hidden = true;
-            setTimeout(initFields, 300);
-          });
-        }).catch(function(err) {
+        }).catch(function(e) {
         });
+      };
+      function rebuildMenus(settings2, hostname2) {
+        menuIds.forEach(function(id) {
+          GM.unregisterMenuCommand(id);
+        });
+        menuIds.clear();
+        registerMenuCommand(
+          "pi_toggle_active",
+          "PromptInjector: " + (isActive ? "✅ Active on" : "❌ Inactive on") + " " + hostname2,
+          toggleCb
+        );
+        registerMenuCommand(
+          "pi_toggle_webSearch",
+          "Web Search: " + (settings2.webSearch ? "✓" : "✗"),
+          function() {
+            settings2.webSearch = !settings2.webSearch;
+            saveSettings(hostname2, settings2);
+            rebuildMenus(settings2, hostname2);
+          }
+        );
+        var currentLangLabel = "none";
+        if (settings2.language !== "none" && ISO_639_1_DB.has(settings2.language)) {
+          currentLangLabel = ISO_639_1_DB.get(settings2.language).name;
+        }
+        registerMenuCommand(
+          "pi_lang_set",
+          "Source Language: " + currentLangLabel,
+          function() {
+            var code = prompt(
+              'Enter ISO 639-1 language code (e.g. "de" for German, "fr" for French).\nLeave empty to disable language filter.\nCurrent: ' + currentLangLabel
+            );
+            if (code === null) return;
+            code = code.trim().toLowerCase();
+            if (code === "") {
+              settings2.language = "none";
+            } else if (ISO_639_1_DB.has(code)) {
+              if (settings2.fatwaSearch && code !== "ar") {
+                if (!confirm("Fatwa Search requires Arabic. Disable Fatwa Search to change language?")) return;
+                settings2.fatwaSearch = false;
+              }
+              settings2.language = code;
+            } else {
+              alert("Invalid language code. Please enter a valid ISO 639-1 code.");
+              return;
+            }
+            saveSettings(hostname2, settings2);
+            rebuildMenus(settings2, hostname2);
+          }
+        );
+        registerMenuCommand(
+          "pi_toggle_fatwaSearch",
+          "Fatwa Search: " + (settings2.fatwaSearch ? "✓" : "✗"),
+          function() {
+            settings2.fatwaSearch = !settings2.fatwaSearch;
+            if (settings2.fatwaSearch) {
+              settings2.language = "ar";
+            }
+            saveSettings(hostname2, settings2);
+            rebuildMenus(settings2, hostname2);
+          }
+        );
+      }
+      registerMenuCommand(
+        "pi_toggle_active",
+        "PromptInjector: " + (isActive ? "✅ Aktiv" : "❌ Inaktiv") + " auf " + hostname,
+        toggleCb
+      );
+      if (!isActive) return;
+      settings = await loadSettings(hostname);
+      if (settings.fatwaSearch && settings.language !== "ar") {
+        settings.language = "ar";
+        await saveSettings(hostname, settings);
+      }
+      setupSpaPolyfill();
+      rebuildMenus(settings, hostname);
+      createFieldObserver();
+      createAutoInjector();
+      window.addEventListener("urlchange", function() {
+        setTimeout(initFields, 300);
       });
-    })();
+    })().catch(function(err) {
+      console.error("[PromptInjector] Init error:", err);
+    });
   })();
 
 })();
