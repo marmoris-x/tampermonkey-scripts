@@ -113,11 +113,15 @@ export async function clearResults(storagePrefix) {
 export function deepCopySettings(settings) {
   if (!settings) return settings;
   const copy = { ...settings };
-  if (copy.provider) copy.provider = { ...copy.provider };
+  if (copy.provider) {
+    copy.provider = { ...copy.provider };
+    if (copy.provider.options) copy.provider.options = { ...copy.provider.options };
+  }
   if (copy.providers) {
     copy.providers = { ...copy.providers };
     Object.keys(copy.providers).forEach(function (k) {
       copy.providers[k] = { ...copy.providers[k] };
+      if (copy.providers[k].options) copy.providers[k].options = { ...copy.providers[k].options };
     });
   }
   return copy;

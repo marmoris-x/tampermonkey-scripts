@@ -180,6 +180,13 @@ async function saveCrawlStateAndNavigate(href, settings) {
  */
 async function startDealFinder() {
   const prefix = state.scraper.storagePrefix;
+
+  // Guard: prevent duplicate crawls
+  if (state.isRunning) {
+    Logger.warn('Crawl already running, ignoring duplicate start');
+    return;
+  }
+
   const apiKey = document.getElementById(prefix + '-api-key').value.trim();
   const modelId = document.getElementById(prefix + '-model-id').value.trim();
   const searchContext = document.getElementById(prefix + '-search-context').value.trim();
@@ -207,12 +214,15 @@ async function startDealFinder() {
     apiKey: apiKey,
     modelId: modelId,
     baseUrl: baseUrl,
-    options: {}
+    options: settings.provider.options || {}
   };
   settings.searchContext = searchContext;
   settings.topX = topX;
   settings.maxPages = maxPages;
   await saveSettings(prefix, settings);
+  // Sync in-memory cache so finishDealFinder (re-ranking) sees fresh values
+  state.cachedSettings = deepCopySettings(settings);
+  state.cachedSettings.provider = state.cachedSettings.providers[state.cachedSettings.currentProvider] || {};
 
   if ('Notification' in window) {
     Notification.requestPermission()['catch'](function () {});
@@ -614,6 +624,8 @@ export async function setupSettingsView(scraper) {
         settingsObj.currentProvider = newType;
         // Load saved provider config — preserves apiKey, modelId per provider
         settingsObj.provider = settingsObj.providers[newType] || {};
+        // Ensure .type is always set so the dropdown renders correctly
+        settingsObj.provider.type = newType;
         if (!settingsObj.provider.modelId) {
           settingsObj.provider.modelId = getDefaultModelForProvider(newType);
         }
@@ -621,7 +633,9 @@ export async function setupSettingsView(scraper) {
         state.cachedSettings = deepCopySettings(settingsObj);
         state.cachedSettings.provider = state.cachedSettings.providers[state.cachedSettings.currentProvider] || {};
         // Re-render to update model presets and per-provider fields
-        setupSettingsView(scraper);
+        await setupSettingsView(scraper)['catch'](function (err) {
+          Logger.error('Re-render after provider change failed:', err);
+        });
       }
     },
     modelIdChange: async function (newId) {
@@ -630,8 +644,18 @@ export async function setupSettingsView(scraper) {
       const settingsObj = s.settings;
       if (settingsObj.provider.modelId !== newId) {
         settingsObj.provider.modelId = newId;
+        // Reset options unless a matching preset with options exists
+        const matchingPreset = (C.MODEL_PRESETS[settingsObj.currentProvider] || []).find(function (p) { return p.id === newId; });
+        settingsObj.provider.options = matchingPreset && matchingPreset.options ? matchingPreset.options : {};
         await saveSettings(prefix, settingsObj);
         state.cachedSettings = deepCopySettings(settingsObj);
+        // Sync preset button highlights — custom IDs de-highlight all buttons
+        document.querySelectorAll('#' + prefix + '-model-presets [data-model-id]').forEach(function (btn) {
+          const isActive = btn.getAttribute('data-model-id') === newId;
+          btn.style.background = isActive ? '#6366f1' : '#f8f9fa';
+          btn.style.color = isActive ? '#fff' : '#333';
+          btn.style.borderColor = isActive ? '#6366f1' : '#ddd';
+        });
       }
     },
     modelPresetClick: async function (modelId, options) {

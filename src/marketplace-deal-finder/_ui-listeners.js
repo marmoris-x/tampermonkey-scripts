@@ -82,7 +82,9 @@ export function attachSettingsListeners(prefix, callbacks) {
   // Provider dropdown change
   if (providerSelect && callbacks.providerChange) {
     providerSelect.addEventListener('change', function () {
-      callbacks.providerChange(providerSelect.value);
+      callbacks.providerChange(providerSelect.value)['catch'](function (err) {
+        console.error('[MDF] Provider change error:', err);
+      });
     });
   }
 

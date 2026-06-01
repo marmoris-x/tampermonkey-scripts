@@ -84,6 +84,9 @@ export function resetUI(prefix) {
   const apiKeyInput = document.getElementById(prefix + '-api-key');
   const searchInput = document.getElementById(prefix + '-search-context');
   const topXInput = document.getElementById(prefix + '-top-x');
+  const providerSelect = document.getElementById(prefix + '-provider-select');
+  const modelIdInput = document.getElementById(prefix + '-model-id');
+  const baseUrlInput = document.getElementById(prefix + '-base-url');
 
   if (startBtn) startBtn.style.display = 'block';
   if (pauseBtn) pauseBtn.style.display = 'none';
@@ -91,6 +94,9 @@ export function resetUI(prefix) {
   if (apiKeyInput) apiKeyInput.disabled = false;
   if (searchInput) searchInput.disabled = false;
   if (topXInput) topXInput.disabled = false;
+  if (providerSelect) providerSelect.disabled = false;
+  if (modelIdInput) modelIdInput.disabled = false;
+  if (baseUrlInput) baseUrlInput.disabled = false;
   setRunning(false);
 }
 
@@ -105,6 +111,9 @@ export function setUIRunningState(prefix) {
   const apiKeyInput = document.getElementById(prefix + '-api-key');
   const searchInput = document.getElementById(prefix + '-search-context');
   const topXInput = document.getElementById(prefix + '-top-x');
+  const providerSelect = document.getElementById(prefix + '-provider-select');
+  const modelIdInput = document.getElementById(prefix + '-model-id');
+  const baseUrlInput = document.getElementById(prefix + '-base-url');
 
   if (startBtn) startBtn.style.display = 'none';
   if (pauseBtn) pauseBtn.style.display = 'block';
@@ -112,6 +121,9 @@ export function setUIRunningState(prefix) {
   if (apiKeyInput) apiKeyInput.disabled = true;
   if (searchInput) searchInput.disabled = true;
   if (topXInput) topXInput.disabled = true;
+  if (providerSelect) providerSelect.disabled = true;
+  if (modelIdInput) modelIdInput.disabled = true;
+  if (baseUrlInput) baseUrlInput.disabled = true;
 }
 
 /* ─── Live Ranking ─── */

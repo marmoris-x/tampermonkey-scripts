@@ -11,12 +11,12 @@ export const DEFAULT_SETTINGS = {
   version: SETTINGS_VERSION, // 3
   currentProvider: PROVIDER_TYPES.GEMINI,
   providers: {
-    gemini: { apiKey: '', modelId: 'gemini-2.5-flash-lite', baseUrl: '', options: {} },
-    openai: { apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} },
-    deepseek: { apiKey: '', modelId: 'deepseek-v4-flash', baseUrl: '', options: {} },
-    claude: { apiKey: '', modelId: 'claude-sonnet-4-6', baseUrl: '', options: {} },
-    openrouter: { apiKey: '', modelId: 'google/gemini-3.1-flash-lite', baseUrl: '', options: {} },
-    portkey: { apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} }
+    gemini: { type: 'gemini', apiKey: '', modelId: 'gemini-2.5-flash-lite', baseUrl: '', options: {} },
+    openai: { type: 'openai', apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} },
+    deepseek: { type: 'deepseek', apiKey: '', modelId: 'deepseek-v4-flash', baseUrl: '', options: {} },
+    claude: { type: 'claude', apiKey: '', modelId: 'claude-sonnet-4-6', baseUrl: '', options: {} },
+    openrouter: { type: 'openrouter', apiKey: '', modelId: 'google/gemini-3.1-flash-lite', baseUrl: '', options: {} },
+    portkey: { type: 'portkey', apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} }
   },
   searchContext: '',
   topX: 3,
@@ -62,12 +62,12 @@ function migrateV2toV3(v2) {
     version: SETTINGS_VERSION,
     currentProvider: type,
     providers: {
-      gemini: { apiKey: '', modelId: 'gemini-2.5-flash-lite', baseUrl: '', options: {} },
-      openai: { apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} },
-      deepseek: { apiKey: '', modelId: 'deepseek-v4-flash', baseUrl: '', options: {} },
-      claude: { apiKey: '', modelId: 'claude-sonnet-4-6', baseUrl: '', options: {} },
-      openrouter: { apiKey: '', modelId: 'google/gemini-3.1-flash-lite', baseUrl: '', options: {} },
-      portkey: { apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} }
+      gemini: { type: 'gemini', apiKey: '', modelId: 'gemini-2.5-flash-lite', baseUrl: '', options: {} },
+      openai: { type: 'openai', apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} },
+      deepseek: { type: 'deepseek', apiKey: '', modelId: 'deepseek-v4-flash', baseUrl: '', options: {} },
+      claude: { type: 'claude', apiKey: '', modelId: 'claude-sonnet-4-6', baseUrl: '', options: {} },
+      openrouter: { type: 'openrouter', apiKey: '', modelId: 'google/gemini-3.1-flash-lite', baseUrl: '', options: {} },
+      portkey: { type: 'portkey', apiKey: '', modelId: 'gpt-5.4-nano', baseUrl: '', options: {} }
     },
     searchContext: v2.searchContext || '',
     topX: v2.topX ?? 3,

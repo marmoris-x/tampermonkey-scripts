@@ -18,16 +18,17 @@ export function renderSettingsView(prefix, settings, savedResults, siteName) {
   const provider = settings.provider || {};
   const providerType = provider.type || PROVIDER_TYPES.GEMINI;
 
-  // Auto-detect search context from URL if not set
-  let autoContext = settings.searchContext || '';
-  if (!autoContext) {
+  // UI-Vorschlag aus URL extrahieren falls kein gespeicherter Suchkontext existiert.
+  // Wird NICHT automatisch persistiert — der User muss explizit blur oder Start klicken.
+  let displayContext = settings.searchContext || '';
+  if (!displayContext) {
     const urlParams = new URLSearchParams(window.location.search);
     const keyword = urlParams.get('keyword');
     if (keyword) {
-      autoContext = keyword;
+      displayContext = keyword;
     } else if (siteName === 'KLEINANZEIGEN') {
       const pathMatch = window.location.pathname.match(/\/s-([^/]+)/);
-      if (pathMatch) autoContext = decodeURIComponent(pathMatch[1].replace(/-/g, ' '));
+      if (pathMatch) displayContext = decodeURIComponent(pathMatch[1].replace(/-/g, ' '));
     }
   }
 
@@ -122,7 +123,7 @@ export function renderSettingsView(prefix, settings, savedResults, siteName) {
     '<div style="margin-bottom: 16px;">',
     '<label style="display: block; margin-bottom: 6px; font-weight: 600; color: #555; font-size: 13px;">Suchkontext</label>',
     '<textarea id="' + prefix + '-search-context" placeholder="z.B. Gaming PC RTX 3060, Neupreis 800-1000 EUR"',
-    ' style="width:100%;height:70px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;">' + esc(autoContext) + '</textarea>',
+    ' style="width:100%;height:70px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;">' + esc(displayContext) + '</textarea>',
     '</div>',
 
     // AI Picks per page

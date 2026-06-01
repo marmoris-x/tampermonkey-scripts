@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.10
+// @version         31.0.11
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -406,11 +406,15 @@
   function deepCopySettings(settings) {
     if (!settings) return settings;
     const copy = { ...settings };
-    if (copy.provider) copy.provider = { ...copy.provider };
+    if (copy.provider) {
+      copy.provider = { ...copy.provider };
+      if (copy.provider.options) copy.provider.options = { ...copy.provider.options };
+    }
     if (copy.providers) {
       copy.providers = { ...copy.providers };
       Object.keys(copy.providers).forEach(function(k) {
         copy.providers[k] = { ...copy.providers[k] };
+        if (copy.providers[k].options) copy.providers[k].options = { ...copy.providers[k].options };
       });
     }
     return copy;
@@ -419,12 +423,12 @@
     version: SETTINGS_VERSION,
 currentProvider: PROVIDER_TYPES.GEMINI,
     providers: {
-      gemini: { apiKey: "", modelId: "gemini-2.5-flash-lite", baseUrl: "", options: {} },
-      openai: { apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} },
-      deepseek: { apiKey: "", modelId: "deepseek-v4-flash", baseUrl: "", options: {} },
-      claude: { apiKey: "", modelId: "claude-sonnet-4-6", baseUrl: "", options: {} },
-      openrouter: { apiKey: "", modelId: "google/gemini-3.1-flash-lite", baseUrl: "", options: {} },
-      portkey: { apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} }
+      gemini: { type: "gemini", apiKey: "", modelId: "gemini-2.5-flash-lite", baseUrl: "", options: {} },
+      openai: { type: "openai", apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} },
+      deepseek: { type: "deepseek", apiKey: "", modelId: "deepseek-v4-flash", baseUrl: "", options: {} },
+      claude: { type: "claude", apiKey: "", modelId: "claude-sonnet-4-6", baseUrl: "", options: {} },
+      openrouter: { type: "openrouter", apiKey: "", modelId: "google/gemini-3.1-flash-lite", baseUrl: "", options: {} },
+      portkey: { type: "portkey", apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} }
     },
     searchContext: "",
     topX: 3,
@@ -462,12 +466,12 @@ currentProvider: PROVIDER_TYPES.GEMINI,
       version: SETTINGS_VERSION,
       currentProvider: type,
       providers: {
-        gemini: { apiKey: "", modelId: "gemini-2.5-flash-lite", baseUrl: "", options: {} },
-        openai: { apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} },
-        deepseek: { apiKey: "", modelId: "deepseek-v4-flash", baseUrl: "", options: {} },
-        claude: { apiKey: "", modelId: "claude-sonnet-4-6", baseUrl: "", options: {} },
-        openrouter: { apiKey: "", modelId: "google/gemini-3.1-flash-lite", baseUrl: "", options: {} },
-        portkey: { apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} }
+        gemini: { type: "gemini", apiKey: "", modelId: "gemini-2.5-flash-lite", baseUrl: "", options: {} },
+        openai: { type: "openai", apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} },
+        deepseek: { type: "deepseek", apiKey: "", modelId: "deepseek-v4-flash", baseUrl: "", options: {} },
+        claude: { type: "claude", apiKey: "", modelId: "claude-sonnet-4-6", baseUrl: "", options: {} },
+        openrouter: { type: "openrouter", apiKey: "", modelId: "google/gemini-3.1-flash-lite", baseUrl: "", options: {} },
+        portkey: { type: "portkey", apiKey: "", modelId: "gpt-5.4-nano", baseUrl: "", options: {} }
       },
       searchContext: v2.searchContext || "",
       topX: v2.topX ?? 3,
@@ -619,15 +623,15 @@ currentProvider: PROVIDER_TYPES.GEMINI,
   function renderSettingsView(prefix, settings, savedResults, siteName) {
     const provider = settings.provider || {};
     const providerType = provider.type || PROVIDER_TYPES.GEMINI;
-    let autoContext = settings.searchContext || "";
-    if (!autoContext) {
+    let displayContext = settings.searchContext || "";
+    if (!displayContext) {
       const urlParams = new URLSearchParams(window.location.search);
       const keyword = urlParams.get("keyword");
       if (keyword) {
-        autoContext = keyword;
+        displayContext = keyword;
       } else if (siteName === "KLEINANZEIGEN") {
         const pathMatch = window.location.pathname.match(/\/s-([^/]+)/);
-        if (pathMatch) autoContext = decodeURIComponent(pathMatch[1].replace(/-/g, " "));
+        if (pathMatch) displayContext = decodeURIComponent(pathMatch[1].replace(/-/g, " "));
       }
     }
     let savedTs = "";
@@ -686,7 +690,7 @@ providerType === PROVIDER_TYPES.PORTKEY ? '<div id="' + prefix + '-portkey-confi
 '<div style="margin-bottom: 16px;">',
       '<label style="display: block; margin-bottom: 6px; font-weight: 600; color: #555; font-size: 13px;">Suchkontext</label>',
       '<textarea id="' + prefix + '-search-context" placeholder="z.B. Gaming PC RTX 3060, Neupreis 800-1000 EUR"',
-      ' style="width:100%;height:70px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;">' + esc(autoContext) + "</textarea>",
+      ' style="width:100%;height:70px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;resize:vertical;box-sizing:border-box;font-family:inherit;">' + esc(displayContext) + "</textarea>",
       "</div>",
 '<div style="margin-bottom: 16px;">',
       '<label style="display: block; margin-bottom: 6px; font-weight: 600; color: #555; font-size: 13px;">AI-Picks pro Seite</label>',
@@ -1082,12 +1086,18 @@ getRetryDelay(retryCount) {
     const apiKeyInput = document.getElementById(prefix + "-api-key");
     const searchInput = document.getElementById(prefix + "-search-context");
     const topXInput = document.getElementById(prefix + "-top-x");
+    const providerSelect = document.getElementById(prefix + "-provider-select");
+    const modelIdInput = document.getElementById(prefix + "-model-id");
+    const baseUrlInput = document.getElementById(prefix + "-base-url");
     if (startBtn) startBtn.style.display = "block";
     if (pauseBtn) pauseBtn.style.display = "none";
     if (stopBtn) stopBtn.style.display = "none";
     if (apiKeyInput) apiKeyInput.disabled = false;
     if (searchInput) searchInput.disabled = false;
     if (topXInput) topXInput.disabled = false;
+    if (providerSelect) providerSelect.disabled = false;
+    if (modelIdInput) modelIdInput.disabled = false;
+    if (baseUrlInput) baseUrlInput.disabled = false;
     setRunning(false);
   }
   function setUIRunningState(prefix) {
@@ -1097,12 +1107,18 @@ getRetryDelay(retryCount) {
     const apiKeyInput = document.getElementById(prefix + "-api-key");
     const searchInput = document.getElementById(prefix + "-search-context");
     const topXInput = document.getElementById(prefix + "-top-x");
+    const providerSelect = document.getElementById(prefix + "-provider-select");
+    const modelIdInput = document.getElementById(prefix + "-model-id");
+    const baseUrlInput = document.getElementById(prefix + "-base-url");
     if (startBtn) startBtn.style.display = "none";
     if (pauseBtn) pauseBtn.style.display = "block";
     if (stopBtn) stopBtn.style.display = "block";
     if (apiKeyInput) apiKeyInput.disabled = true;
     if (searchInput) searchInput.disabled = true;
     if (topXInput) topXInput.disabled = true;
+    if (providerSelect) providerSelect.disabled = true;
+    if (modelIdInput) modelIdInput.disabled = true;
+    if (baseUrlInput) baseUrlInput.disabled = true;
   }
   function updateLiveRanking(prefix, allTopDeals, cachedSettings) {
     const container = document.getElementById(prefix + "-live-ranking");
@@ -1176,7 +1192,9 @@ getRetryDelay(retryCount) {
     }
     if (providerSelect && callbacks.providerChange) {
       providerSelect.addEventListener("change", function() {
-        callbacks.providerChange(providerSelect.value);
+        callbacks.providerChange(providerSelect.value)["catch"](function(err) {
+          console.error("[MDF] Provider change error:", err);
+        });
       });
     }
     if (modelIdInput && callbacks.modelIdChange) {
@@ -1517,6 +1535,10 @@ getRetryDelay(retryCount) {
   }
   async function startDealFinder() {
     const prefix = S.scraper.storagePrefix;
+    if (S.isRunning) {
+      Logger$1.warn("Crawl already running, ignoring duplicate start");
+      return;
+    }
     const apiKey = document.getElementById(prefix + "-api-key").value.trim();
     const modelId = document.getElementById(prefix + "-model-id").value.trim();
     const searchContext = document.getElementById(prefix + "-search-context").value.trim();
@@ -1548,12 +1570,14 @@ getRetryDelay(retryCount) {
       apiKey,
       modelId,
       baseUrl,
-      options: {}
+      options: settings.provider.options || {}
     };
     settings.searchContext = searchContext;
     settings.topX = topX;
     settings.maxPages = maxPages;
     await saveSettings(prefix, settings);
+    S.cachedSettings = deepCopySettings(settings);
+    S.cachedSettings.provider = S.cachedSettings.providers[S.cachedSettings.currentProvider] || {};
     if ("Notification" in window) {
       Notification.requestPermission()["catch"](function() {
       });
@@ -1915,13 +1939,16 @@ getRetryDelay(retryCount) {
         if (settingsObj.currentProvider !== newType) {
           settingsObj.currentProvider = newType;
           settingsObj.provider = settingsObj.providers[newType] || {};
+          settingsObj.provider.type = newType;
           if (!settingsObj.provider.modelId) {
             settingsObj.provider.modelId = getDefaultModelForProvider(newType);
           }
           await saveSettings(prefix, settingsObj);
           S.cachedSettings = deepCopySettings(settingsObj);
           S.cachedSettings.provider = S.cachedSettings.providers[S.cachedSettings.currentProvider] || {};
-          setupSettingsView(scraper);
+          await setupSettingsView(scraper)["catch"](function(err) {
+            Logger$1.error("Re-render after provider change failed:", err);
+          });
         }
       },
       modelIdChange: async function(newId) {
@@ -1930,8 +1957,18 @@ getRetryDelay(retryCount) {
         const settingsObj = s.settings;
         if (settingsObj.provider.modelId !== newId) {
           settingsObj.provider.modelId = newId;
+          const matchingPreset = (MODEL_PRESETS[settingsObj.currentProvider] || []).find(function(p) {
+            return p.id === newId;
+          });
+          settingsObj.provider.options = matchingPreset && matchingPreset.options ? matchingPreset.options : {};
           await saveSettings(prefix, settingsObj);
           S.cachedSettings = deepCopySettings(settingsObj);
+          document.querySelectorAll("#" + prefix + "-model-presets [data-model-id]").forEach(function(btn) {
+            const isActive = btn.getAttribute("data-model-id") === newId;
+            btn.style.background = isActive ? "#6366f1" : "#f8f9fa";
+            btn.style.color = isActive ? "#fff" : "#333";
+            btn.style.borderColor = isActive ? "#6366f1" : "#ddd";
+          });
         }
       },
       modelPresetClick: async function(modelId, options) {
