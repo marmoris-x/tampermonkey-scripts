@@ -90,6 +90,29 @@ function calculateBackoff(retryCount, baseDelay = RETRY_BASE_DELAY) {
 }
 
 /**
+ * Cleans common AI-output issues before JSON.parse.
+ * Strips markdown fences, extracts JSON object, repairs unterminated strings.
+ * @param {string} text - Raw AI output text
+ * @returns {string} Cleaned text ready for JSON.parse
+ */
+function cleanAIJson(text) {
+  let cleaned = (text || '').trim();
+  if (!cleaned) return cleaned;
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    cleaned = cleaned.trim();
+  }
+  // Extract the first complete JSON object {...} from any surrounding text
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  }
+  return cleaned;
+}
+
+/**
  * Calls an AI provider with the given prompt and settings.
  * Handles retry logic with exponential backoff for rate limits.
  *
@@ -181,7 +204,13 @@ export async function callAI(prompt, settings, options = {}) {
       try {
         result = JSON.parse(text);
       } catch (parseErr) {
-        throw new Error(`Failed to parse provider output as JSON: ${parseErr.message}`);
+        // Attempt JSON repair (strip fences, extract object) before giving up
+        try {
+          const repaired = cleanAIJson(text);
+          result = JSON.parse(repaired);
+        } catch (repairErr) {
+          throw new Error(`Failed to parse provider output as JSON: ${parseErr.message}`);
+        }
       }
 
       if (!result.topDeals || !Array.isArray(result.topDeals)) {
@@ -195,8 +224,9 @@ export async function callAI(prompt, settings, options = {}) {
       lastError = err;
       // For non-rate-limit errors, retry only if we have attempts left
       if (attempt < RATE_LIMIT_MAX_RETRIES && !provider.isRateLimitError(err.status || 0)) {
-        // Check if this error type should be retried (network errors, timeouts)
-        const isRetryable = err.message.includes('timed out') || err.message.includes('network error') || err.message.includes('failed');
+        const message = err.message || '';
+        // Case-insensitive check: network errors, timeouts, transient server errors
+        const isRetryable = /timed out|network error|failed to parse api response/i.test(message);
         if (isRetryable) {
           const delay = calculateBackoff(attempt);
           if (options.onRetry) {
@@ -205,6 +235,8 @@ export async function callAI(prompt, settings, options = {}) {
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
+        // Non-retryable error (JSON parse failure, auth error, etc.) — stop immediately
+        throw lastError;
       }
     }
   }

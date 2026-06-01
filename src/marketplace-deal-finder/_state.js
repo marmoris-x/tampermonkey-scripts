@@ -15,7 +15,8 @@
  *   initRetries: number,
  *   descriptionCache: Map<string, string>,
  *   cachedSettings: Object|null,
- *   scraper: Object|null
+ *   scraper: Object|null,
+ *   abortController: AbortController|null
  * }}
  */
 export const S = {
@@ -28,7 +29,8 @@ export const S = {
   initRetries: 0,
   descriptionCache: new Map(),
   cachedSettings: null,
-  scraper: null
+  scraper: null,
+  abortController: null
 };
 
 /**
@@ -45,6 +47,7 @@ export function resetState() {
   S.descriptionCache.clear();
   S.cachedSettings = null;
   S.scraper = null;
+  S.abortController = null;
 }
 
 /** @param {boolean} val */

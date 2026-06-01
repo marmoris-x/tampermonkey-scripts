@@ -16,6 +16,19 @@ import * as C from './_constants.js';
 
 const Logger = createLogger('Marketplace Deal Finder');
 
+/* ─── Helpers ─── */
+
+/**
+ * Escapes special characters that can confuse an AI model into producing
+ * malformed JSON. Handles quotes, backslashes, and control characters.
+ * @param {string} str - Raw input string
+ * @returns {string} Escaped string safe for prompt injection
+ */
+function escapeForPrompt(str) {
+  return (str || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
+}
+
 /* ─── Prompt Builder ─── */
 
 /**
@@ -33,7 +46,7 @@ function buildAnalysisPrompt(adsData, searchContext, topX, siteName) {
     ? '\n\n## Price Distribution\n- Min: ' + stats.min + ' EUR\n- Max: ' + stats.max + ' EUR\n- Avg: ' + stats.mean + ' EUR\n- Median: ' + stats.median + ' EUR\n- Listings with price: ' + stats.count
     : '';
 
-  let prompt = 'You are a deal and price analysis expert.\n\nSEARCH CONTEXT: ' + searchContext +
+  let prompt = 'You are a deal and price analysis expert.\n\nSEARCH CONTEXT: ' + escapeForPrompt(searchContext) +
     '\n\nTASK:\nAnalyze the following ' + siteName + ' listings and find the ' + topX + ' BEST deals.\n\n' +
     'CRITERIA for a good deal:\n- 35-90% below the usual new price\n' +
     '- Guaranteed profit on resale possible\n- MUST BUY quality\n- Real added value for the buyer' +
@@ -41,10 +54,10 @@ function buildAnalysisPrompt(adsData, searchContext, topX, siteName) {
 
   for (let adi = 0; adi < adsData.length; adi++) {
     const ad = adsData[adi];
-    prompt += '\nListing ' + (adi + 1) + ':\nTitle: ' + (ad.title || '') +
-      '\nPrice: ' + (ad.price || '') +
-      '\nDescription: ' + ((ad.description || '').substring(0, 400)) +
-      '\nURL: ' + (ad.url || '') + '\n---\n';
+    prompt += '\nListing ' + (adi + 1) + ':\nTitle: ' + escapeForPrompt(ad.title) +
+      '\nPrice: ' + escapeForPrompt(ad.price) +
+      '\nDescription: ' + escapeForPrompt(ad.description).substring(0, 400) +
+      '\nURL: ' + escapeForPrompt(ad.url) + '\n---\n';
   }
 
   prompt += '\nRESPONSE FORMAT (JSON ONLY, NO EXTRA TEXT):\n{\n  "topDeals": [\n    {\n' +
@@ -228,6 +241,9 @@ async function startDealFinder() {
     Notification.requestPermission()['catch'](function () {});
   }
 
+  // Create AbortController so Stop can cancel in-flight API calls
+  state.abortController = new AbortController();
+
   state.currentPage = 1;
   state.allTopDeals = [];
   state.isRunning = true;
@@ -285,7 +301,11 @@ function resumeDealFinder() {
     processCurrentPage(cs)['catch'](function (error) {
       Logger.error('Resume error:', error);
       updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error', state.scraper.siteName === 'WILLHABEN');
-      resetUI(prefix);
+      if (state.allTopDeals.length > 0) {
+        finishDealFinder()['catch'](function (e) { Logger.error('finishDealFinder after resume error:', e); });
+      } else {
+        resetUI(prefix);
+      }
     });
   }
 }
@@ -297,6 +317,11 @@ async function stopDealFinder() {
   state.shouldStop = true;
   state.isPaused = false;
   state.captchaPaused = false;
+  // Cancel any in-flight API call immediately
+  if (state.abortController) {
+    state.abortController.abort();
+    state.abortController = null;
+  }
   const prefix = state.scraper.storagePrefix;
   await clearCrawlState(prefix);
   Logger.log('Crawl stopped by user');
@@ -406,7 +431,8 @@ async function processCurrentPage(settings) {
     }, {
       temperature: 0.1,
       maxOutputTokens: C.MAX_OUTPUT_TOKENS,
-      onRetry: onRetry
+      onRetry: onRetry,
+      signal: state.abortController && state.abortController.signal
     });
   } catch (error) {
     if (error.name === 'AbortError' || state.shouldStop) {
@@ -519,7 +545,7 @@ async function finishDealFinder() {
         modelId: cs.provider ? cs.provider.modelId : 'gemini-2.5-flash',
         baseUrl: cs.provider ? cs.provider.baseUrl : undefined,
         providerOptions: cs.provider ? cs.provider.options : {}
-      }, { temperature: 0.1, maxOutputTokens: C.MAX_OUTPUT_TOKENS });
+      }, { temperature: 0.1, maxOutputTokens: C.MAX_OUTPUT_TOKENS, signal: state.abortController && state.abortController.signal });
 
       if (reRankResult && reRankResult.topDeals) {
         const urlToDeal = new Map();
@@ -545,6 +571,7 @@ async function finishDealFinder() {
       }
     } catch (e) {
       Logger.warn('Global re-ranking failed:', e);
+      showWarning(prefix, 'Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung', 95, state.scraper.siteName === 'WILLHABEN');
     }
   }
 

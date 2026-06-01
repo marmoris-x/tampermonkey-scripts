@@ -66,8 +66,11 @@ export class ClaudeProvider extends AIProvider {
     if (block.type !== 'text') {
       throw new Error(`Claude: unexpected content block type: ${block.type}`);
     }
-    if (response.stop_reason && response.stop_reason !== 'end_turn' && response.stop_reason !== 'stop') {
+    if (response.stop_reason && response.stop_reason !== 'end_turn' && response.stop_reason !== 'stop' && response.stop_reason !== 'max_tokens') {
       throw new Error(`Claude: unexpected stop_reason: ${response.stop_reason}`);
+    }
+    if (response.stop_reason === 'max_tokens') {
+      console.warn('[MDF] Claude response may be truncated — max tokens reached');
     }
     return block.text || '';
   }

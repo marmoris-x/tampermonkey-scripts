@@ -28,7 +28,7 @@ export async function saveSetting(key, value) {
   try {
     await GM.setValue(key, value);
   } catch (e) {
-    console.warn('[MDF] Failed to save setting:', key, e);
+    console.error('[MDF] Failed to save setting:', key, e.message || e);
   }
 }
 

@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.11
+// @version         31.0.12
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -80,7 +80,7 @@
   const INITIAL_BATCH_SIZE = 8;
   const SETTINGS_VERSION = 3;
   const MAX_CACHE_SIZE = 100;
-  const REQUEST_TIMEOUT = 15e3;
+  const REQUEST_TIMEOUT = 6e4;
   const RE_RANK_MAX_DEALS = 30;
   const PAUSE_POLL_INTERVAL = 500;
   const SAME_PAGE_INCREMENT = 0;
@@ -371,7 +371,7 @@
     try {
       await GM.setValue(key, value);
     } catch (e) {
-      console.warn("[MDF] Failed to save setting:", key, e);
+      console.error("[MDF] Failed to save setting:", key, e.message || e);
     }
   }
   async function saveCrawlState(state, storagePrefix) {
@@ -547,7 +547,8 @@ currentProvider: PROVIDER_TYPES.GEMINI,
     initRetries: 0,
     descriptionCache: new Map(),
     cachedSettings: null,
-    scraper: null
+    scraper: null,
+    abortController: null
   };
   function setRunning(val) {
     S.isRunning = val;
@@ -916,6 +917,20 @@ getRetryDelay(retryCount) {
     const jitter = capped * JITTER_FACTOR * (Math.random() * 2 - 1);
     return Math.round(capped + jitter);
   }
+  function cleanAIJson(text) {
+    let cleaned = (text || "").trim();
+    if (!cleaned) return cleaned;
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+      cleaned = cleaned.trim();
+    }
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    }
+    return cleaned;
+  }
   async function callAI(prompt, settings, options = {}) {
     var _a, _b;
     const provider = createProvider(settings.providerType, {
@@ -979,7 +994,12 @@ getRetryDelay(retryCount) {
         try {
           result = JSON.parse(text);
         } catch (parseErr) {
-          throw new Error(`Failed to parse provider output as JSON: ${parseErr.message}`);
+          try {
+            const repaired = cleanAIJson(text);
+            result = JSON.parse(repaired);
+          } catch (repairErr) {
+            throw new Error(`Failed to parse provider output as JSON: ${parseErr.message}`);
+          }
         }
         if (!result.topDeals || !Array.isArray(result.topDeals)) {
           throw new Error("Provider response missing topDeals array");
@@ -989,7 +1009,8 @@ getRetryDelay(retryCount) {
         if (err.name === "AbortError") throw err;
         lastError = err;
         if (attempt < RATE_LIMIT_MAX_RETRIES && !provider.isRateLimitError(err.status || 0)) {
-          const isRetryable = err.message.includes("timed out") || err.message.includes("network error") || err.message.includes("failed");
+          const message = err.message || "";
+          const isRetryable = /timed out|network error|failed to parse api response/i.test(message);
           if (isRetryable) {
             const delay = calculateBackoff(attempt);
             if (options.onRetry) {
@@ -998,6 +1019,7 @@ getRetryDelay(retryCount) {
             await new Promise((resolve) => setTimeout(resolve, delay));
             continue;
           }
+          throw lastError;
         }
       }
     }
@@ -1077,7 +1099,7 @@ getRetryDelay(retryCount) {
     }
   }
   function showWarning(prefix, message, percentage) {
-    updateProgress(prefix, "Warnung: " + message, percentage, "warning");
+    updateProgress(prefix, "Warnung: " + message, percentage || 0, "warning");
   }
   function resetUI(prefix) {
     const startBtn = document.getElementById(prefix + "-start-btn");
@@ -1423,13 +1445,16 @@ getRetryDelay(retryCount) {
     }, 1e3);
   }
   const Logger$1 = createLogger("Marketplace Deal Finder");
+  function escapeForPrompt(str) {
+    return (str || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
+  }
   function buildAnalysisPrompt(adsData, searchContext, topX, siteName) {
     const stats = computePriceStats(adsData);
     const statsSection = stats ? "\n\n## Price Distribution\n- Min: " + stats.min + " EUR\n- Max: " + stats.max + " EUR\n- Avg: " + stats.mean + " EUR\n- Median: " + stats.median + " EUR\n- Listings with price: " + stats.count : "";
-    let prompt = "You are a deal and price analysis expert.\n\nSEARCH CONTEXT: " + searchContext + "\n\nTASK:\nAnalyze the following " + siteName + " listings and find the " + topX + " BEST deals.\n\nCRITERIA for a good deal:\n- 35-90% below the usual new price\n- Guaranteed profit on resale possible\n- MUST BUY quality\n- Real added value for the buyer" + statsSection + "\n\nLISTINGS:\n";
+    let prompt = "You are a deal and price analysis expert.\n\nSEARCH CONTEXT: " + escapeForPrompt(searchContext) + "\n\nTASK:\nAnalyze the following " + siteName + " listings and find the " + topX + " BEST deals.\n\nCRITERIA for a good deal:\n- 35-90% below the usual new price\n- Guaranteed profit on resale possible\n- MUST BUY quality\n- Real added value for the buyer" + statsSection + "\n\nLISTINGS:\n";
     for (let adi = 0; adi < adsData.length; adi++) {
       const ad = adsData[adi];
-      prompt += "\nListing " + (adi + 1) + ":\nTitle: " + (ad.title || "") + "\nPrice: " + (ad.price || "") + "\nDescription: " + (ad.description || "").substring(0, 400) + "\nURL: " + (ad.url || "") + "\n---\n";
+      prompt += "\nListing " + (adi + 1) + ":\nTitle: " + escapeForPrompt(ad.title) + "\nPrice: " + escapeForPrompt(ad.price) + "\nDescription: " + escapeForPrompt(ad.description).substring(0, 400) + "\nURL: " + escapeForPrompt(ad.url) + "\n---\n";
     }
     prompt += '\nRESPONSE FORMAT (JSON ONLY, NO EXTRA TEXT):\n{\n  "topDeals": [\n    {\n      "title": "...",\n      "price": "...",\n      "description": "...",\n      "url": "...",\n      "reasoning": "Why is this a top deal? (1-2 sentences)",\n      "score": 85\n    }\n  ]\n}\n\nSort the top ' + topX + " deals by quality (best first). Score is 0-100 (100 = absolute bargain).\nReturn ONLY valid JSON. No markdown, no code fences, no extra text.";
     return prompt;
@@ -1582,6 +1607,7 @@ getRetryDelay(retryCount) {
       Notification.requestPermission()["catch"](function() {
       });
     }
+    S.abortController = new AbortController();
     S.currentPage = 1;
     S.allTopDeals = [];
     S.isRunning = true;
@@ -1628,7 +1654,13 @@ getRetryDelay(retryCount) {
       processCurrentPage(cs)["catch"](function(error) {
         Logger$1.error("Resume error:", error);
         updateProgress(prefix, "Fehler: " + error.message, 0, "error", S.scraper.siteName === "WILLHABEN");
-        resetUI(prefix);
+        if (S.allTopDeals.length > 0) {
+          finishDealFinder()["catch"](function(e) {
+            Logger$1.error("finishDealFinder after resume error:", e);
+          });
+        } else {
+          resetUI(prefix);
+        }
       });
     }
   }
@@ -1636,6 +1668,10 @@ getRetryDelay(retryCount) {
     S.shouldStop = true;
     S.isPaused = false;
     S.captchaPaused = false;
+    if (S.abortController) {
+      S.abortController.abort();
+      S.abortController = null;
+    }
     const prefix = S.scraper.storagePrefix;
     await clearCrawlState(prefix);
     Logger$1.log("Crawl stopped by user");
@@ -1745,7 +1781,8 @@ getRetryDelay(retryCount) {
       }, {
         temperature: 0.1,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        onRetry
+        onRetry,
+        signal: S.abortController && S.abortController.signal
       });
     } catch (error) {
       if (error.name === "AbortError" || S.shouldStop) {
@@ -1843,7 +1880,7 @@ getRetryDelay(retryCount) {
           modelId: cs.provider ? cs.provider.modelId : "gemini-2.5-flash",
           baseUrl: cs.provider ? cs.provider.baseUrl : void 0,
           providerOptions: cs.provider ? cs.provider.options : {}
-        }, { temperature: 0.1, maxOutputTokens: MAX_OUTPUT_TOKENS });
+        }, { temperature: 0.1, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: S.abortController && S.abortController.signal });
         if (reRankResult && reRankResult.topDeals) {
           const urlToDeal = new Map();
           for (let ri = 0; ri < dealsToReRank.length; ri++) {
@@ -1872,6 +1909,7 @@ getRetryDelay(retryCount) {
         }
       } catch (e) {
         Logger$1.warn("Global re-ranking failed:", e);
+        showWarning(prefix, "Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung", 95, S.scraper.siteName === "WILLHABEN");
       }
     }
     await saveResults({ deals: S.allTopDeals, pages: S.currentPage, timestamp: ( new Date()).toISOString() }, prefix);
@@ -2148,7 +2186,8 @@ getRetryDelay(retryCount) {
         setTimeout(r, 3e3);
       });
       init()["catch"](function(e) {
-        Logger.error("Fatal init failure:", e);
+        Logger.error("Fatal init failure after retry:", e);
+        console.error("[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.");
       });
     }
   }
@@ -2185,10 +2224,11 @@ buildRequest(prompt, options = {}) {
                     url: { type: "string" },
                     title: { type: "string" },
                     price: { type: "string" },
+                    description: { type: "string" },
                     score: { type: "integer" },
-                    reason: { type: "string" }
+                    reasoning: { type: "string" }
                   },
-                  required: ["url", "title", "score", "reason"]
+                  required: ["url", "title", "price", "score", "reasoning"]
                 }
               }
             },
@@ -2212,6 +2252,9 @@ parseResponse(response) {
       const candidate = response.candidates[0];
       if (candidate.finishReason === "SAFETY" || candidate.finishReason === "BLOCKLIST") {
         throw new Error(`Gemini: blocked — finishReason: ${candidate.finishReason}`);
+      }
+      if (candidate.finishReason === "MAX_TOKENS") {
+        console.warn("[MDF] Gemini response may be truncated — max tokens reached");
       }
       const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
       if (!parts || parts.length === 0) {
@@ -2337,8 +2380,11 @@ parseResponse(response) {
       if (block.type !== "text") {
         throw new Error(`Claude: unexpected content block type: ${block.type}`);
       }
-      if (response.stop_reason && response.stop_reason !== "end_turn" && response.stop_reason !== "stop") {
+      if (response.stop_reason && response.stop_reason !== "end_turn" && response.stop_reason !== "stop" && response.stop_reason !== "max_tokens") {
         throw new Error(`Claude: unexpected stop_reason: ${response.stop_reason}`);
+      }
+      if (response.stop_reason === "max_tokens") {
+        console.warn("[MDF] Claude response may be truncated — max tokens reached");
       }
       return block.text || "";
     }

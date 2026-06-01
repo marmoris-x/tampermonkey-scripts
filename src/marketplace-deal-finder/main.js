@@ -97,7 +97,10 @@ async function init() {
     Logger.error('Initialization error:', error);
     // Auto-retry once
     await new Promise(function (r) { setTimeout(r, 3000); });
-    init()['catch'](function (e) { Logger.error('Fatal init failure:', e); });
+    init()['catch'](function (e) {
+      Logger.error('Fatal init failure after retry:', e);
+      console.error('[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.');
+    });
   }
 }
 

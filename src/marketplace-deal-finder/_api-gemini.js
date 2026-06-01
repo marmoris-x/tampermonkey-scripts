@@ -56,10 +56,11 @@ export class GeminiProvider extends AIProvider {
                   url: { type: 'string' },
                   title: { type: 'string' },
                   price: { type: 'string' },
+                  description: { type: 'string' },
                   score: { type: 'integer' },
-                  reason: { type: 'string' }
+                  reasoning: { type: 'string' }
                 },
-                required: ['url', 'title', 'score', 'reason']
+                required: ['url', 'title', 'price', 'score', 'reasoning']
               }
             }
           },
@@ -88,6 +89,9 @@ export class GeminiProvider extends AIProvider {
     const candidate = response.candidates[0];
     if (candidate.finishReason === 'SAFETY' || candidate.finishReason === 'BLOCKLIST') {
       throw new Error(`Gemini: blocked — finishReason: ${candidate.finishReason}`);
+    }
+    if (candidate.finishReason === 'MAX_TOKENS') {
+      console.warn('[MDF] Gemini response may be truncated — max tokens reached');
     }
     const parts = candidate.content?.parts;
     if (!parts || parts.length === 0) {
