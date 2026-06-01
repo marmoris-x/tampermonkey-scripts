@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.12
+// @version         31.0.13
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -15,6 +15,7 @@
 // @match           https://www.willhaben.at/iad/kaufen-und-verkaufen/*
 // @match           https://www.kleinanzeigen.de/s-*
 // @match           https://www.kleinanzeigen.de/z-*
+// @require         https://raw.githubusercontent.com/Tampermonkey/utils/refs/heads/main/requires/gh_2215_make_GM_xhr_more_parallel_again.js
 // @sandbox         JavaScript
 // @tag             search
 // @connect         willhaben.at
@@ -94,7 +95,7 @@
   const JITTER_FACTOR = 0.2;
   const MAX_OUTPUT_TOKENS = 8192;
   const DESCRIPTION_FETCH_DELAY = 1e3;
-  const DESCRIPTION_MAX_RETRIES = 4;
+  const DESCRIPTION_MAX_RETRIES = 1;
   const DESCRIPTION_BACKOFF_FACTOR = 2;
   const PAGE_TRANSITION_DELAY = 1500;
   const SCROLL_DELAY = 1500;
@@ -1753,7 +1754,16 @@ getRetryDelay(retryCount) {
           adsData[absoluteIndex].description = result.description;
         });
       });
-      await Promise.all(batchFns);
+      const deadline = 8e3;
+      await Promise.race([
+        Promise.all(batchFns),
+        new Promise(function(r) {
+          setTimeout(function() {
+            Logger$1.warn("Description fetch deadline (" + deadline + "ms) reached — proceeding with partial data");
+            r();
+          }, deadline);
+        })
+      ]);
       if (bi + INITIAL_BATCH_SIZE < adsData.length) {
         await new Promise(function(r) {
           setTimeout(r, 500 + Math.random() * 1e3);
@@ -1767,6 +1777,7 @@ getRetryDelay(retryCount) {
     updateProgress(prefix, "Seite " + S.currentPage + ": AI analysiert Angebote...", 75, "info", scraper.siteName === "WILLHABEN");
     Logger$1.log("Sending " + adsData.length + " listings to " + settings.provider.type + "...");
     const prompt = buildAnalysisPrompt(adsData, settings.searchContext, settings.topX, scraper.siteName);
+    const aiCallStart = Date.now();
     const onRetry = function(retryNum, error) {
       showWarning(prefix, "API " + (error.status || "error") + " - Retry " + retryNum + "...", 75, scraper.siteName === "WILLHABEN");
     };
@@ -1784,6 +1795,7 @@ getRetryDelay(retryCount) {
         onRetry,
         signal: S.abortController && S.abortController.signal
       });
+      Logger$1.log("AI response received in " + (Date.now() - aiCallStart) + "ms");
     } catch (error) {
       if (error.name === "AbortError" || S.shouldStop) {
         await finishDealFinder();

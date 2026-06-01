@@ -402,7 +402,17 @@ async function processCurrentPage(settings) {
         adsData[absoluteIndex].description = result.description;
       });
     });
-    await Promise.all(batchFns);
+    // Race description fetches against a deadline so slow marketplace pages
+    // cannot block the AI call indefinitely (especially critical under Chrome MV3
+    // where GM_xmlhttpRequest is serialized).
+    const deadline = 8000;
+    await Promise.race([
+      Promise.all(batchFns),
+      new Promise(function (r) { setTimeout(function () {
+        Logger.warn('Description fetch deadline (' + deadline + 'ms) reached — proceeding with partial data');
+        r();
+      }, deadline); })
+    ]);
 
     if (bi + C.INITIAL_BATCH_SIZE < adsData.length) {
       await new Promise(function (r) { setTimeout(r, 500 + Math.random() * 1000); });
@@ -415,6 +425,7 @@ async function processCurrentPage(settings) {
   Logger.log('Sending ' + adsData.length + ' listings to ' + settings.provider.type + '...');
 
   const prompt = buildAnalysisPrompt(adsData, settings.searchContext, settings.topX, scraper.siteName);
+  const aiCallStart = Date.now();
 
   const onRetry = function (retryNum, error) {
     showWarning(prefix, 'API ' + (error.status || 'error') + ' - Retry ' + retryNum + '...', 75, scraper.siteName === 'WILLHABEN');
@@ -434,6 +445,7 @@ async function processCurrentPage(settings) {
       onRetry: onRetry,
       signal: state.abortController && state.abortController.signal
     });
+    Logger.log('AI response received in ' + (Date.now() - aiCallStart) + 'ms');
   } catch (error) {
     if (error.name === 'AbortError' || state.shouldStop) {
       await finishDealFinder();

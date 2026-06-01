@@ -2,7 +2,7 @@
 // @name         Marketplace Deal Finder
 // @name:de      Marketplace Deal Finder
 // @namespace    https://github.com/marmoris-x/tampermonkey-scripts
-// @version      31.0.12
+// @version      31.0.13
 // @author       marmoris
 // @description  Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -28,6 +28,7 @@
 // @connect      api.anthropic.com
 // @connect      openrouter.ai
 // @connect      api.portkey.ai
+// @require      https://raw.githubusercontent.com/Tampermonkey/utils/refs/heads/main/requires/gh_2215_make_GM_xhr_more_parallel_again.js
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM_xmlhttpRequest
