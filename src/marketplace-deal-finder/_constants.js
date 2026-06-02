@@ -80,6 +80,6 @@ export const MODEL_PRESETS = {
   portkey: [
     { id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano', icon: '💡', desc: 'Via Portkey config' },
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', icon: '⚡', desc: 'Via Portkey config' },
-    { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', icon: '⚡', desc: 'Via Portkey config' }
+    { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', icon: '⚡', desc: 'Via Portkey config', options: { skip_response_format: true } }
   ]
 };

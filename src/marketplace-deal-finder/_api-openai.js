@@ -87,11 +87,15 @@ export class OpenAICompatibleProvider extends AIProvider {
         }
       ],
       temperature: options.temperature ?? 0.1,
-      max_tokens: options.maxOutputTokens ?? 8192,
-      response_format: { type: 'json_object' }
+      max_tokens: options.maxOutputTokens ?? 8192
     };
     // Apply reasoning_effort from providerOptions (GPT-5.4-nano, DeepSeek, etc.)
     const opts = this.config.providerOptions || {};
+    // response_format wird von DeepSeek, Portkey+DeepSeek etc. nicht
+    // zuverlaessig unterstuetzt — ueber skip_response_format deaktivierbar.
+    if (!opts.skip_response_format) {
+      body.response_format = { type: 'json_object' };
+    }
     if (opts.reasoning_effort) {
       body.reasoning_effort = opts.reasoning_effort;
     }

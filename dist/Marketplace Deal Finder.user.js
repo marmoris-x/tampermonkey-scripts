@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.13
+// @version         31.0.14
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -128,7 +128,7 @@
     portkey: [
       { id: "gpt-5.4-nano", label: "GPT-5.4 Nano", icon: "💡", desc: "Via Portkey config" },
       { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", icon: "⚡", desc: "Via Portkey config" },
-      { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", icon: "⚡", desc: "Via Portkey config" }
+      { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", icon: "⚡", desc: "Via Portkey config", options: { skip_response_format: true } }
     ]
   };
   function findAds$1() {
@@ -926,10 +926,34 @@ getRetryDelay(retryCount) {
       cleaned = cleaned.trim();
     }
     const firstBrace = cleaned.indexOf("{");
-    const lastBrace = cleaned.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    if (firstBrace === -1) return cleaned;
+    let depth = 0, inString = false, escaped = false, matchEnd = -1;
+    for (let i = firstBrace; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          matchEnd = i + 1;
+          break;
+        }
+      }
     }
+    if (matchEnd > 0) cleaned = cleaned.substring(firstBrace, matchEnd);
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, "$1");
     return cleaned;
   }
   async function callAI(prompt, settings, options = {}) {
@@ -999,7 +1023,8 @@ getRetryDelay(retryCount) {
             const repaired = cleanAIJson(text);
             result = JSON.parse(repaired);
           } catch (repairErr) {
-            throw new Error(`Failed to parse provider output as JSON: ${parseErr.message}`);
+            console.warn("[MDF] Raw AI output (first 500 chars):", (text || "").substring(0, 500));
+            throw new Error(`Failed to parse provider output as JSON: ${parseErr.message} | Repair error: ${repairErr.message}`);
           }
         }
         if (!result.topDeals || !Array.isArray(result.topDeals)) {
@@ -1011,7 +1036,7 @@ getRetryDelay(retryCount) {
         lastError = err;
         if (attempt < RATE_LIMIT_MAX_RETRIES && !provider.isRateLimitError(err.status || 0)) {
           const message = err.message || "";
-          const isRetryable = /timed out|network error|failed to parse api response/i.test(message);
+          const isRetryable = /timed out|network error|failed to parse (?:api response|provider output)/i.test(message);
           if (isRetryable) {
             const delay = calculateBackoff(attempt);
             if (options.onRetry) {
@@ -1733,6 +1758,7 @@ getRetryDelay(retryCount) {
     Logger$1.log(adsData.length + " ads found (deduplicated)");
     updateProgress(prefix, "Seite " + S.currentPage + ": Lade Details (0/" + adsData.length + ")...", 30, "info", scraper.siteName === "WILLHABEN");
     let completedCount = 0;
+    let deadlineWarningLogged = false;
     for (let bi = 0; bi < adsData.length; bi += INITIAL_BATCH_SIZE) {
       await waitIfPaused();
       if (S.shouldStop) break;
@@ -1759,7 +1785,10 @@ getRetryDelay(retryCount) {
         Promise.all(batchFns),
         new Promise(function(r) {
           setTimeout(function() {
-            Logger$1.warn("Description fetch deadline (" + deadline + "ms) reached — proceeding with partial data");
+            if (!deadlineWarningLogged) {
+              Logger$1.warn("Description fetch deadline (" + deadline + "ms) reached — proceeding with partial data");
+              deadlineWarningLogged = true;
+            }
             r();
           }, deadline);
         })
@@ -1801,7 +1830,9 @@ getRetryDelay(retryCount) {
         await finishDealFinder();
         return;
       }
-      throw error;
+      Logger$1.error("AI analysis failed for page " + S.currentPage + ", continuing to next page:", error);
+      updateProgress(prefix, "Seite " + S.currentPage + ": Analyse fehlgeschlagen, ueberspringe...", 75, "warning", scraper.siteName === "WILLHABEN");
+      aiResult = null;
     }
     if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
       Logger$1.log("AI found " + aiResult.topDeals.length + " top deals");
@@ -2327,10 +2358,12 @@ buildRequest(prompt, options = {}) {
           }
         ],
         temperature: options.temperature ?? 0.1,
-        max_tokens: options.maxOutputTokens ?? 8192,
-        response_format: { type: "json_object" }
+        max_tokens: options.maxOutputTokens ?? 8192
       };
       const opts = this.config.providerOptions || {};
+      if (!opts.skip_response_format) {
+        body.response_format = { type: "json_object" };
+      }
       if (opts.reasoning_effort) {
         body.reasoning_effort = opts.reasoning_effort;
       }

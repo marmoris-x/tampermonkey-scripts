@@ -383,6 +383,9 @@ async function processCurrentPage(settings) {
   updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (0/' + adsData.length + ')...', 30, 'info', scraper.siteName === 'WILLHABEN');
   let completedCount = 0;
 
+  // Only warn once per page about slow description fetches
+  let deadlineWarningLogged = false;
+
   for (let bi = 0; bi < adsData.length; bi += C.INITIAL_BATCH_SIZE) {
     await waitIfPaused();
     if (state.shouldStop) break;
@@ -409,7 +412,10 @@ async function processCurrentPage(settings) {
     await Promise.race([
       Promise.all(batchFns),
       new Promise(function (r) { setTimeout(function () {
-        Logger.warn('Description fetch deadline (' + deadline + 'ms) reached — proceeding with partial data');
+        if (!deadlineWarningLogged) {
+          Logger.warn('Description fetch deadline (' + deadline + 'ms) reached — proceeding with partial data');
+          deadlineWarningLogged = true;
+        }
         r();
       }, deadline); })
     ]);
@@ -451,7 +457,11 @@ async function processCurrentPage(settings) {
       await finishDealFinder();
       return;
     }
-    throw error;
+    // Page-level recovery: log error, skip this page, continue to next
+    // Without this, a single failed page kills the entire multi-page crawl.
+    Logger.error('AI analysis failed for page ' + state.currentPage + ', continuing to next page:', error);
+    updateProgress(prefix, 'Seite ' + state.currentPage + ': Analyse fehlgeschlagen, ueberspringe...', 75, 'warning', scraper.siteName === 'WILLHABEN');
+    aiResult = null;
   }
 
   if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {

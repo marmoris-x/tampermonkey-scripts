@@ -103,12 +103,27 @@ function cleanAIJson(text) {
     cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
     cleaned = cleaned.trim();
   }
-  // Extract the first complete JSON object {...} from any surrounding text
+  // Brace-depth counting: find the matching } for the first {
+  // Handles trailing text containing braces (e.g. "Summary: {xyz}")
+  // and braces inside string values (e.g. "description": "Monitor 24"")
   const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  if (firstBrace === -1) return cleaned;
+  let depth = 0, inString = false, escaped = false, matchEnd = -1;
+  for (let i = firstBrace; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { matchEnd = i + 1; break; }
+    }
   }
+  if (matchEnd > 0) cleaned = cleaned.substring(firstBrace, matchEnd);
+  // Repair trailing commas before } or ] (common AI output quirk)
+  cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
   return cleaned;
 }
 
@@ -209,7 +224,10 @@ export async function callAI(prompt, settings, options = {}) {
           const repaired = cleanAIJson(text);
           result = JSON.parse(repaired);
         } catch (repairErr) {
-          throw new Error(`Failed to parse provider output as JSON: ${parseErr.message}`);
+          // Log raw output for debugging (both original parse error + repair error)
+          console.warn('[MDF] Raw AI output (first 500 chars):', (text || '').substring(0, 500));
+          throw new Error(`Failed to parse provider output as JSON: ` +
+            `${parseErr.message} | Repair error: ${repairErr.message}`);
         }
       }
 
@@ -226,7 +244,7 @@ export async function callAI(prompt, settings, options = {}) {
       if (attempt < RATE_LIMIT_MAX_RETRIES && !provider.isRateLimitError(err.status || 0)) {
         const message = err.message || '';
         // Case-insensitive check: network errors, timeouts, transient server errors
-        const isRetryable = /timed out|network error|failed to parse api response/i.test(message);
+        const isRetryable = /timed out|network error|failed to parse (?:api response|provider output)/i.test(message);
         if (isRetryable) {
           const delay = calculateBackoff(attempt);
           if (options.onRetry) {
