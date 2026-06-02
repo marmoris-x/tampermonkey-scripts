@@ -99,9 +99,11 @@ export class OpenAICompatibleProvider extends AIProvider {
     if (opts.reasoning_effort) {
       body.reasoning_effort = opts.reasoning_effort;
     }
-    // DeepSeek: extra_body for thinking mode
+    // DeepSeek: thinking mode — extra_body ist Python-SDK-Konvention und
+    // gehoert NICHT in einen Raw-HTTP-Request. thinking auf oberster Ebene
+    // ist der korrekte Weg (siehe DeepSeek API Reference).
     if (this.config.type === PROVIDER_TYPES.DEEPSEEK && opts.reasoning_effort === 'max') {
-      body.extra_body = { thinking: { type: 'enabled' } };
+      body.thinking = { type: 'enabled' };
     }
     return body;
   }

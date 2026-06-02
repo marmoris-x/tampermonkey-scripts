@@ -2368,7 +2368,7 @@ buildRequest(prompt, options = {}) {
         body.reasoning_effort = opts.reasoning_effort;
       }
       if (this.config.type === PROVIDER_TYPES.DEEPSEEK && opts.reasoning_effort === "max") {
-        body.extra_body = { thinking: { type: "enabled" } };
+        body.thinking = { type: "enabled" };
       }
       return body;
     }
