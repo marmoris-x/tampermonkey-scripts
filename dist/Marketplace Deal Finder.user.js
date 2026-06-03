@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.15
+// @version         31.0.16
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -1482,13 +1482,14 @@ getRetryDelay(retryCount) {
   function escapeForPrompt(str) {
     return (str || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
   }
-  function buildAnalysisPrompt(adsData, searchContext, topX, siteName) {
+  function buildAnalysisPrompt(adsData, searchContext, topX, siteName, maxDescLength) {
+    maxDescLength = maxDescLength || 400;
     const stats = computePriceStats(adsData);
     const statsSection = stats ? "\n\n## Price Distribution\n- Min: " + stats.min + " EUR\n- Max: " + stats.max + " EUR\n- Avg: " + stats.mean + " EUR\n- Median: " + stats.median + " EUR\n- Listings with price: " + stats.count : "";
     let prompt = "You are a deal and price analysis expert.\n\nSEARCH CONTEXT: " + escapeForPrompt(searchContext) + "\n\nTASK:\nAnalyze the following " + siteName + " listings and find the " + topX + " BEST deals.\n\nCRITERIA for a good deal:\n- 35-90% below the usual new price\n- Guaranteed profit on resale possible\n- MUST BUY quality\n- Real added value for the buyer" + statsSection + "\n\nLISTINGS:\n";
     for (let adi = 0; adi < adsData.length; adi++) {
       const ad = adsData[adi];
-      prompt += "\nListing " + (adi + 1) + ":\nTitle: " + escapeForPrompt(ad.title) + "\nPrice: " + escapeForPrompt(ad.price) + "\nDescription: " + escapeForPrompt(ad.description).substring(0, 400) + "\nURL: " + escapeForPrompt(ad.url) + "\n---\n";
+      prompt += "\nListing " + (adi + 1) + ":\nTitle: " + escapeForPrompt(ad.title) + "\nPrice: " + escapeForPrompt(ad.price) + "\nDescription: " + escapeForPrompt(ad.description).substring(0, maxDescLength) + "\nURL: " + escapeForPrompt(ad.url) + "\n---\n";
     }
     prompt += '\nRESPONSE FORMAT (JSON ONLY, NO EXTRA TEXT):\n{\n  "topDeals": [\n    {\n      "title": "...",\n      "price": "...",\n      "description": "...",\n      "url": "...",\n      "reasoning": "Why is this a top deal? (1-2 sentences)",\n      "score": 85\n    }\n  ]\n}\n\nSort the top ' + topX + " deals by quality (best first). Score is 0-100 (100 = absolute bargain).\nReturn ONLY valid JSON. No markdown, no code fences, no extra text.";
     return prompt;
@@ -1853,9 +1854,8 @@ getRetryDelay(retryCount) {
       for (let tdi = 0; tdi < aiResult.topDeals.length; tdi++) {
         const rawDeal = aiResult.topDeals[tdi];
         let description = rawDeal.description || "";
-        if (!description && rawDeal.url && scrapedDescs.has(rawDeal.url)) {
-          description = scrapedDescs.get(rawDeal.url);
-        }
+        const fullDesc = rawDeal.url && scrapedDescs.has(rawDeal.url) ? scrapedDescs.get(rawDeal.url) : "";
+        if (fullDesc) description = fullDesc;
         const normalized = {
           title: rawDeal.title || "Unknown",
           price: rawDeal.price || "Unknown",
@@ -1918,14 +1918,15 @@ getRetryDelay(retryCount) {
             return {
               title: d.title,
               price: d.price,
-              description: (d.description || "").substring(0, 400),
-              url: d.url
+              description: d.description || "",
+url: d.url
             };
           }),
           (S.cachedSettings || {}).searchContext || "",
           dealsToReRank.length,
-          S.scraper.siteName
-        );
+          S.scraper.siteName,
+          3e3
+);
         const cs = S.cachedSettings || {};
         const reRankResult = await callAI(reRankPrompt, {
           providerType: cs.provider ? cs.provider.type : "gemini",
@@ -1957,7 +1958,7 @@ getRetryDelay(retryCount) {
           const remainingDeals = sortedTopDeals.filter(function(d) {
             return !reRankedUrls.has(d.url);
           });
-          S.allTopDeals = sortDealsByScore(reRankedDeals.concat(remainingDeals));
+          S.allTopDeals = reRankedDeals.concat(remainingDeals);
           Logger$1.log("Global re-ranking complete");
         }
       } catch (e) {

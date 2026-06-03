@@ -40,7 +40,8 @@ function escapeForPrompt(str) {
  * @param {string} siteName - "WILLHABEN" or "KLEINANZEIGEN"
  * @returns {string} Full prompt text
  */
-function buildAnalysisPrompt(adsData, searchContext, topX, siteName) {
+function buildAnalysisPrompt(adsData, searchContext, topX, siteName, maxDescLength) {
+  maxDescLength = maxDescLength || 400;
   const stats = computePriceStats(adsData);
   const statsSection = stats
     ? '\n\n## Price Distribution\n- Min: ' + stats.min + ' EUR\n- Max: ' + stats.max + ' EUR\n- Avg: ' + stats.mean + ' EUR\n- Median: ' + stats.median + ' EUR\n- Listings with price: ' + stats.count
@@ -56,7 +57,7 @@ function buildAnalysisPrompt(adsData, searchContext, topX, siteName) {
     const ad = adsData[adi];
     prompt += '\nListing ' + (adi + 1) + ':\nTitle: ' + escapeForPrompt(ad.title) +
       '\nPrice: ' + escapeForPrompt(ad.price) +
-      '\nDescription: ' + escapeForPrompt(ad.description).substring(0, 400) +
+      '\nDescription: ' + escapeForPrompt(ad.description).substring(0, maxDescLength) +
       '\nURL: ' + escapeForPrompt(ad.url) + '\n---\n';
   }
 
@@ -475,11 +476,11 @@ async function processCurrentPage(settings) {
     }
     for (let tdi = 0; tdi < aiResult.topDeals.length; tdi++) {
       const rawDeal = aiResult.topDeals[tdi];
+      // Prefer the scraped full description over the AI's summary — it's the
+      // ground-truth listing text needed for the final re-ranking prompt.
       let description = rawDeal.description || '';
-      // If AI returned empty description, use scraped one
-      if (!description && rawDeal.url && scrapedDescs.has(rawDeal.url)) {
-        description = scrapedDescs.get(rawDeal.url);
-      }
+      const fullDesc = rawDeal.url && scrapedDescs.has(rawDeal.url) ? scrapedDescs.get(rawDeal.url) : '';
+      if (fullDesc) description = fullDesc;
       const normalized = {
         title: rawDeal.title || 'Unknown',
         price: rawDeal.price || 'Unknown',
@@ -553,13 +554,14 @@ async function finishDealFinder() {
           return {
             title: d.title,
             price: d.price,
-            description: (d.description || '').substring(0, 400),
+            description: d.description || '',  // pass full description, no truncation
             url: d.url
           };
         }),
         (state.cachedSettings || {}).searchContext || '',
         dealsToReRank.length,
-        state.scraper.siteName
+        state.scraper.siteName,
+        3000  // higher limit so the re-ranking AI sees the full listing text
       );
 
       const cs = state.cachedSettings || {};
@@ -590,7 +592,11 @@ async function finishDealFinder() {
         });
         const reRankedUrls = new Set(reRankedDeals.map(function (d) { return d.url; }));
         const remainingDeals = sortedTopDeals.filter(function (d) { return !reRankedUrls.has(d.url); });
-        state.allTopDeals = sortDealsByScore(reRankedDeals.concat(remainingDeals));
+        // Keep the AI's positional order (best→worst per prompt), then append
+        // remaining deals in their original (per-page-score) order. Do NOT
+        // re-sort by numeric score — per-page and re-ranking scores are not
+        // calibrated against each other.
+        state.allTopDeals = reRankedDeals.concat(remainingDeals);
         Logger.log('Global re-ranking complete');
       }
     } catch (e) {
