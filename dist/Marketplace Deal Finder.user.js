@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.19
+// @version         31.0.20
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -1188,28 +1188,24 @@ getRetryDelay(retryCount) {
       container.style.display = "none";
       return;
     }
+    let currentPage = 0;
+    for (let di = 0; di < allTopDeals.length; di++) {
+      if (allTopDeals[di].page > currentPage) currentPage = allTopDeals[di].page;
+    }
+    const pageDeals = [];
+    for (let di = 0; di < allTopDeals.length; di++) {
+      if (allTopDeals[di].page === currentPage) pageDeals.push(allTopDeals[di]);
+    }
+    if (pageDeals.length === 0) {
+      container.style.display = "none";
+      return;
+    }
     const topX = cachedSettings && cachedSettings.topX || 3;
     container.style.display = "block";
-    const pageMaxScores = {};
-    for (let di = 0; di < allTopDeals.length; di++) {
-      const d = allTopDeals[di];
-      if (d.score != null && (!pageMaxScores[d.page] || d.score > pageMaxScores[d.page])) {
-        pageMaxScores[d.page] = Number(d.score);
-      }
-    }
-    const normalized = allTopDeals.map(function(d) {
-      const maxForPage = pageMaxScores[d.page] || 1;
-      return {
-        _deal: d,
-        _normScore: (Number(d.score) || 0) / maxForPage
-      };
+    pageDeals.sort(function(a, b) {
+      return (b && b.score || 0) - (a && a.score || 0);
     });
-    normalized.sort(function(a, b) {
-      return b._normScore - a._normScore;
-    });
-    const topItems = normalized.slice(0, Math.min(3, topX)).map(function(n) {
-      return n._deal;
-    });
+    const topItems = pageDeals.slice(0, Math.min(3, topX));
     content.innerHTML = topItems.map(function(deal, idx) {
       const safeScore = Number.isFinite(Number(deal.score)) ? Math.min(100, Math.max(0, Number(deal.score))) : null;
       const borderStyle = idx < topItems.length - 1 ? "border-bottom:1px solid #ffe082;" : "";
