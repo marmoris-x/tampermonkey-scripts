@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.21
+// @version         31.0.22
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -93,7 +93,7 @@
   const RETRY_BASE_DELAY = 2e3;
   const MAX_RATE_LIMIT_DELAY = 3e5;
   const JITTER_FACTOR = 0.2;
-  const MAX_OUTPUT_TOKENS = 8192;
+  const MAX_OUTPUT_TOKENS = 32e3;
   const DESCRIPTION_FETCH_DELAY = 1e3;
   const DESCRIPTION_MAX_RETRIES = 1;
   const DESCRIPTION_BACKOFF_FACTOR = 2;
@@ -101,9 +101,9 @@
   const SCROLL_DELAY = 1500;
   const MODEL_PRESETS = {
     gemini: [
-      { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", icon: "💡", desc: "Most economical, high thinking", options: { thinking_budget: -1 } },
-      { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", icon: "⚡", desc: "Latest flash, high thinking", options: { thinking_level: "high" } },
-      { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", icon: "🔥", desc: "Preview, high thinking", options: { thinking_level: "high" } },
+      { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", icon: "💡", desc: "Most economical, high thinking", options: { thinkingBudget: -1 } },
+      { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", icon: "⚡", desc: "Latest flash, high thinking", options: { thinkingLevel: "high" } },
+      { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", icon: "🔥", desc: "Preview, high thinking", options: { thinkingLevel: "high" } },
       { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", icon: "🧠", desc: "Max intelligence, preview" }
     ],
     openai: [
@@ -116,7 +116,8 @@
       { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", icon: "🧠", desc: "1.6T params, max thinking", options: { reasoning_effort: "max" } }
     ],
     claude: [
-      { id: "claude-opus-4-7", label: "Claude Opus 4.7", icon: "🧠", desc: "Latest flagship, extended thinking", options: { thinking: { type: "enabled", budget_tokens: 1e4 } } },
+      { id: "claude-opus-4-8", label: "Claude Opus 4.8", icon: "🧠", desc: "Latest flagship, adaptive thinking", options: { thinking: { type: "adaptive" } } },
+      { id: "claude-opus-4-7", label: "Claude Opus 4.7", icon: "🧠", desc: "Flagship, adaptive thinking", options: { thinking: { type: "adaptive" } } },
       { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", icon: "🎯", desc: "Best balance, extended thinking", options: { thinking: { type: "enabled", budget_tokens: 8e3 } } },
       { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", icon: "⚡", desc: "Fast & cheap" }
     ],
@@ -403,6 +404,9 @@
       await saveSetting(storagePrefix + "_dealfinder_results", null);
       return null;
     }
+  }
+  async function clearResults(storagePrefix) {
+    await saveSetting(storagePrefix + "_dealfinder_results", null);
   }
   function deepCopySettings(settings) {
     if (!settings) return settings;
@@ -2338,10 +2342,10 @@ buildRequest(prompt, options = {}) {
         }
       };
       const opts = this.config.providerOptions || {};
-      if (opts.thinking_budget !== void 0) {
-        body.generationConfig.thinkingConfig = { thinking_budget: opts.thinking_budget };
-      } else if (opts.thinking_level) {
-        body.generationConfig.thinkingConfig = { thinking_level: opts.thinking_level };
+      if (opts.thinkingBudget !== void 0) {
+        body.generationConfig.thinkingConfig = { thinkingBudget: opts.thinkingBudget };
+      } else if (opts.thinkingLevel) {
+        body.generationConfig.thinkingConfig = { thinkingLevel: opts.thinkingLevel };
       }
       return body;
     }
@@ -2462,22 +2466,29 @@ getAuthHeaders() {
     }
 buildRequest(prompt, options = {}) {
       const opts = this.config.providerOptions || {};
-      const isThinking = opts.thinking && opts.thinking.type === "enabled";
+      const isLegacyThinking = opts.thinking && opts.thinking.type === "enabled";
+      const isAdaptiveThinking = opts.thinking && opts.thinking.type === "adaptive";
       const body = {
         model: this.config.modelId,
-        max_tokens: options.maxOutputTokens ?? 8192,
+        max_tokens: options.maxOutputTokens ?? 32e3,
         system: "You extract structured deal data from classified ads. Always respond with valid JSON matching the requested schema. Return ONLY valid JSON — no markdown, no code fences, no explanation.",
         messages: [
           { role: "user", content: prompt }
         ]
       };
-      if (isThinking) {
+      if (isLegacyThinking) {
         if (!opts.thinking.budget_tokens || typeof opts.thinking.budget_tokens !== "number") {
-          console.warn("[MDF] Claude thinking enabled but budget_tokens missing or invalid — disabling thinking");
+          console.warn("[MDF] Claude legacy thinking enabled but budget_tokens missing — disabling");
         } else {
+          const minMax = opts.thinking.budget_tokens + 4096;
+          if (body.max_tokens <= opts.thinking.budget_tokens) {
+            body.max_tokens = Math.max(body.max_tokens, minMax);
+          }
           body.thinking = opts.thinking;
-          body.temperature = 1;
         }
+      }
+      if (isAdaptiveThinking) {
+        body.thinking = opts.thinking;
       }
       if (!body.thinking) {
         body.temperature = options.temperature ?? 0.1;

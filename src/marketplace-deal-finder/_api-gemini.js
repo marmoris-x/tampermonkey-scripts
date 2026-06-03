@@ -68,12 +68,12 @@ export class GeminiProvider extends AIProvider {
         }
       }
     };
-    // Apply thinking config from providerOptions
+    // Apply thinking config from providerOptions (camelCase for REST API)
     const opts = this.config.providerOptions || {};
-    if (opts.thinking_budget !== undefined) {
-      body.generationConfig.thinkingConfig = { thinking_budget: opts.thinking_budget };
-    } else if (opts.thinking_level) {
-      body.generationConfig.thinkingConfig = { thinking_level: opts.thinking_level };
+    if (opts.thinkingBudget !== undefined) {
+      body.generationConfig.thinkingConfig = { thinkingBudget: opts.thinkingBudget };
+    } else if (opts.thinkingLevel) {
+      body.generationConfig.thinkingConfig = { thinkingLevel: opts.thinkingLevel };
     }
     return body;
   }

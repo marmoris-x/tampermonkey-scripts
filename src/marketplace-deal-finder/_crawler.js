@@ -4,7 +4,7 @@
 import { createLogger } from './_logger.js';
 import { S as state } from './_state.js';
 import { callAI } from './_api-router.js';
-import { loadCrawlState, saveCrawlState, clearCrawlState, saveResults, loadResults, deepCopySettings, saveSetting, loadSetting } from './_storage.js';
+import { loadCrawlState, saveCrawlState, clearCrawlState, clearResults, saveResults, loadResults, deepCopySettings, saveSetting, loadSetting } from './_storage.js';
 import { loadSettings, saveSettings } from './_settings.js';
 import { deduplicateDeals, computePriceStats, normalizeUrl, sortDealsByScore } from './_ranker.js';
 import { updateProgress, updateLiveRanking, resetUI, setUIRunningState, showWarning } from './_ui-progress.js';

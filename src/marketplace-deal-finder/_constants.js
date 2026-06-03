@@ -32,7 +32,7 @@ export const RATE_LIMIT_BASE_DELAY = 5000;
 export const RETRY_BASE_DELAY = 2000;
 export const MAX_RATE_LIMIT_DELAY = 300000;
 export const JITTER_FACTOR = 0.2;
-export const MAX_OUTPUT_TOKENS = 8192;
+export const MAX_OUTPUT_TOKENS = 32000;
 export const DESCRIPTION_FETCH_DELAY = 1000;
 export const DESCRIPTION_MAX_RETRIES = 1;
 export const DESCRIPTION_BACKOFF_FACTOR = 2;
@@ -53,9 +53,9 @@ export const DEAL_KEYS = {
 /** @constant {Object<string, Array<{id: string, label: string, icon: string, desc: string, options?: Object}>>} */
 export const MODEL_PRESETS = {
   gemini: [
-    { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', icon: '💡', desc: 'Most economical, high thinking', options: { thinking_budget: -1 } },
-    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', icon: '⚡', desc: 'Latest flash, high thinking', options: { thinking_level: 'high' } },
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', icon: '🔥', desc: 'Preview, high thinking', options: { thinking_level: 'high' } },
+    { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', icon: '💡', desc: 'Most economical, high thinking', options: { thinkingBudget: -1 } },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', icon: '⚡', desc: 'Latest flash, high thinking', options: { thinkingLevel: 'high' } },
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', icon: '🔥', desc: 'Preview, high thinking', options: { thinkingLevel: 'high' } },
     { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', icon: '🧠', desc: 'Max intelligence, preview' }
   ],
   openai: [
@@ -68,7 +68,8 @@ export const MODEL_PRESETS = {
     { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', icon: '🧠', desc: '1.6T params, max thinking', options: { reasoning_effort: 'max' } }
   ],
   claude: [
-    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', icon: '🧠', desc: 'Latest flagship, extended thinking', options: { thinking: { type: 'enabled', budget_tokens: 10000 } } },
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', icon: '🧠', desc: 'Latest flagship, adaptive thinking', options: { thinking: { type: 'adaptive' } } },
+    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', icon: '🧠', desc: 'Flagship, adaptive thinking', options: { thinking: { type: 'adaptive' } } },
     { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', icon: '🎯', desc: 'Best balance, extended thinking', options: { thinking: { type: 'enabled', budget_tokens: 8000 } } },
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', icon: '⚡', desc: 'Fast & cheap' }
   ],

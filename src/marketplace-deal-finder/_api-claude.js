@@ -39,28 +39,41 @@ export class ClaudeProvider extends AIProvider {
    */
   buildRequest(prompt, options = {}) {
     const opts = this.config.providerOptions || {};
-    const isThinking = opts.thinking && opts.thinking.type === 'enabled';
-
+    const isLegacyThinking = opts.thinking && opts.thinking.type === 'enabled';
+    const isAdaptiveThinking = opts.thinking && opts.thinking.type === 'adaptive';
     const body = {
       model: this.config.modelId,
-      max_tokens: options.maxOutputTokens ?? 8192,
+      max_tokens: options.maxOutputTokens ?? 32000,
       system: 'You extract structured deal data from classified ads. Always respond with valid JSON matching the requested schema. Return ONLY valid JSON — no markdown, no code fences, no explanation.',
       messages: [
         { role: 'user', content: prompt }
       ]
     };
-    // Apply thinking config from providerOptions with validation.
-    // Extended thinking requires temperature=1 and a valid budget_tokens.
-    if (isThinking) {
+
+    // Legacy extended thinking (deprecated on Opus 4.6/Sonnet 4.6, removed on Opus 4.7+).
+    // Requires budget_tokens < max_tokens (strict less-than per Anthropic API).
+    if (isLegacyThinking) {
       if (!opts.thinking.budget_tokens || typeof opts.thinking.budget_tokens !== 'number') {
-        console.warn('[MDF] Claude thinking enabled but budget_tokens missing or invalid — disabling thinking');
+        console.warn('[MDF] Claude legacy thinking enabled but budget_tokens missing — disabling');
       } else {
+        // Ensure max_tokens > budget_tokens with safety margin for actual response
+        const minMax = opts.thinking.budget_tokens + 4096;
+        if (body.max_tokens <= opts.thinking.budget_tokens) {
+          body.max_tokens = Math.max(body.max_tokens, minMax);
+        }
         body.thinking = opts.thinking;
-        // Extended thinking requires temperature=1
-        body.temperature = 1;
       }
     }
-    // Only set temperature if thinking is not active (thinking forces temperature=1)
+
+    // Adaptive thinking (required for Opus 4.7+).
+    // No budget_tokens — model manages thinking budget automatically.
+    if (isAdaptiveThinking) {
+      body.thinking = opts.thinking;
+    }
+
+    // CRITICAL: Never set temperature when any thinking mode is active.
+    // Opus 4.7/4.8 reject any non-default temperature (even 1.0) with 400.
+    // Opus 4.6/Sonnet 4.6 tolerate it but Anthropic recommends omitting.
     if (!body.thinking) {
       body.temperature = options.temperature ?? 0.1;
     }
