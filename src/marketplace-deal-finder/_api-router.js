@@ -36,25 +36,38 @@ function gmRequest(params, signal) {
     const details = {
       ...params,
       onload(resp) {
+        cleanup();
         resolve({ status: resp.status, responseText: resp.responseText, responseHeaders: resp.responseHeaders });
       },
       onerror(err) {
+        cleanup();
         reject(new Error(`GM_xmlhttpRequest failed: ${err?.finalUrl || err?.status || 'network error'}`));
       },
       ontimeout() {
+        cleanup();
         reject(new Error(`GM_xmlhttpRequest timed out after ${params.timeout || REQUEST_TIMEOUT}ms`));
       }
     };
 
+    /** @type {Object|null} */
+    let handle = null;
+
+    const cleanup = () => {
+      if (signal) signal.removeEventListener('abort', abortHandler);
+    };
+
     const abortHandler = () => {
+      cleanup();
+      try { if (handle && handle.abort) handle.abort(); } catch (e) { /* ignore */ }
       reject(new DOMException('Aborted', 'AbortError'));
     };
+
     if (signal) {
       signal.addEventListener('abort', abortHandler, { once: true });
     }
 
     try {
-      GM_xmlhttpRequest(details);
+      handle = GM_xmlhttpRequest(details);
     } catch (err) {
       reject(new Error(`GM_xmlhttpRequest threw: ${err.message}`));
     }

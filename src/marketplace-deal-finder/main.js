@@ -47,7 +47,8 @@ async function waitForPage(scraper) {
  * Main initialization function.
  * Sets up state, creates UI elements, wires event handlers, and checks for crawl resume.
  */
-async function init() {
+async function init(retryCount) {
+  retryCount = retryCount || 0;
   try {
     const scraper = getScraper();
     setScraper(scraper);
@@ -95,12 +96,13 @@ async function init() {
 
   } catch (error) {
     Logger.error('Initialization error:', error);
-    // Auto-retry once
-    await new Promise(function (r) { setTimeout(r, 3000); });
-    init()['catch'](function (e) {
-      Logger.error('Fatal init failure after retry:', e);
+    if (retryCount >= MAX_INIT_RETRIES) {
+      Logger.error('Fatal init failure after ' + MAX_INIT_RETRIES + ' retries:', error);
       console.error('[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.');
-    });
+      return;
+    }
+    await new Promise(function (r) { setTimeout(r, 3000); });
+    return init(retryCount + 1);
   }
 }
 

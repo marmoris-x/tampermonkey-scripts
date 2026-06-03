@@ -100,17 +100,32 @@ function fetchFullDescription(url, descSelectors, retryCount) {
     return Promise.resolve({ success: true, description: desc });
   }
   return new Promise(function (resolve) {
-    GM_xmlhttpRequest({
+    var handle = null;
+    var done = false;
+    var abortSignal = state.abortController ? state.abortController.signal : null;
+
+    function abortIfStopped() {
+      if (done) return true;
+      if (state.shouldStop || (abortSignal && abortSignal.aborted)) {
+        done = true;
+        try { if (handle && handle.abort) handle.abort(); } catch (e) { /* ignore */ }
+        resolve({ success: false, description: '' });
+        return true;
+      }
+      return false;
+    }
+
+    handle = GM_xmlhttpRequest({
       method: 'GET',
       url: url,
-      timeout: C.REQUEST_TIMEOUT,
+      timeout: 10000,
       onload: function (response) {
+        if (abortIfStopped()) return;
         try {
           if (response.status >= 200 && response.status < 300) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(response.responseText, 'text/html');
             let fullDesc = null;
-            // 1. Page-specific selectors
             for (let si = 0; si < descSelectors.length; si++) {
               const element = doc.querySelector(descSelectors[si]);
               if (element && element.textContent.trim().length > 20) {
@@ -118,14 +133,12 @@ function fetchFullDescription(url, descSelectors, retryCount) {
                 break;
               }
             }
-            // 2. Generic fallback: schema.org itemprop="description"
             if (!fullDesc) {
               const itempropEl = doc.querySelector('[itemprop="description"]');
               if (itempropEl && itempropEl.textContent.trim().length > 20) {
                 fullDesc = itempropEl.textContent.replace(/\s+/g, ' ').trim();
               }
             }
-            // 3. Generic fallback: meta name="description" content
             if (!fullDesc) {
               const metaDesc = doc.querySelector('meta[name="description"]');
               if (metaDesc && metaDesc.getAttribute('content') && metaDesc.getAttribute('content').trim().length > 20) {
@@ -133,6 +146,7 @@ function fetchFullDescription(url, descSelectors, retryCount) {
               }
             }
             if (fullDesc) {
+              done = true;
               if (state.descriptionCache.size >= C.MAX_CACHE_SIZE) {
                 const firstKey = state.descriptionCache.keys().next().value;
                 state.descriptionCache.delete(firstKey);
@@ -143,26 +157,32 @@ function fetchFullDescription(url, descSelectors, retryCount) {
             }
           }
         } catch (e) { /* fall through to retry */ }
-        const delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
-        if (retryCount < C.DESCRIPTION_MAX_RETRIES && !state.shouldStop) {
+        if (abortIfStopped()) return;
+        var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
+        if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
           setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, delay);
         } else {
+          done = true;
           resolve({ success: false, description: '' });
         }
       },
       onerror: function () {
-        const delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
-        if (retryCount < C.DESCRIPTION_MAX_RETRIES && !state.shouldStop) {
+        if (abortIfStopped()) return;
+        var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
+        if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
           setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, delay);
         } else {
+          done = true;
           resolve({ success: false, description: '' });
         }
       },
       ontimeout: function () {
-        const delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
-        if (retryCount < C.DESCRIPTION_MAX_RETRIES && !state.shouldStop) {
+        if (abortIfStopped()) return;
+        var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
+        if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
           setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, delay);
         } else {
+          done = true;
           resolve({ success: false, description: '' });
         }
       }
@@ -176,10 +196,26 @@ function fetchFullDescription(url, descSelectors, retryCount) {
  * @param {Object} settings - Current settings
  */
 async function saveCrawlStateAndNavigate(href, settings) {
+  // Strip descriptions from allTopDeals before serializing — they can be
+  // several KB per deal and cause "Message length exceeded" on large crawls.
+  // Descriptions are re-fetched in processCurrentPage after resume, so we
+  // only need url, score, page, title, and price to continue.
+  var strippedDeals = [];
+  for (var di = 0; di < state.allTopDeals.length; di++) {
+    var d = state.allTopDeals[di];
+    strippedDeals.push({
+      url: d.url,
+      title: d.title,
+      price: d.price,
+      score: d.score,
+      page: d.page,
+      reasoning: d.reasoning
+    });
+  }
   const crawlState = {
     currentPage: state.currentPage,
     currentUrl: window.location.href,
-    allTopDeals: state.allTopDeals,
+    allTopDeals: strippedDeals,
     maxPages: settings.maxPages
   };
   await saveCrawlState(crawlState, state.scraper.storagePrefix);
@@ -231,6 +267,7 @@ async function startDealFinder() {
   state.cachedSettings = result.cachedSettings;
   const settings = result.settings;
 
+  settings.currentProvider = providerType;
   settings.provider = {
     type: providerType,
     apiKey: apiKey,
@@ -259,6 +296,7 @@ async function startDealFinder() {
   state.isPaused = false;
   state.shouldStop = false;
   state.captchaPaused = false;
+  state.finished = false;
 
   setUIRunningState(prefix);
 
@@ -532,6 +570,11 @@ async function processCurrentPage(settings) {
  * Finalizes the deal finding process.
  */
 async function finishDealFinder() {
+  // Idempotency guard — prevent double invocation from processCurrentPage
+  // and startDealFinder's catch block (B9).
+  if (state.finished) return;
+  state.finished = true;
+
   const prefix = state.scraper.storagePrefix;
   updateProgress(prefix, 'Erstelle finale Ranking-Liste...', 95, 'info');
   await clearCrawlState(prefix);
@@ -546,8 +589,9 @@ async function finishDealFinder() {
 
   if (state.shouldStop) {
     updateProgress(prefix, 'Crawl gestoppt. Speichere bisherige Deals...', 100, 'warning');
-    await saveResults({ deals: state.allTopDeals, pages: state.currentPage, timestamp: new Date().toISOString() }, prefix);
-    switchToResultsView(prefix, state.allTopDeals);
+    const dedupedStopped = deduplicateDeals(state.allTopDeals);
+    await saveResults({ deals: dedupedStopped, pages: state.currentPage, timestamp: new Date().toISOString() }, prefix);
+    switchToResultsView(prefix, dedupedStopped);
     attachResultsListeners(prefix, makeResultsCallbacks(prefix));
     state.allTopDeals = [];
     resetUI(prefix);

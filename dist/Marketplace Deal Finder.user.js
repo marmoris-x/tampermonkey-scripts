@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.22
+// @version         31.0.23
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -216,6 +216,19 @@
       const ariaDisabled = nextButton.getAttribute("aria-disabled") === "true";
       const href = nextButton.getAttribute("href");
       console.log("[MDF-WH] Next button disabled:", isDisabled, "| aria-disabled:", ariaDisabled, "| href:", href);
+      if (!isDisabled && !ariaDisabled && !href) {
+        try {
+          var url = new URL(location.href);
+          var nextPage = currentPage + 1;
+          url.searchParams.set("page", String(nextPage));
+          var nextUrl = url.pathname + url.search;
+          console.log("[MDF-WH] Constructed next page URL from params:", nextUrl);
+          return nextUrl;
+        } catch (e) {
+          console.warn("[MDF-WH] Failed to construct next page URL:", e);
+          return false;
+        }
+      }
       if (!isDisabled && !ariaDisabled && href) {
         try {
           if (new URL(href, location.href).href === location.href) {
@@ -535,7 +548,7 @@ currentProvider: PROVIDER_TYPES.GEMINI,
     }
   }
   async function saveSettings(storagePrefix, settings) {
-    const toStore = { ...settings };
+    const toStore = { ...settings, providers: { ...settings.providers } };
     if (toStore.provider && toStore.currentProvider && toStore.providers) {
       toStore.providers[toStore.currentProvider] = { ...toStore.provider };
     }
@@ -894,23 +907,35 @@ getRetryDelay(retryCount) {
       const details = {
         ...params,
         onload(resp) {
+          cleanup();
           resolve({ status: resp.status, responseText: resp.responseText, responseHeaders: resp.responseHeaders });
         },
         onerror(err) {
+          cleanup();
           reject(new Error(`GM_xmlhttpRequest failed: ${(err == null ? void 0 : err.finalUrl) || (err == null ? void 0 : err.status) || "network error"}`));
         },
         ontimeout() {
+          cleanup();
           reject(new Error(`GM_xmlhttpRequest timed out after ${params.timeout || REQUEST_TIMEOUT}ms`));
         }
       };
+      let handle = null;
+      const cleanup = () => {
+        if (signal) signal.removeEventListener("abort", abortHandler);
+      };
       const abortHandler = () => {
+        cleanup();
+        try {
+          if (handle && handle.abort) handle.abort();
+        } catch (e) {
+        }
         reject(new DOMException("Aborted", "AbortError"));
       };
       if (signal) {
         signal.addEventListener("abort", abortHandler, { once: true });
       }
       try {
-        GM_xmlhttpRequest(details);
+        handle = GM_xmlhttpRequest(details);
       } catch (err) {
         reject(new Error(`GM_xmlhttpRequest threw: ${err.message}`));
       }
@@ -1528,11 +1553,28 @@ getRetryDelay(retryCount) {
       return Promise.resolve({ success: true, description: desc });
     }
     return new Promise(function(resolve) {
-      GM_xmlhttpRequest({
+      var handle = null;
+      var done = false;
+      var abortSignal = S.abortController ? S.abortController.signal : null;
+      function abortIfStopped() {
+        if (done) return true;
+        if (S.shouldStop || abortSignal && abortSignal.aborted) {
+          done = true;
+          try {
+            if (handle && handle.abort) handle.abort();
+          } catch (e) {
+          }
+          resolve({ success: false, description: "" });
+          return true;
+        }
+        return false;
+      }
+      handle = GM_xmlhttpRequest({
         method: "GET",
         url,
-        timeout: REQUEST_TIMEOUT,
+        timeout: 1e4,
         onload: function(response) {
+          if (abortIfStopped()) return;
           try {
             if (response.status >= 200 && response.status < 300) {
               const parser = new DOMParser();
@@ -1558,6 +1600,7 @@ getRetryDelay(retryCount) {
                 }
               }
               if (fullDesc) {
+                done = true;
                 if (S.descriptionCache.size >= MAX_CACHE_SIZE) {
                   const firstKey = S.descriptionCache.keys().next().value;
                   S.descriptionCache.delete(firstKey);
@@ -1569,32 +1612,38 @@ getRetryDelay(retryCount) {
             }
           } catch (e) {
           }
-          const delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
-          if (retryCount < DESCRIPTION_MAX_RETRIES && !S.shouldStop) {
+          if (abortIfStopped()) return;
+          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
+          if (retryCount < DESCRIPTION_MAX_RETRIES) {
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
             }, delay);
           } else {
+            done = true;
             resolve({ success: false, description: "" });
           }
         },
         onerror: function() {
-          const delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
-          if (retryCount < DESCRIPTION_MAX_RETRIES && !S.shouldStop) {
+          if (abortIfStopped()) return;
+          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
+          if (retryCount < DESCRIPTION_MAX_RETRIES) {
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
             }, delay);
           } else {
+            done = true;
             resolve({ success: false, description: "" });
           }
         },
         ontimeout: function() {
-          const delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
-          if (retryCount < DESCRIPTION_MAX_RETRIES && !S.shouldStop) {
+          if (abortIfStopped()) return;
+          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
+          if (retryCount < DESCRIPTION_MAX_RETRIES) {
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
             }, delay);
           } else {
+            done = true;
             resolve({ success: false, description: "" });
           }
         }
@@ -1602,10 +1651,22 @@ getRetryDelay(retryCount) {
     });
   }
   async function saveCrawlStateAndNavigate(href, settings) {
+    var strippedDeals = [];
+    for (var di = 0; di < S.allTopDeals.length; di++) {
+      var d = S.allTopDeals[di];
+      strippedDeals.push({
+        url: d.url,
+        title: d.title,
+        price: d.price,
+        score: d.score,
+        page: d.page,
+        reasoning: d.reasoning
+      });
+    }
     const crawlState = {
       currentPage: S.currentPage,
       currentUrl: window.location.href,
-      allTopDeals: S.allTopDeals,
+      allTopDeals: strippedDeals,
       maxPages: settings.maxPages
     };
     await saveCrawlState(crawlState, S.scraper.storagePrefix);
@@ -1648,6 +1709,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     const result = await loadSettings(prefix, S.cachedSettings);
     S.cachedSettings = result.cachedSettings;
     const settings = result.settings;
+    settings.currentProvider = providerType;
     settings.provider = {
       type: providerType,
       apiKey,
@@ -1672,6 +1734,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     S.isPaused = false;
     S.shouldStop = false;
     S.captchaPaused = false;
+    S.finished = false;
     setUIRunningState(prefix);
     try {
       await processCurrentPage(settings);
@@ -1914,6 +1977,8 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     }
   }
   async function finishDealFinder() {
+    if (S.finished) return;
+    S.finished = true;
     const prefix = S.scraper.storagePrefix;
     updateProgress(prefix, "Erstelle finale Ranking-Liste...", 95, "info");
     await clearCrawlState(prefix);
@@ -1926,8 +1991,9 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     }
     if (S.shouldStop) {
       updateProgress(prefix, "Crawl gestoppt. Speichere bisherige Deals...", 100, "warning");
-      await saveResults({ deals: S.allTopDeals, pages: S.currentPage, timestamp: ( new Date()).toISOString() }, prefix);
-      switchToResultsView(prefix, S.allTopDeals);
+      const dedupedStopped = deduplicateDeals(S.allTopDeals);
+      await saveResults({ deals: dedupedStopped, pages: S.currentPage, timestamp: ( new Date()).toISOString() }, prefix);
+      switchToResultsView(prefix, dedupedStopped);
       attachResultsListeners(prefix, makeResultsCallbacks(prefix));
       S.allTopDeals = [];
       resetUI(prefix);
@@ -2247,7 +2313,8 @@ url: d.url
       }
     }
   }
-  async function init() {
+  async function init(retryCount) {
+    retryCount = retryCount || 0;
     try {
       const scraper = getScraper();
       setScraper(scraper);
@@ -2287,13 +2354,15 @@ url: d.url
       await resumeCrawlIfActive(scraper);
     } catch (error) {
       Logger.error("Initialization error:", error);
+      if (retryCount >= MAX_INIT_RETRIES) {
+        Logger.error("Fatal init failure after " + MAX_INIT_RETRIES + " retries:", error);
+        console.error("[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.");
+        return;
+      }
       await new Promise(function(r) {
         setTimeout(r, 3e3);
       });
-      init()["catch"](function(e) {
-        Logger.error("Fatal init failure after retry:", e);
-        console.error("[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.");
-      });
+      return init(retryCount + 1);
     }
   }
   class GeminiProvider extends AIProvider {

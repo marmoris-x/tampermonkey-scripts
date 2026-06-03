@@ -120,6 +120,22 @@ export function goToNextPage(currentPage) {
     const ariaDisabled = nextButton.getAttribute('aria-disabled') === 'true';
     const href = nextButton.getAttribute('href');
     console.log('[MDF-WH] Next button disabled:', isDisabled, '| aria-disabled:', ariaDisabled, '| href:', href);
+    // Button is not disabled but has no href — Willhaben sometimes uses
+    // <button> elements for pagination (JS-driven navigation).
+    // Fall back to constructing the next-page URL from the current URL.
+    if (!isDisabled && !ariaDisabled && !href) {
+      try {
+        var url = new URL(location.href);
+        var nextPage = currentPage + 1;
+        url.searchParams.set('page', String(nextPage));
+        var nextUrl = url.pathname + url.search;
+        console.log('[MDF-WH] Constructed next page URL from params:', nextUrl);
+        return nextUrl;
+      } catch (e) {
+        console.warn('[MDF-WH] Failed to construct next page URL:', e);
+        return false;
+      }
+    }
     if (!isDisabled && !ariaDisabled && href) {
       try {
         if (new URL(href, location.href).href === location.href) {

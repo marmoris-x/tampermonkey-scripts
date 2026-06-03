@@ -158,7 +158,7 @@ export async function loadSettings(storagePrefix, cachedSettings) {
  * @param {Object} settings - Settings object to save
  */
 export async function saveSettings(storagePrefix, settings) {
-  const toStore = { ...settings };
+  const toStore = { ...settings, providers: { ...settings.providers } };
   // Sync transient provider back into providers map
   if (toStore.provider && toStore.currentProvider && toStore.providers) {
     toStore.providers[toStore.currentProvider] = { ...toStore.provider };
