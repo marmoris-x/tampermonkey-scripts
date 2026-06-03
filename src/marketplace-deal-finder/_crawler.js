@@ -283,7 +283,7 @@ async function startDealFinder() {
   state.cachedSettings = deepCopySettings(settings);
   state.cachedSettings.provider = state.cachedSettings.providers[state.cachedSettings.currentProvider] || {};
 
-  if ('Notification' in window) {
+  if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission()['catch'](function () {});
   }
 
@@ -389,16 +389,80 @@ async function processCurrentPage(settings) {
   if (state.currentPage > maxPages) { await finishDealFinder(); return; }
 
   updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade alle Anzeigen...', 10, 'info');
+
+  // Trigger lazy-load by scrolling, then wait for DOM to settle instead of
+  // using fixed delays. A MutationObserver watches the result container;
+  // we consider loading "done" when no new elements have been added for
+  // a settle period (or a hard timeout is reached).
+  var settleMs = 800;
+  var hardTimeoutMs = 8000;
+  var scrollDone = false;
+
+  // Kick off scroll — bottom first, then top
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  await new Promise(function (r) { setTimeout(r, C.SCROLL_DELAY); });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  await new Promise(function (r) { setTimeout(r, C.SCROLL_DELAY); });
+  setTimeout(function () {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollDone = true;
+  }, 600);
+
+  // Observe document.body for DOM mutations (lazy-loaded ad cards)
+  var settleTimer = null;
+  var observerDone = false;
+
+  await new Promise(function (resolveObserve) {
+    var observer = new MutationObserver(function () {
+      if (!scrollDone) return;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(function () {
+        observer.disconnect();
+        clearTimeout(hardTimer);
+        observerDone = true;
+        resolveObserve();
+      }, settleMs);
+    });
+
+    var hardTimer = setTimeout(function () {
+      try { observer.disconnect(); } catch (e) { /* ignore */ }
+      observerDone = true;
+      resolveObserve();
+    }, hardTimeoutMs);
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // If no mutations happen at all, resolve after settleMs + scroll time
+    setTimeout(function () {
+      if (!observerDone) {
+        observer.disconnect();
+        clearTimeout(hardTimer);
+        observerDone = true;
+        resolveObserve();
+      }
+    }, settleMs + 1500);
+  });
 
   updateProgress(prefix, 'Seite ' + state.currentPage + ': Sammle Anzeigen...', 15, 'info');
   const selectors = scraper.findAds();
   if (!selectors) {
+    // Check for known CAPTCHA containers first (specific), then fall back
+    // to keyword match in page text (broad — can false-positive).
+    const captchaSelectors = [
+      'iframe[src*="challenges.cloudflare.com"]',
+      'iframe[src*="hcaptcha.com"]',
+      'iframe[src*="google.com/recaptcha"]',
+      '#challenge-form',
+      '.g-recaptcha',
+      '[id*="captcha"]',
+      '[class*="captcha"]'
+    ];
+    var hasCaptchaElement = false;
+    for (var ci = 0; ci < captchaSelectors.length; ci++) {
+      if (document.querySelector(captchaSelectors[ci])) {
+        hasCaptchaElement = true;
+        break;
+      }
+    }
     const pageText = (document.title + ' ' + document.body.innerText).toLowerCase();
-    if (pageText.indexOf('captcha') !== -1 || pageText.indexOf('challenge') !== -1) {
+    if (hasCaptchaElement || pageText.indexOf('captcha') !== -1 || pageText.indexOf('challenge') !== -1) {
       state.captchaPaused = true;
       const crawlState = {
         currentPage: state.currentPage,
@@ -642,7 +706,7 @@ async function finishDealFinder() {
           const orig = urlToDeal.get(rd.url);
           return {
             title: (orig && orig.title) || rd.title,
-            price: rd.price,
+            price: (orig && orig.price) || rd.price,
             description: (orig && orig.description) || rd.description,
             url: (orig && orig.url) || rd.url,
             score: rd.score,

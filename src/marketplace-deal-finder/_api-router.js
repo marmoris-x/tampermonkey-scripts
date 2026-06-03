@@ -253,8 +253,9 @@ export async function callAI(prompt, settings, options = {}) {
     } catch (err) {
       if (err.name === 'AbortError') throw err;
       lastError = err;
-      // For non-rate-limit errors, retry only if we have attempts left
-      if (attempt < RATE_LIMIT_MAX_RETRIES && !provider.isRateLimitError(err.status || 0)) {
+      // Retry only if we have attempts left. Rate-limit errors that reach
+      // here have already exhausted their retries above and are non-retryable.
+      if (attempt < RATE_LIMIT_MAX_RETRIES) {
         const message = err.message || '';
         // Case-insensitive check: network errors, timeouts, transient server errors
         const isRetryable = /timed out|network error|failed to parse (?:api response|provider output)/i.test(message);

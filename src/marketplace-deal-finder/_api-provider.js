@@ -78,14 +78,6 @@ export class AIProvider {
     return status === 401 || status === 403;
   }
 
-  /**
-   * Returns the delay in ms before the next retry attempt.
-   * @param {number} retryCount - 0-based retry attempt number
-   * @returns {number}
-   */
-  getRetryDelay(retryCount) {
-    return 2000 * Math.pow(2, retryCount);
-  }
 }
 
 /** @type {Map<string, typeof AIProvider>} */

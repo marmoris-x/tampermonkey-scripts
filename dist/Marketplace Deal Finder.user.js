@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.24
+// @version         31.0.25
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -98,7 +98,6 @@
   const DESCRIPTION_MAX_RETRIES = 1;
   const DESCRIPTION_BACKOFF_FACTOR = 2;
   const PAGE_TRANSITION_DELAY = 1500;
-  const SCROLL_DELAY = 1500;
   const MODEL_PRESETS = {
     gemini: [
       { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", icon: "💡", desc: "Most economical, high thinking", options: { thinkingBudget: -1 } },
@@ -878,9 +877,6 @@ isRateLimitError(status) {
 isAuthError(status) {
       return status === 401 || status === 403;
     }
-getRetryDelay(retryCount) {
-      return 2e3 * Math.pow(2, retryCount);
-    }
   }
   const registry = new Map();
   function registerProvider(type, providerClass) {
@@ -1066,7 +1062,7 @@ getRetryDelay(retryCount) {
       } catch (err) {
         if (err.name === "AbortError") throw err;
         lastError = err;
-        if (attempt < RATE_LIMIT_MAX_RETRIES && !provider.isRateLimitError(err.status || 0)) {
+        if (attempt < RATE_LIMIT_MAX_RETRIES) {
           const message = err.message || "";
           const isRetryable = /timed out|network error|failed to parse (?:api response|provider output)/i.test(message);
           if (isRetryable) {
@@ -1723,7 +1719,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     await saveSettings(prefix, settings);
     S.cachedSettings = deepCopySettings(settings);
     S.cachedSettings.provider = S.cachedSettings.providers[S.cachedSettings.currentProvider] || {};
-    if ("Notification" in window) {
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission()["catch"](function() {
       });
     }
@@ -1812,19 +1808,66 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       return;
     }
     updateProgress(prefix, "Seite " + S.currentPage + ": Lade alle Anzeigen...", 10, "info");
+    var settleMs = 800;
+    var hardTimeoutMs = 8e3;
+    var scrollDone = false;
     window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-    await new Promise(function(r) {
-      setTimeout(r, SCROLL_DELAY);
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    await new Promise(function(r) {
-      setTimeout(r, SCROLL_DELAY);
+    setTimeout(function() {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollDone = true;
+    }, 600);
+    var settleTimer = null;
+    var observerDone = false;
+    await new Promise(function(resolveObserve) {
+      var observer = new MutationObserver(function() {
+        if (!scrollDone) return;
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = setTimeout(function() {
+          observer.disconnect();
+          clearTimeout(hardTimer);
+          observerDone = true;
+          resolveObserve();
+        }, settleMs);
+      });
+      var hardTimer = setTimeout(function() {
+        try {
+          observer.disconnect();
+        } catch (e) {
+        }
+        observerDone = true;
+        resolveObserve();
+      }, hardTimeoutMs);
+      observer.observe(document.body, { childList: true, subtree: true });
+      setTimeout(function() {
+        if (!observerDone) {
+          observer.disconnect();
+          clearTimeout(hardTimer);
+          observerDone = true;
+          resolveObserve();
+        }
+      }, settleMs + 1500);
     });
     updateProgress(prefix, "Seite " + S.currentPage + ": Sammle Anzeigen...", 15, "info");
     const selectors = scraper.findAds();
     if (!selectors) {
+      const captchaSelectors = [
+        'iframe[src*="challenges.cloudflare.com"]',
+        'iframe[src*="hcaptcha.com"]',
+        'iframe[src*="google.com/recaptcha"]',
+        "#challenge-form",
+        ".g-recaptcha",
+        '[id*="captcha"]',
+        '[class*="captcha"]'
+      ];
+      var hasCaptchaElement = false;
+      for (var ci = 0; ci < captchaSelectors.length; ci++) {
+        if (document.querySelector(captchaSelectors[ci])) {
+          hasCaptchaElement = true;
+          break;
+        }
+      }
       const pageText = (document.title + " " + document.body.innerText).toLowerCase();
-      if (pageText.indexOf("captcha") !== -1 || pageText.indexOf("challenge") !== -1) {
+      if (hasCaptchaElement || pageText.indexOf("captcha") !== -1 || pageText.indexOf("challenge") !== -1) {
         S.captchaPaused = true;
         const crawlState = {
           currentPage: S.currentPage,
@@ -2037,7 +2080,7 @@ url: d.url
             const orig = urlToDeal.get(rd.url);
             return {
               title: orig && orig.title || rd.title,
-              price: rd.price,
+              price: orig && orig.price || rd.price,
               description: orig && orig.description || rd.description,
               url: orig && orig.url || rd.url,
               score: rd.score,
