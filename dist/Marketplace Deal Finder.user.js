@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.23
+// @version         31.0.24
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -10,13 +10,13 @@
 // @icon            https://i.imgur.com/oQmtRjQ.png
 // @homepageURL     https://github.com/marmoris-x/tampermonkey-scripts
 // @supportURL      https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL     https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Marketplace%20Deal%20Finder.user.js
-// @updateURL       https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Marketplace%20Deal%20Finder.user.js
+// @downloadURL     https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Marketplace%20Deal%20Finder.user.js
+// @updateURL       https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Marketplace%20Deal%20Finder.user.js
 // @match           https://www.willhaben.at/iad/kaufen-und-verkaufen/*
 // @match           https://www.kleinanzeigen.de/s-*
 // @match           https://www.kleinanzeigen.de/z-*
-// @require         https://raw.githubusercontent.com/Tampermonkey/utils/refs/heads/main/requires/gh_2215_make_GM_xhr_more_parallel_again.js
-// @sandbox         JavaScript
+// @require         https://raw.githubusercontent.com/Tampermonkey/utils/3b32b826e84ccc99a0a3e3d8d6e5ce0fa9834f23/requires/gh_2215_make_GM_xhr_more_parallel_again.js#sha256=qo7Imc1jg2AryApKESDzER/AO92l55w1dH7+xsxrx2I=
+// @sandbox         raw
 // @tag             search
 // @connect         willhaben.at
 // @connect         kleinanzeigen.de
