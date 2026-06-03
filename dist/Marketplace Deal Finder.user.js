@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.16
+// @version         31.0.17
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -1591,6 +1591,10 @@ getRetryDelay(retryCount) {
       maxPages: settings.maxPages
     };
     await saveCrawlState(crawlState, S.scraper.storagePrefix);
+    await saveSetting(
+      S.scraper.storagePrefix + "_dealfinder_resume",
+      JSON.stringify({ u: normalizeUrl(href) })
+    );
     window.location.href = href;
   }
   async function startDealFinder() {
@@ -2148,6 +2152,21 @@ url: d.url
     const normalizedCurrentUrl = normalizeUrl(rawState.currentUrl);
     const normalizedWindowUrl = normalizeUrl(window.location.href);
     const samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
+    const resumeRaw = await loadSetting(prefix + "_dealfinder_resume", null);
+    await saveSetting(prefix + "_dealfinder_resume", null);
+    let isScriptNavigation = false;
+    if (resumeRaw) {
+      try {
+        const flag = JSON.parse(resumeRaw);
+        isScriptNavigation = normalizeUrl(flag.u || "") === normalizeUrl(window.location.href);
+      } catch (e) {
+      }
+    }
+    if (!isScriptNavigation && !samePage) {
+      Logger$1.log("Stale crawl state from different search — clearing");
+      await clearCrawlState(prefix);
+      return;
+    }
     const pageIncrement = samePage ? SAME_PAGE_INCREMENT : NEW_PAGE_INCREMENT;
     Logger$1.log("Crawl state found - resuming from page " + (rawState.currentPage + pageIncrement));
     S.currentPage = rawState.currentPage + pageIncrement;

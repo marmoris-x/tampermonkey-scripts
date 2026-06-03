@@ -4,7 +4,7 @@
 import { createLogger } from './_logger.js';
 import { S as state } from './_state.js';
 import { callAI } from './_api-router.js';
-import { loadCrawlState, saveCrawlState, clearCrawlState, saveResults, loadResults, deepCopySettings } from './_storage.js';
+import { loadCrawlState, saveCrawlState, clearCrawlState, saveResults, loadResults, deepCopySettings, saveSetting, loadSetting } from './_storage.js';
 import { loadSettings, saveSettings } from './_settings.js';
 import { deduplicateDeals, computePriceStats, normalizeUrl, sortDealsByScore } from './_ranker.js';
 import { updateProgress, updateLiveRanking, resetUI, setUIRunningState, showWarning } from './_ui-progress.js';
@@ -183,6 +183,12 @@ async function saveCrawlStateAndNavigate(href, settings) {
     maxPages: settings.maxPages
   };
   await saveCrawlState(crawlState, state.scraper.storagePrefix);
+  // Signal to resumeCrawlIfActive that this is a script-initiated navigation.
+  // Stores the expected target URL so a failed/different navigation won't match.
+  await saveSetting(
+    state.scraper.storagePrefix + '_dealfinder_resume',
+    JSON.stringify({ u: normalizeUrl(href) })
+  );
   window.location.href = href;
 }
 
@@ -821,6 +827,26 @@ export async function resumeCrawlIfActive(scraper) {
   const normalizedCurrentUrl = normalizeUrl(rawState.currentUrl);
   const normalizedWindowUrl = normalizeUrl(window.location.href);
   const samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
+
+  // Consume the script-navigation flag to distinguish script-initiated
+  // navigation (multi-page crawl) from a user navigating to a new search.
+  // The flag stores the expected target URL so a failed redirect or
+  // manual navigation to a different page won't match.
+  const resumeRaw = await loadSetting(prefix + '_dealfinder_resume', null);
+  await saveSetting(prefix + '_dealfinder_resume', null);
+  let isScriptNavigation = false;
+  if (resumeRaw) {
+    try {
+      const flag = JSON.parse(resumeRaw);
+      isScriptNavigation = normalizeUrl(flag.u || '') === normalizeUrl(window.location.href);
+    } catch (e) { /* ignore malformed flag */ }
+  }
+
+  if (!isScriptNavigation && !samePage) {
+    Logger.log('Stale crawl state from different search — clearing');
+    await clearCrawlState(prefix);
+    return;
+  }
   const pageIncrement = samePage ? C.SAME_PAGE_INCREMENT : C.NEW_PAGE_INCREMENT;
   Logger.log('Crawl state found - resuming from page ' + (rawState.currentPage + pageIncrement));
 
