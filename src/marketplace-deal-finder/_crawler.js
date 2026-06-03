@@ -187,7 +187,9 @@ async function saveCrawlStateAndNavigate(href, settings) {
   // Stores the expected target URL so a failed/different navigation won't match.
   await saveSetting(
     state.scraper.storagePrefix + '_dealfinder_resume',
-    JSON.stringify({ u: normalizeUrl(href) })
+    // goToNextPage returns raw DOM href attributes (e.g. "?page=2", "/s-seite:2").
+    // Resolve against current URL so the flag matches window.location.href after navigation.
+    JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
   );
   window.location.href = href;
 }
