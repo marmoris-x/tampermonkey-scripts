@@ -522,6 +522,7 @@ async function finishDealFinder() {
   if (state.allTopDeals.length === 0) {
     updateProgress(prefix, 'Keine Deals gefunden!', 100, 'error', state.scraper.siteName === 'WILLHABEN');
     alert('Keine Top-Deals gefunden! Versuche andere Suchkriterien.');
+    state.allTopDeals = [];
     resetUI(prefix);
     return;
   }
@@ -531,6 +532,7 @@ async function finishDealFinder() {
     await saveResults({ deals: state.allTopDeals, pages: state.currentPage, timestamp: new Date().toISOString() }, prefix);
     switchToResultsView(prefix, state.allTopDeals);
     attachResultsListeners(prefix, makeResultsCallbacks(prefix));
+    state.allTopDeals = [];
     resetUI(prefix);
     return;
   }
@@ -610,6 +612,7 @@ async function finishDealFinder() {
 
   switchToResultsView(prefix, state.allTopDeals);
   attachResultsListeners(prefix, makeResultsCallbacks(prefix));
+  state.allTopDeals = [];
   resetUI(prefix);
 }
 
@@ -796,6 +799,16 @@ export async function resumeCrawlIfActive(scraper) {
   const rawState = await loadCrawlState(prefix);
   if (!rawState) {
     Logger.log('Normal session');
+    return;
+  }
+
+  // Validate that the current page actually has search results before resuming.
+  // A stale crawl state from a previous session should not auto-resume on a
+  // non-results page (e.g. single listing, different search).
+  const currentAds = scraper.findAds();
+  if (!currentAds) {
+    Logger.log('Stale crawl state found but current page has no search results — clearing');
+    await clearCrawlState(prefix);
     return;
   }
 

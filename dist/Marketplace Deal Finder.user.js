@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.14
+// @version         31.0.15
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -1146,6 +1146,10 @@ getRetryDelay(retryCount) {
     if (providerSelect) providerSelect.disabled = false;
     if (modelIdInput) modelIdInput.disabled = false;
     if (baseUrlInput) baseUrlInput.disabled = false;
+    const liveRanking = document.getElementById(prefix + "-live-ranking");
+    if (liveRanking) liveRanking.style.display = "none";
+    const progressContainer = document.getElementById(prefix + "-progress-container");
+    if (progressContainer) progressContainer.style.display = "none";
     setRunning(false);
   }
   function setUIRunningState(prefix) {
@@ -1172,6 +1176,10 @@ getRetryDelay(retryCount) {
     const container = document.getElementById(prefix + "-live-ranking");
     const content = document.getElementById(prefix + "-live-ranking-content");
     if (!container || !content) return;
+    if (!S.isRunning) {
+      container.style.display = "none";
+      return;
+    }
     if (!allTopDeals || allTopDeals.length === 0) {
       container.style.display = "none";
       return;
@@ -1885,6 +1893,7 @@ getRetryDelay(retryCount) {
     if (S.allTopDeals.length === 0) {
       updateProgress(prefix, "Keine Deals gefunden!", 100, "error", S.scraper.siteName === "WILLHABEN");
       alert("Keine Top-Deals gefunden! Versuche andere Suchkriterien.");
+      S.allTopDeals = [];
       resetUI(prefix);
       return;
     }
@@ -1893,6 +1902,7 @@ getRetryDelay(retryCount) {
       await saveResults({ deals: S.allTopDeals, pages: S.currentPage, timestamp: ( new Date()).toISOString() }, prefix);
       switchToResultsView(prefix, S.allTopDeals);
       attachResultsListeners(prefix, makeResultsCallbacks(prefix));
+      S.allTopDeals = [];
       resetUI(prefix);
       return;
     }
@@ -1967,6 +1977,7 @@ getRetryDelay(retryCount) {
     }
     switchToResultsView(prefix, S.allTopDeals);
     attachResultsListeners(prefix, makeResultsCallbacks(prefix));
+    S.allTopDeals = [];
     resetUI(prefix);
   }
   async function setupSettingsView(scraper) {
@@ -2125,6 +2136,12 @@ getRetryDelay(retryCount) {
     const rawState = await loadCrawlState(prefix);
     if (!rawState) {
       Logger$1.log("Normal session");
+      return;
+    }
+    const currentAds = scraper.findAds();
+    if (!currentAds) {
+      Logger$1.log("Stale crawl state found but current page has no search results — clearing");
+      await clearCrawlState(prefix);
       return;
     }
     const normalizedCurrentUrl = normalizeUrl(rawState.currentUrl);

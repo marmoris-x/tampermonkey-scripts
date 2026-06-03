@@ -2,7 +2,7 @@
 'use strict';
 
 import { esc } from './_dom.js';
-import { setRunning } from './_state.js';
+import { setRunning, S as state } from './_state.js';
 
 /* ─── Progress Display ─── */
 
@@ -97,6 +97,14 @@ export function resetUI(prefix) {
   if (providerSelect) providerSelect.disabled = false;
   if (modelIdInput) modelIdInput.disabled = false;
   if (baseUrlInput) baseUrlInput.disabled = false;
+
+  // Hide progress and live ranking containers when resetting to idle.
+  // Without this, stale containers from a previous crawl can remain visible.
+  const liveRanking = document.getElementById(prefix + '-live-ranking');
+  if (liveRanking) liveRanking.style.display = 'none';
+  const progressContainer = document.getElementById(prefix + '-progress-container');
+  if (progressContainer) progressContainer.style.display = 'none';
+
   setRunning(false);
 }
 
@@ -139,6 +147,12 @@ export function updateLiveRanking(prefix, allTopDeals, cachedSettings) {
   const container = document.getElementById(prefix + '-live-ranking');
   const content = document.getElementById(prefix + '-live-ranking-content');
   if (!container || !content) return;
+  // Guard: only show live ranking while a crawl is actually running.
+  // Prevents stale deals from a previous crawl appearing in the panel.
+  if (!state.isRunning) {
+    container.style.display = 'none';
+    return;
+  }
   if (!allTopDeals || allTopDeals.length === 0) {
     container.style.display = 'none';
     return;
