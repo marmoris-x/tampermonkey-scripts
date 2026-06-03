@@ -68,8 +68,8 @@ export const MODEL_PRESETS = {
     { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', icon: '🧠', desc: '1.6T params, max thinking', options: { reasoning_effort: 'max' } }
   ],
   claude: [
-    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', icon: '🧠', desc: 'Latest flagship, adaptive thinking', options: { thinking: { type: 'adaptive' } } },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', icon: '🎯', desc: 'Best balance, adaptive thinking', options: { thinking: { type: 'adaptive' } } },
+    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', icon: '🧠', desc: 'Latest flagship, extended thinking', options: { thinking: { type: 'enabled', budget_tokens: 10000 } } },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', icon: '🎯', desc: 'Best balance, extended thinking', options: { thinking: { type: 'enabled', budget_tokens: 8000 } } },
     { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', icon: '⚡', desc: 'Fast & cheap' }
   ],
   openrouter: [

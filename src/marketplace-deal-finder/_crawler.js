@@ -266,7 +266,7 @@ async function startDealFinder() {
     await processCurrentPage(settings);
   } catch (error) {
     Logger.error('Error:', error);
-    updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error', state.scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error');
     if (state.allTopDeals.length > 0) {
       await finishDealFinder();
     } else {
@@ -288,7 +288,7 @@ function pauseDealFinder() {
   pauseBtn.style.background = '#28a745';
   pauseBtn.removeEventListener('click', pauseDealFinder);
   pauseBtn.addEventListener('click', resumeDealFinder);
-  updateProgress(prefix, 'Pausiert - Klicke Fortsetzen...', 50, 'warning', state.scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Pausiert - Klicke Fortsetzen...', 50, 'warning');
 }
 
 /**
@@ -309,7 +309,7 @@ function resumeDealFinder() {
     const cs = state.cachedSettings || {};
     processCurrentPage(cs)['catch'](function (error) {
       Logger.error('Resume error:', error);
-      updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error', state.scraper.siteName === 'WILLHABEN');
+      updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error');
       if (state.allTopDeals.length > 0) {
         finishDealFinder()['catch'](function (e) { Logger.error('finishDealFinder after resume error:', e); });
       } else {
@@ -334,7 +334,7 @@ async function stopDealFinder() {
   const prefix = state.scraper.storagePrefix;
   await clearCrawlState(prefix);
   Logger.log('Crawl stopped by user');
-  updateProgress(prefix, 'Stoppe nach aktueller Seite...', 95, 'warning', state.scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Stoppe nach aktueller Seite...', 95, 'warning');
 }
 
 /**
@@ -350,13 +350,13 @@ async function processCurrentPage(settings) {
   if (state.shouldStop) { await finishDealFinder(); return; }
   if (state.currentPage > maxPages) { await finishDealFinder(); return; }
 
-  updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade alle Anzeigen...', 10, 'info', scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade alle Anzeigen...', 10, 'info');
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   await new Promise(function (r) { setTimeout(r, C.SCROLL_DELAY); });
   window.scrollTo({ top: 0, behavior: 'smooth' });
   await new Promise(function (r) { setTimeout(r, C.SCROLL_DELAY); });
 
-  updateProgress(prefix, 'Seite ' + state.currentPage + ': Sammle Anzeigen...', 15, 'info', scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Seite ' + state.currentPage + ': Sammle Anzeigen...', 15, 'info');
   const selectors = scraper.findAds();
   if (!selectors) {
     const pageText = (document.title + ' ' + document.body.innerText).toLowerCase();
@@ -370,18 +370,19 @@ async function processCurrentPage(settings) {
       };
       await saveCrawlState(crawlState, prefix);
       pauseDealFinder();
-      updateProgress(prefix, 'CAPTCHA erkannt! Bitte loesen und Fortsetzen klicken', 50, 'warning', scraper.siteName === 'WILLHABEN');
+      updateProgress(prefix, 'CAPTCHA erkannt! Bitte loesen und Fortsetzen klicken', 50, 'warning');
       return;
     }
     throw new Error('Keine Anzeigen gefunden');
   }
 
-  updateProgress(prefix, 'Seite ' + state.currentPage + ': Sammle Basis-Daten...', 20, 'info', scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Seite ' + state.currentPage + ': Sammle Basis-Daten...', 20, 'info');
   const seenUrls = new Set();
   const adsData = [];
   const adArray = Array.from(selectors.adEntries);
   for (let adi = 0; adi < adArray.length; adi++) {
     const info = scraper.extractBasicInfo(adArray[adi]);
+    info.url = normalizeUrl(info.url) || info.url;
     if (!seenUrls.has(info.url)) {
       seenUrls.add(info.url);
       adsData.push(info);
@@ -389,7 +390,7 @@ async function processCurrentPage(settings) {
   }
   Logger.log(adsData.length + ' ads found (deduplicated)');
 
-  updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (0/' + adsData.length + ')...', 30, 'info', scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (0/' + adsData.length + ')...', 30, 'info');
   let completedCount = 0;
 
   // Only warn once per page about slow description fetches
@@ -400,18 +401,24 @@ async function processCurrentPage(settings) {
     if (state.shouldStop) break;
 
     const batch = adsData.slice(bi, Math.min(bi + C.INITIAL_BATCH_SIZE, adsData.length));
+    // Flag to prevent description fetches from mutating adsData after the
+    // deadline fires. Without this, promises that resolve after the race
+    // deadline continue writing to adsData during subsequent batch processing.
+    let batchDeadlineReached = false;
     const batchFns = batch.map(function (ad, idx) {
       const absoluteIndex = bi + idx;
       const fetchPromise = ad.url && ad.url.indexOf('http') === 0
         ? fetchFullDescription(ad.url, scraper.descSelectors())
         : Promise.resolve({ success: false, description: '' });
       return fetchPromise.then(function (result) {
-        completedCount++;
-        if (completedCount % 5 === 0 || completedCount === adsData.length) {
-          updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (' + completedCount + '/' + adsData.length + ')...',
-            30 + (completedCount / adsData.length) * 40, 'info', scraper.siteName === 'WILLHABEN');
+        if (!batchDeadlineReached) {
+          completedCount++;
+          if (completedCount % 5 === 0 || completedCount === adsData.length) {
+            updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (' + completedCount + '/' + adsData.length + ')...',
+              30 + (completedCount / adsData.length) * 40, 'info');
+          }
+          adsData[absoluteIndex].description = result.description;
         }
-        adsData[absoluteIndex].description = result.description;
       });
     });
     // Race description fetches against a deadline so slow marketplace pages
@@ -421,6 +428,7 @@ async function processCurrentPage(settings) {
     await Promise.race([
       Promise.all(batchFns),
       new Promise(function (r) { setTimeout(function () {
+        batchDeadlineReached = true;
         if (!deadlineWarningLogged) {
           Logger.warn('Description fetch deadline (' + deadline + 'ms) reached — proceeding with partial data');
           deadlineWarningLogged = true;
@@ -436,14 +444,14 @@ async function processCurrentPage(settings) {
 
   if (state.shouldStop) { await finishDealFinder(); return; }
 
-  updateProgress(prefix, 'Seite ' + state.currentPage + ': AI analysiert Angebote...', 75, 'info', scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Seite ' + state.currentPage + ': AI analysiert Angebote...', 75, 'info');
   Logger.log('Sending ' + adsData.length + ' listings to ' + settings.provider.type + '...');
 
   const prompt = buildAnalysisPrompt(adsData, settings.searchContext, settings.topX, scraper.siteName);
   const aiCallStart = Date.now();
 
   const onRetry = function (retryNum, error) {
-    showWarning(prefix, 'API ' + (error.status || 'error') + ' - Retry ' + retryNum + '...', 75, scraper.siteName === 'WILLHABEN');
+    showWarning(prefix, 'API ' + (error.status || 'error') + ' - Retry ' + retryNum + '...', 75);
   };
 
   let aiResult = null;
@@ -469,7 +477,7 @@ async function processCurrentPage(settings) {
     // Page-level recovery: log error, skip this page, continue to next
     // Without this, a single failed page kills the entire multi-page crawl.
     Logger.error('AI analysis failed for page ' + state.currentPage + ', continuing to next page:', error);
-    updateProgress(prefix, 'Seite ' + state.currentPage + ': Analyse fehlgeschlagen, ueberspringe...', 75, 'warning', scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Seite ' + state.currentPage + ': Analyse fehlgeschlagen, ueberspringe...', 75, 'warning');
     aiResult = null;
   }
 
@@ -493,14 +501,14 @@ async function processCurrentPage(settings) {
         title: rawDeal.title || 'Unknown',
         price: rawDeal.price || 'Unknown',
         description: description || '',
-        url: rawDeal.url || '',
+        url: normalizeUrl(rawDeal.url) || '',
         score: rawDeal.score,
         reasoning: rawDeal.reasoning || rawDeal.reason || 'Keine Begruendung',
         page: state.currentPage
       };
       state.allTopDeals.push(normalized);
     }
-    updateProgress(prefix, 'Seite ' + state.currentPage + ': ' + aiResult.topDeals.length + ' Top-Deals gefunden!', 90, 'success', scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Seite ' + state.currentPage + ': ' + aiResult.topDeals.length + ' Top-Deals gefunden!', 90, 'success');
     updateLiveRanking(prefix, state.allTopDeals, state.cachedSettings);
   }
 
@@ -525,11 +533,11 @@ async function processCurrentPage(settings) {
  */
 async function finishDealFinder() {
   const prefix = state.scraper.storagePrefix;
-  updateProgress(prefix, 'Erstelle finale Ranking-Liste...', 95, 'info', state.scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, 'Erstelle finale Ranking-Liste...', 95, 'info');
   await clearCrawlState(prefix);
 
   if (state.allTopDeals.length === 0) {
-    updateProgress(prefix, 'Keine Deals gefunden!', 100, 'error', state.scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Keine Deals gefunden!', 100, 'error');
     alert('Keine Top-Deals gefunden! Versuche andere Suchkriterien.');
     state.allTopDeals = [];
     resetUI(prefix);
@@ -537,7 +545,7 @@ async function finishDealFinder() {
   }
 
   if (state.shouldStop) {
-    updateProgress(prefix, 'Crawl gestoppt. Speichere bisherige Deals...', 100, 'warning', state.scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Crawl gestoppt. Speichere bisherige Deals...', 100, 'warning');
     await saveResults({ deals: state.allTopDeals, pages: state.currentPage, timestamp: new Date().toISOString() }, prefix);
     switchToResultsView(prefix, state.allTopDeals);
     attachResultsListeners(prefix, makeResultsCallbacks(prefix));
@@ -552,7 +560,7 @@ async function finishDealFinder() {
 
   // Global re-ranking via AI (if enough deals)
   if (state.allTopDeals.length > 1) {
-    updateProgress(prefix, 'Globales Re-Ranking aller Deals...', 97, 'info', state.scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Globales Re-Ranking aller Deals...', 97, 'info');
     try {
       const sortedTopDeals = sortDealsByScore(state.allTopDeals);
       const dealsToReRank = sortedTopDeals.slice(0, C.RE_RANK_MAX_DEALS);
@@ -600,21 +608,21 @@ async function finishDealFinder() {
         });
         const reRankedUrls = new Set(reRankedDeals.map(function (d) { return d.url; }));
         const remainingDeals = sortedTopDeals.filter(function (d) { return !reRankedUrls.has(d.url); });
-        // Keep the AI's positional order (best→worst per prompt), then append
-        // remaining deals in their original (per-page-score) order. Do NOT
-        // re-sort by numeric score — per-page and re-ranking scores are not
-        // calibrated against each other.
-        state.allTopDeals = reRankedDeals.concat(remainingDeals);
+        // Final sort by score descending — ensures the array is ordered correctly
+        // regardless of AI output order. Per-page and re-ranking scores may not be
+        // perfectly calibrated, but a deterministic sort is better than gambling on
+        // the LLM's positional ordering.
+        state.allTopDeals = sortDealsByScore(reRankedDeals.concat(remainingDeals));
         Logger.log('Global re-ranking complete');
       }
     } catch (e) {
       Logger.warn('Global re-ranking failed:', e);
-      showWarning(prefix, 'Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung', 95, state.scraper.siteName === 'WILLHABEN');
+      showWarning(prefix, 'Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung', 95);
     }
   }
 
   await saveResults({ deals: state.allTopDeals, pages: state.currentPage, timestamp: new Date().toISOString() }, prefix);
-  updateProgress(prefix, state.allTopDeals.length + ' Deals gespeichert!', 100, 'success', state.scraper.siteName === 'WILLHABEN');
+  updateProgress(prefix, state.allTopDeals.length + ' Deals gespeichert!', 100, 'success');
 
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
@@ -864,15 +872,22 @@ export async function resumeCrawlIfActive(scraper) {
   const settings = result.settings;
   const maxPages = rawState.maxPages || settings.maxPages || 10;
   settings.maxPages = maxPages;
+  // Sync cachedSettings so captcha-resume uses the correct page limit
+  if (state.cachedSettings) {
+    state.cachedSettings.maxPages = maxPages;
+  }
 
   setUIRunningState(prefix);
-  updateLiveRanking(prefix, state.allTopDeals, state.cachedSettings);
+  // Don't call updateLiveRanking here — it would show old deals from previous
+  // pages before the current page's AI analysis completes.
+  // updateLiveRanking is called automatically after processCurrentPage returns
+  // new deals for the current page.
 
   try {
     await processCurrentPage(settings);
   } catch (error) {
     Logger.error('Error resuming:', error);
-    updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error', scraper.siteName === 'WILLHABEN');
+    updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error');
     await clearCrawlState(prefix);
     if (state.allTopDeals.length > 0) {
       await finishDealFinder();

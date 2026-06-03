@@ -129,7 +129,8 @@ export function deduplicateDeals(deals) {
   const seen = new Map();
   for (let i = 0; i < deals.length; i++) {
     const d = deals[i];
-    if (!seen.has(d.url)) seen.set(d.url, d);
+    const key = normalizeUrl(d.url) || d.url;
+    if (!seen.has(key)) seen.set(key, d);
   }
   return Array.from(seen.values());
 }

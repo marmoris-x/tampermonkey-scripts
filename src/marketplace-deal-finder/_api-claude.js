@@ -38,6 +38,9 @@ export class ClaudeProvider extends AIProvider {
    * @returns {Object}
    */
   buildRequest(prompt, options = {}) {
+    const opts = this.config.providerOptions || {};
+    const isThinking = opts.thinking && opts.thinking.type === 'enabled';
+
     const body = {
       model: this.config.modelId,
       max_tokens: options.maxOutputTokens ?? 8192,
@@ -46,10 +49,20 @@ export class ClaudeProvider extends AIProvider {
         { role: 'user', content: prompt }
       ]
     };
-    // Apply thinking config from providerOptions
-    const opts = this.config.providerOptions || {};
-    if (opts.thinking) {
-      body.thinking = opts.thinking;
+    // Apply thinking config from providerOptions with validation.
+    // Extended thinking requires temperature=1 and a valid budget_tokens.
+    if (isThinking) {
+      if (!opts.thinking.budget_tokens || typeof opts.thinking.budget_tokens !== 'number') {
+        console.warn('[MDF] Claude thinking enabled but budget_tokens missing or invalid — disabling thinking');
+      } else {
+        body.thinking = opts.thinking;
+        // Extended thinking requires temperature=1
+        body.temperature = 1;
+      }
+    }
+    // Only set temperature if thinking is not active (thinking forces temperature=1)
+    if (!body.thinking) {
+      body.temperature = options.temperature ?? 0.1;
     }
     return body;
   }

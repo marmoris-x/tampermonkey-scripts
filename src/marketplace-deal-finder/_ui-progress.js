@@ -161,10 +161,25 @@ export function updateLiveRanking(prefix, allTopDeals, cachedSettings) {
   const topX = (cachedSettings && cachedSettings.topX) || 3;
   container.style.display = 'block';
 
-  const sorted = allTopDeals.slice().sort(function (a, b) {
-    return ((b && b.score) || 0) - ((a && a.score) || 0);
+  // Normalize scores per page to prevent score-drift from biasing the live
+  // ranking. Per-page AI calls use different price stats (computePriceStats)
+  // so scores from different pages are not directly comparable.
+  const pageMaxScores = {};
+  for (let di = 0; di < allTopDeals.length; di++) {
+    const d = allTopDeals[di];
+    if (d.score != null && (!pageMaxScores[d.page] || d.score > pageMaxScores[d.page])) {
+      pageMaxScores[d.page] = Number(d.score);
+    }
+  }
+  const normalized = allTopDeals.map(function (d) {
+    const maxForPage = pageMaxScores[d.page] || 1;
+    return {
+      _deal: d,
+      _normScore: (Number(d.score) || 0) / maxForPage
+    };
   });
-  const topItems = sorted.slice(0, Math.min(3, topX));
+  normalized.sort(function (a, b) { return b._normScore - a._normScore; });
+  const topItems = normalized.slice(0, Math.min(3, topX)).map(function (n) { return n._deal; });
 
   content.innerHTML = topItems.map(function (deal, idx) {
     const safeScore = Number.isFinite(Number(deal.score)) ? Math.min(100, Math.max(0, Number(deal.score))) : null;

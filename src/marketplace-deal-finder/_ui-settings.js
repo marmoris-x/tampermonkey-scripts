@@ -172,7 +172,12 @@ export function renderSettingsView(prefix, settings, savedResults, siteName) {
  * @returns {string} HTML content
  */
 export function renderResultsView(prefix, deals) {
-  const items = deals.map(function (deal, index) {
+  // Sort by score descending so #1 always has the highest score.
+  // This decouples the view from the array order in state.allTopDeals.
+  const sortedDeals = (deals || []).slice().sort(function (a, b) {
+    return ((b && b.score) || 0) - ((a && a.score) || 0);
+  });
+  const items = sortedDeals.map(function (deal, index) {
     const safeUrl = (deal.url && deal.url.startsWith('https://')) ? deal.url : '#';
     const safeScore = Number.isFinite(Number(deal.score)) ? Math.min(100, Math.max(0, Number(deal.score))) : null;
     const scoreBar = safeScore !== null
