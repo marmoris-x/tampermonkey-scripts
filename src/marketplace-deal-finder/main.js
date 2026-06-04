@@ -98,7 +98,7 @@ async function init(retryCount) {
     Logger.error('Initialization error:', error);
     if (retryCount >= MAX_INIT_RETRIES) {
       Logger.error('Fatal init failure after ' + MAX_INIT_RETRIES + ' retries:', error);
-      console.error('[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.');
+      Logger.error('Could not initialize. Please reload the page or check the console for details.');
       return;
     }
     await new Promise(function (r) { setTimeout(r, 3000); });

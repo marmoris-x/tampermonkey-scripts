@@ -3,6 +3,8 @@
 
 import { updateProgress, resetUI } from './_ui-progress.js';
 import { S as state } from './_state.js';
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF UI');
 
 /* ─── Settings View Listeners ─── */
 
@@ -39,7 +41,7 @@ export function attachSettingsListeners(prefix, callbacks) {
   if (startBtn && callbacks.start) {
     startBtn.addEventListener('click', function () {
       callbacks.start()['catch'](function (error) {
-        console.error('[MDF] Unhandled error in start:', error);
+        Logger.error('Unhandled error in start:', error);
         updateProgress(prefix, 'Fehler: ' + error.message, 0, 'error');
         resetUI(prefix);
       });
@@ -84,7 +86,7 @@ export function attachSettingsListeners(prefix, callbacks) {
   if (providerSelect && callbacks.providerChange) {
     providerSelect.addEventListener('change', function () {
       callbacks.providerChange(providerSelect.value)['catch'](function (err) {
-        console.error('[MDF] Provider change error:', err);
+        Logger.error('Provider change error:', err);
       });
     });
   }

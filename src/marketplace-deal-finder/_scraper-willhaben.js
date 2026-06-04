@@ -152,5 +152,6 @@ export function goToNextPage(currentPage) {
     }
     Logger.log('Next button not usable');
   }
+  Logger.log('No next page found — either last page or pagination markup changed');
   return false;
 }

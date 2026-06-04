@@ -3,6 +3,8 @@
 
 import { SETTINGS_VERSION, PROVIDER_TYPES } from './_constants.js';
 import { loadSetting, saveSetting, deepCopySettings } from './_storage.js';
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF Settings');
 
 /* ─── Default Settings (v3 schema) ─── */
 
@@ -143,7 +145,7 @@ export async function loadSettings(storagePrefix, cachedSettings) {
     copy.provider = copy.providers[copy.currentProvider] || {};
     return { settings: copy, cachedSettings: cs };
   } catch (e) {
-    console.warn('[MDF] Corrupted settings storage, resetting to defaults');
+    Logger.warn('Corrupted settings storage, resetting to defaults');
     await saveSetting(storagePrefix + '_dealfinder_settings', null);
     const defs = deepCopySettings(DEFAULT_SETTINGS);
     defs.provider = defs.providers[defs.currentProvider] || {};

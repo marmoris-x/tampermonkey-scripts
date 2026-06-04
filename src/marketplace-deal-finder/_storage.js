@@ -1,6 +1,9 @@
 // src/marketplace-deal-finder/_storage.js — GM storage wrappers
 'use strict';
 
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF Storage');
+
 /* ─── Basic Key-Value Storage ─── */
 
 /**
@@ -28,7 +31,7 @@ export async function saveSetting(key, value) {
   try {
     await GM.setValue(key, value);
   } catch (e) {
-    console.error('[MDF] Failed to save setting:', key, e.message || e);
+    Logger.error('Failed to save setting:', key, e.message || e);
   }
 }
 

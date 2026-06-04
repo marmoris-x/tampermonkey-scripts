@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.26
+// @version         31.0.28
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -78,7 +78,7 @@
     OPENROUTER: "openrouter",
     PORTKEY: "portkey"
   };
-  const INITIAL_BATCH_SIZE = 8;
+  const INITIAL_BATCH_SIZE = 4;
   const SETTINGS_VERSION = 3;
   const MAX_CACHE_SIZE = 100;
   const REQUEST_TIMEOUT = 6e4;
@@ -95,7 +95,7 @@
   const JITTER_FACTOR = 0.2;
   const MAX_OUTPUT_TOKENS = 32e3;
   const DESCRIPTION_FETCH_DELAY = 1e3;
-  const DESCRIPTION_MAX_RETRIES = 1;
+  const DESCRIPTION_MAX_RETRIES = 2;
   const DESCRIPTION_BACKOFF_FACTOR = 2;
   const PAGE_TRANSITION_DELAY = 1500;
   const MODEL_PRESETS = {
@@ -131,7 +131,7 @@
       { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", icon: "⚡", desc: "Via Portkey config", options: { skip_response_format: true } }
     ]
   };
-  const Logger$5 = createLogger("MDF-WH");
+  const Logger$9 = createLogger("MDF-WH");
   function findAds$1() {
     const adSelectors = [
       'a[data-testid^="search-result-entry-header-"]',
@@ -141,7 +141,7 @@
     for (let si = 0; si < adSelectors.length; si++) {
       const entries = document.querySelectorAll(adSelectors[si]);
       if (entries.length > 0) {
-        Logger$5.log("Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
+        Logger$9.log("Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
         return { adEntries: entries };
       }
     }
@@ -157,7 +157,7 @@
       }
     });
     if (uniqueAds.length > 0) {
-      Logger$5.log("Found " + uniqueAds.length + " ads (fallback method)");
+      Logger$9.log("Found " + uniqueAds.length + " ads (fallback method)");
       return { adEntries: uniqueAds };
     }
     return null;
@@ -215,34 +215,35 @@
       const isDisabled = nextButton.hasAttribute("disabled");
       const ariaDisabled = nextButton.getAttribute("aria-disabled") === "true";
       const href = nextButton.getAttribute("href");
-      Logger$5.log("Next button disabled:", isDisabled, "| aria-disabled:", ariaDisabled, "| href:", href);
+      Logger$9.log("Next button disabled:", isDisabled, "| aria-disabled:", ariaDisabled, "| href:", href);
       if (!isDisabled && !ariaDisabled && !href) {
         try {
           var url = new URL(location.href);
           var nextPage = currentPage + 1;
           url.searchParams.set("page", String(nextPage));
           var nextUrl = url.pathname + url.search;
-          Logger$5.log("Constructed next page URL from params:", nextUrl);
+          Logger$9.log("Constructed next page URL from params:", nextUrl);
           return nextUrl;
         } catch (e) {
-          Logger$5.warn("Failed to construct next page URL:", e);
+          Logger$9.warn("Failed to construct next page URL:", e);
           return false;
         }
       }
       if (!isDisabled && !ariaDisabled && href) {
         try {
           if (new URL(href, location.href).href === location.href) {
-            Logger$5.log("Next button points to same page - skipped");
+            Logger$9.log("Next button points to same page - skipped");
             return false;
           }
         } catch (e) {
-          Logger$5.warn("Invalid URL in next button:", href, e);
+          Logger$9.warn("Invalid URL in next button:", href, e);
           return false;
         }
         return href;
       }
-      Logger$5.log("Next button not usable");
+      Logger$9.log("Next button not usable");
     }
+    Logger$9.log("No next page found — either last page or pagination markup changed");
     return false;
   }
   const whScraper = Object.freeze( Object.defineProperty({
@@ -252,13 +253,13 @@
     findAds: findAds$1,
     goToNextPage: goToNextPage$1
   }, Symbol.toStringTag, { value: "Module" }));
-  const Logger$4 = createLogger("MDF-KA");
+  const Logger$8 = createLogger("MDF-KA");
   function findAds() {
     const adSelectors = ["article[data-adid]", "li.ad-listitem", ".aditem"];
     for (let si = 0; si < adSelectors.length; si++) {
       const entries = document.querySelectorAll(adSelectors[si]);
       if (entries.length > 0) {
-        Logger$4.log("Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
+        Logger$8.log("Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
         return { adEntries: entries };
       }
     }
@@ -274,7 +275,7 @@
       }
     });
     if (uniqueAds.length > 0) {
-      Logger$4.log("Found " + uniqueAds.length + " ads (fallback method)");
+      Logger$8.log("Found " + uniqueAds.length + " ads (fallback method)");
       return { adEntries: uniqueAds };
     }
     return null;
@@ -341,21 +342,22 @@
     }
     if (nextButton) {
       const href = nextButton.getAttribute("href");
-      Logger$4.log("Next button href:", href);
+      Logger$8.log("Next button href:", href);
       if (href) {
         try {
           if (new URL(href, location.href).href === location.href) {
-            Logger$4.log("Next button points to same page - skipped");
+            Logger$8.log("Next button points to same page - skipped");
             return false;
           }
         } catch (e) {
-          Logger$4.warn(" Invalid URL in next button:", href, e);
+          Logger$8.warn(" Invalid URL in next button:", href, e);
           return false;
         }
         return href;
       }
-      Logger$4.log("Next button has no href");
+      Logger$8.log("Next button has no href");
     }
+    Logger$8.log("No next page found — either last page or pagination markup changed");
     return false;
   }
   const kaScraper = Object.freeze( Object.defineProperty({
@@ -374,6 +376,7 @@
       buttonGradient: isWH ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "linear-gradient(135deg, #86a542 0%, #2d2d2d 100%)"
     };
   }
+  const Logger$7 = createLogger("MDF Storage");
   async function loadSetting(key, defaultValue) {
     try {
       const raw = await GM.getValue(key);
@@ -387,7 +390,7 @@
     try {
       await GM.setValue(key, value);
     } catch (e) {
-      console.error("[MDF] Failed to save setting:", key, e.message || e);
+      Logger$7.error("Failed to save setting:", key, e.message || e);
     }
   }
   async function saveCrawlState(state, storagePrefix) {
@@ -438,6 +441,7 @@
     }
     return copy;
   }
+  const Logger$6 = createLogger("MDF Settings");
   const DEFAULT_SETTINGS = {
     version: SETTINGS_VERSION,
 currentProvider: PROVIDER_TYPES.GEMINI,
@@ -541,7 +545,7 @@ currentProvider: PROVIDER_TYPES.GEMINI,
       copy.provider = copy.providers[copy.currentProvider] || {};
       return { settings: copy, cachedSettings: cs };
     } catch (e) {
-      console.warn("[MDF] Corrupted settings storage, resetting to defaults");
+      Logger$6.warn("Corrupted settings storage, resetting to defaults");
       await saveSetting(storagePrefix + "_dealfinder_settings", null);
       const defs = deepCopySettings(DEFAULT_SETTINGS);
       defs.provider = defs.providers[defs.currentProvider] || {};
@@ -916,7 +920,7 @@ isAuthError(status) {
     }
     return new ProviderClass(config);
   }
-  const Logger$3 = createLogger("MDF API");
+  const Logger$5 = createLogger("MDF API");
   function getTimeoutForProvider(providerType) {
     return providerType === PROVIDER_TYPES.GEMINI ? GEMINI_API_TIMEOUT : REQUEST_TIMEOUT;
   }
@@ -1076,7 +1080,7 @@ isAuthError(status) {
             const repaired = cleanAIJson(text);
             result = JSON.parse(repaired);
           } catch (repairErr) {
-            Logger$3.warn("Raw AI output (first 500 chars):", (text || "").substring(0, 500));
+            Logger$5.warn("Raw AI output (first 500 chars):", (text || "").substring(0, 500));
             throw new Error(`Failed to parse provider output as JSON: ${parseErr.message} | Repair error: ${repairErr.message}`);
           }
         }
@@ -1267,6 +1271,7 @@ isAuthError(status) {
       ].join("\n");
     }).join("\n");
   }
+  const Logger$4 = createLogger("MDF UI");
   function attachSettingsListeners(prefix, callbacks) {
     const startBtn = S.uiRoot.getElementById(prefix + "-start-btn");
     const pauseBtn = S.uiRoot.getElementById(prefix + "-pause-btn");
@@ -1282,7 +1287,7 @@ isAuthError(status) {
     if (startBtn && callbacks.start) {
       startBtn.addEventListener("click", function() {
         callbacks.start()["catch"](function(error) {
-          console.error("[MDF] Unhandled error in start:", error);
+          Logger$4.error("Unhandled error in start:", error);
           updateProgress(prefix, "Fehler: " + error.message, 0, "error");
           resetUI(prefix);
         });
@@ -1313,7 +1318,7 @@ isAuthError(status) {
     if (providerSelect && callbacks.providerChange) {
       providerSelect.addEventListener("change", function() {
         callbacks.providerChange(providerSelect.value)["catch"](function(err) {
-          console.error("[MDF] Provider change error:", err);
+          Logger$4.error("Provider change error:", err);
         });
       });
     }
@@ -1443,7 +1448,10 @@ isAuthError(status) {
       md += "- **Begruendung:** " + (d.reasoning || "Keine Begruendung") + "\n";
       md += "- **Seite:** " + (d.page || "?") + "\n\n";
       if (d.description) {
-        md += "**Beschreibung:**\n\n```\n" + d.description + "\n```\n\n";
+        var safeDesc = d.description.replace(/`{3,}/g, function(m) {
+          return "\\`".repeat(m.length);
+        });
+        md += "**Beschreibung:**\n\n> " + safeDesc.replace(/\n/g, "\n> ") + "\n\n";
       } else {
         md += "*Keine Beschreibung geladen.*\n\n";
       }
@@ -1542,7 +1550,7 @@ isAuthError(status) {
       a.remove();
     }, 1e3);
   }
-  const Logger$2 = createLogger("MDF Crawler");
+  const Logger$3 = createLogger("MDF Crawler");
   function escapeForPrompt(str) {
     return (str || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
   }
@@ -1563,6 +1571,133 @@ isAuthError(status) {
       await new Promise(function(r) {
         setTimeout(r, PAUSE_POLL_INTERVAL);
       });
+    }
+  }
+  function deepFindDescription(obj, depth) {
+    depth = depth || 0;
+    if (!obj || typeof obj !== "object" || depth > 10) return null;
+    if (obj["@type"]) {
+      var typeStr = String(obj["@type"]).toLowerCase();
+      if (/product|offer|article|vehicle|residence|apartment|car/i.test(typeStr)) {
+        if (typeof obj.description === "string" && obj.description.trim().length > 20) return obj.description;
+        if (typeof obj.body === "string" && obj.body.trim().length > 20) return obj.body;
+        if (typeof obj.teaser === "string" && obj.teaser.trim().length > 20) return obj.teaser;
+      }
+    }
+    if (typeof obj.description === "string" && obj.description.trim().length > 20) return obj.description;
+    if (typeof obj.body === "string" && obj.body.trim().length > 20) return obj.body;
+    if (typeof obj.text === "string" && obj.text.trim().length > 100) return obj.text;
+    if (Array.isArray(obj)) {
+      for (var ai = 0; ai < obj.length; ai++) {
+        var result = deepFindDescription(obj[ai], depth + 1);
+        if (result) return result;
+      }
+    } else {
+      var keys = Object.keys(obj);
+      for (var ki = 0; ki < keys.length; ki++) {
+        var val = obj[keys[ki]];
+        if (val && typeof val === "object") {
+          var result = deepFindDescription(val, depth + 1);
+          if (result) return result;
+        }
+      }
+    }
+    return null;
+  }
+  function decodeEntities(str) {
+    return (str || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
+  }
+  function extractDescriptionFromHtml(html, descSelectors2) {
+    var candidates = [];
+    var push = function(via, text) {
+      if (text) {
+        var clean = decodeEntities(text).replace(/\s+/g, " ").trim();
+        if (clean.length >= 20) candidates.push({ via, text: clean });
+      }
+    };
+    var doc = null;
+    try {
+      doc = new DOMParser().parseFromString(html, "text/html");
+    } catch (e) {
+    }
+    try {
+      var nextMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+      if (nextMatch && nextMatch[1]) {
+        var data = JSON.parse(nextMatch[1]);
+        var nextDesc = deepFindDescription(data);
+        push("next_data", nextDesc);
+      }
+    } catch (e) {
+    }
+    if (doc) {
+      var ldScripts = doc.querySelectorAll('script[type="application/ld+json"]');
+      for (var ldi = 0; ldi < ldScripts.length; ldi++) {
+        try {
+          var json = JSON.parse(ldScripts[ldi].textContent);
+          var nodes = Array.isArray(json) ? json : json["@graph"] ? json["@graph"] : [json];
+          for (var ni = 0; ni < nodes.length; ni++) {
+            var n = nodes[ni];
+            if (n && typeof n.description === "string") push("jsonld", n.description);
+          }
+        } catch (e) {
+        }
+      }
+    }
+    if (doc) {
+      var og = doc.querySelector('meta[property="og:description"]');
+      if (og) push("og", og.getAttribute("content"));
+      var metaDesc = doc.querySelector('meta[name="description"]');
+      if (metaDesc) push("meta", metaDesc.getAttribute("content"));
+    }
+    if (doc) {
+      for (var si = 0; si < descSelectors2.length; si++) {
+        var el = doc.querySelector(descSelectors2[si]);
+        if (el && el.textContent.trim().length > 20) {
+          push("dom", el.textContent);
+          break;
+        }
+      }
+      var ip = doc.querySelector('[itemprop="description"]');
+      if (ip) push("itemprop", ip.textContent || ip.getAttribute("content"));
+    }
+    if (candidates.length === 0) return { ok: false, via: "none", text: "" };
+    candidates.sort(function(a, b) {
+      return b.text.length - a.text.length;
+    });
+    return { ok: true, via: candidates[0].via, text: candidates[0].text };
+  }
+  async function loadDescCache(prefix) {
+    try {
+      var raw = await GM.getValue(prefix + "_desc_cache", null);
+      if (raw && typeof raw === "object") {
+        var keys = Object.keys(raw);
+        for (var ki = 0; ki < keys.length; ki++) {
+          if (raw[keys[ki]] && S.descriptionCache.size < MAX_CACHE_SIZE) {
+            S.descriptionCache.set(keys[ki], raw[keys[ki]]);
+          }
+        }
+        Logger$3.log("Loaded " + S.descriptionCache.size + " cached descriptions");
+      }
+    } catch (e) {
+      Logger$3.debug("No desc cache to load");
+    }
+  }
+  async function saveDescCache(prefix) {
+    try {
+      var obj = {};
+      var count = 0;
+      var entries = Array.from(S.descriptionCache.entries());
+      for (var ei = 0; ei < entries.length && count < MAX_CACHE_SIZE; ei++) {
+        var key = entries[ei][0];
+        var val = entries[ei][1];
+        if (val && key) {
+          obj[key] = (val || "").slice(0, 2e3);
+          count++;
+        }
+      }
+      await GM.setValue(prefix + "_desc_cache", obj);
+    } catch (e) {
+      Logger$3.debug("Failed to persist desc cache:", e && e.message || String(e));
     }
   }
   function fetchFullDescription(url, descSelectors2, retryCount) {
@@ -1594,64 +1729,34 @@ isAuthError(status) {
         method: "GET",
         url,
         timeout: 1e4,
+        headers: {
+          "Accept-Language": "de-DE,de;q=0.9,en;q=0.8",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Referer": window.location.href
+        },
         onload: function(response) {
           if (abortIfStopped()) return;
           try {
             if (response.status >= 200 && response.status < 300) {
               var responseText = response.responseText;
-              var fullDesc = null;
-              var metaMatch = responseText.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
-              if (metaMatch && metaMatch[1] && metaMatch[1].trim().length > 20) {
-                fullDesc = metaMatch[1].replace(/\s+/g, " ").trim();
-              }
-              if (!fullDesc) {
-                var ldMatch = responseText.match(/<script\s+type="application\/ld\+json"\s*>([\s\S]*?)<\/script>/i);
-                if (ldMatch && ldMatch[1]) {
-                  try {
-                    var ld = JSON.parse(ldMatch[1]);
-                    var ldDesc = ld && ld.description || "";
-                    if (ldDesc.trim().length > 20) {
-                      fullDesc = ldDesc.replace(/\s+/g, " ").trim();
-                    }
-                  } catch (e) {
-                  }
-                }
-              }
-              if (!fullDesc) {
-                var parser = new DOMParser();
-                var doc = parser.parseFromString(responseText, "text/html");
-                for (var si = 0; si < descSelectors2.length; si++) {
-                  var element = doc.querySelector(descSelectors2[si]);
-                  if (element && element.textContent.trim().length > 20) {
-                    fullDesc = element.textContent.replace(/\s+/g, " ").trim();
-                    break;
-                  }
-                }
-                if (!fullDesc) {
-                  var itempropEl = doc.querySelector('[itemprop="description"]');
-                  if (itempropEl && itempropEl.textContent.trim().length > 20) {
-                    fullDesc = itempropEl.textContent.replace(/\s+/g, " ").trim();
-                  }
-                }
-                if (!fullDesc) {
-                  var metaDesc = doc.querySelector('meta[name="description"]');
-                  if (metaDesc && metaDesc.getAttribute("content") && metaDesc.getAttribute("content").trim().length > 20) {
-                    fullDesc = metaDesc.getAttribute("content").replace(/\s+/g, " ").trim();
-                  }
-                }
-              }
-              if (fullDesc) {
+              var extracted = extractDescriptionFromHtml(responseText, descSelectors2);
+              if (extracted.ok) {
                 done = true;
                 if (S.descriptionCache.size >= MAX_CACHE_SIZE) {
                   const firstKey = S.descriptionCache.keys().next().value;
                   S.descriptionCache.delete(firstKey);
                 }
-                S.descriptionCache.set(url, fullDesc);
-                resolve({ success: true, description: fullDesc });
+                S.descriptionCache.set(url, extracted.text);
+                Logger$3.debug("Desc OK", { url, via: extracted.via, status: response.status, len: extracted.text.length });
+                resolve({ success: true, description: extracted.text, via: extracted.via });
                 return;
               }
+              Logger$3.debug("Desc MISS", { url, status: response.status, len: (responseText || "").length });
+            } else {
+              Logger$3.debug("Desc HTTP " + response.status, { url, status: response.status });
             }
           } catch (e) {
+            Logger$3.debug("Desc parse error", { url, error: e && e.message || String(e) });
           }
           if (abortIfStopped()) return;
           var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
@@ -1701,7 +1806,8 @@ isAuthError(status) {
         price: d.price,
         score: d.score,
         page: d.page,
-        reasoning: d.reasoning
+        reasoning: d.reasoning,
+        description: (d.description || "").slice(0, 2e3)
       });
     }
     const crawlState = {
@@ -1721,7 +1827,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
   async function startDealFinder() {
     const prefix = S.scraper.storagePrefix;
     if (S.isRunning) {
-      Logger$2.warn("Crawl already running, ignoring duplicate start");
+      Logger$3.warn("Crawl already running, ignoring duplicate start");
       return;
     }
     const apiKey = S.uiRoot.getElementById(prefix + "-api-key").value.trim();
@@ -1769,6 +1875,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       });
     }
     S.abortController = new AbortController();
+    await loadDescCache(prefix);
     S.currentPage = 1;
     S.allTopDeals = [];
     S.isRunning = true;
@@ -1780,7 +1887,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     try {
       await processCurrentPage(settings);
     } catch (error) {
-      Logger$2.error("Error:", error);
+      Logger$3.error("Error:", error);
       updateProgress(prefix, "Fehler: " + error.message, 0, "error");
       if (S.allTopDeals.length > 0) {
         await finishDealFinder();
@@ -1814,11 +1921,11 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       S.captchaPaused = false;
       const cs = S.cachedSettings || {};
       processCurrentPage(cs)["catch"](function(error) {
-        Logger$2.error("Resume error:", error);
+        Logger$3.error("Resume error:", error);
         updateProgress(prefix, "Fehler: " + error.message, 0, "error");
         if (S.allTopDeals.length > 0) {
           finishDealFinder()["catch"](function(e) {
-            Logger$2.error("finishDealFinder after resume error:", e);
+            Logger$3.error("finishDealFinder after resume error:", e);
           });
         } else {
           resetUI(prefix);
@@ -1836,7 +1943,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     }
     const prefix = S.scraper.storagePrefix;
     await clearCrawlState(prefix);
-    Logger$2.log("Crawl stopped by user");
+    Logger$3.log("Crawl stopped by user");
     updateProgress(prefix, "Stoppe nach aktueller Seite...", 95, "warning");
   }
   async function processCurrentPage(settings) {
@@ -1939,47 +2046,30 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
         adsData.push(info);
       }
     }
-    Logger$2.log(adsData.length + " ads found (deduplicated)");
+    Logger$3.log(adsData.length + " ads found (deduplicated)");
     updateProgress(prefix, "Seite " + S.currentPage + ": Lade Details (0/" + adsData.length + ")...", 30, "info");
     let completedCount = 0;
-    let deadlineWarningLogged = false;
     for (let bi = 0; bi < adsData.length; bi += INITIAL_BATCH_SIZE) {
       await waitIfPaused();
       if (S.shouldStop) break;
       const batch = adsData.slice(bi, Math.min(bi + INITIAL_BATCH_SIZE, adsData.length));
-      let batchDeadlineReached = false;
       const batchFns = batch.map(function(ad, idx) {
         const absoluteIndex = bi + idx;
         const fetchPromise = ad.url && ad.url.indexOf("http") === 0 ? fetchFullDescription(ad.url, scraper.descSelectors()) : Promise.resolve({ success: false, description: "" });
         return fetchPromise.then(function(result) {
-          if (!batchDeadlineReached) {
-            completedCount++;
-            if (completedCount % 5 === 0 || completedCount === adsData.length) {
-              updateProgress(
-                prefix,
-                "Seite " + S.currentPage + ": Lade Details (" + completedCount + "/" + adsData.length + ")...",
-                30 + completedCount / adsData.length * 40,
-                "info"
-              );
-            }
-            adsData[absoluteIndex].description = result.description;
+          completedCount++;
+          if (completedCount % 5 === 0 || completedCount === adsData.length) {
+            updateProgress(
+              prefix,
+              "Seite " + S.currentPage + ": Lade Details (" + completedCount + "/" + adsData.length + ")...",
+              30 + completedCount / adsData.length * 40,
+              "info"
+            );
           }
+          adsData[absoluteIndex].description = result.description;
         });
       });
-      const deadline = 8e3;
-      await Promise.race([
-        Promise.all(batchFns),
-        new Promise(function(r) {
-          setTimeout(function() {
-            batchDeadlineReached = true;
-            if (!deadlineWarningLogged) {
-              Logger$2.warn("Description fetch deadline (" + deadline + "ms) reached — proceeding with partial data");
-              deadlineWarningLogged = true;
-            }
-            r();
-          }, deadline);
-        })
-      ]);
+      await Promise.allSettled(batchFns);
       if (bi + INITIAL_BATCH_SIZE < adsData.length) {
         await new Promise(function(r) {
           setTimeout(r, 500 + Math.random() * 1e3);
@@ -1990,8 +2080,16 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       await finishDealFinder();
       return;
     }
+    var descOk = 0;
+    for (var dci = 0; dci < adsData.length; dci++) {
+      if (adsData[dci].description) descOk++;
+    }
+    Logger$3.log("Descriptions: " + descOk + "/" + adsData.length + " on page " + S.currentPage);
+    saveDescCache(prefix)["catch"](function(e) {
+      Logger$3.debug("saveDescCache:", e && e.message || String(e));
+    });
     updateProgress(prefix, "Seite " + S.currentPage + ": AI analysiert Angebote...", 75, "info");
-    Logger$2.log("Sending " + adsData.length + " listings to " + settings.provider.type + "...");
+    Logger$3.log("Sending " + adsData.length + " listings to " + settings.provider.type + "...");
     const prompt = buildAnalysisPrompt(adsData, settings.searchContext, settings.topX, scraper.siteName);
     const aiCallStart = Date.now();
     const onRetry = function(retryNum, error) {
@@ -2011,28 +2109,44 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
         onRetry,
         signal: S.abortController && S.abortController.signal
       });
-      Logger$2.log("AI response received in " + (Date.now() - aiCallStart) + "ms");
+      Logger$3.log("AI response received in " + (Date.now() - aiCallStart) + "ms");
     } catch (error) {
       if (error.name === "AbortError" || S.shouldStop) {
         await finishDealFinder();
         return;
       }
-      Logger$2.error("AI analysis failed for page " + S.currentPage + ", continuing to next page:", error);
+      Logger$3.error("AI analysis failed for page " + S.currentPage + ", continuing to next page:", error);
       updateProgress(prefix, "Seite " + S.currentPage + ": Analyse fehlgeschlagen, ueberspringe...", 75, "warning");
       aiResult = null;
     }
     if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
-      Logger$2.log("AI found " + aiResult.topDeals.length + " top deals");
+      Logger$3.log("AI found " + aiResult.topDeals.length + " top deals");
       const scrapedDescs = new Map();
+      const pathDescs = new Map();
       for (let adi = 0; adi < adsData.length; adi++) {
         if (adsData[adi].description && adsData[adi].url) {
           scrapedDescs.set(adsData[adi].url, adsData[adi].description);
+          try {
+            var pUrl = new URL(adsData[adi].url);
+            var pathKey = pUrl.hostname + pUrl.pathname;
+            if (!pathDescs.has(pathKey)) pathDescs.set(pathKey, adsData[adi].description);
+          } catch (e) {
+          }
         }
       }
       for (let tdi = 0; tdi < aiResult.topDeals.length; tdi++) {
         const rawDeal = aiResult.topDeals[tdi];
         let description = rawDeal.description || "";
-        const fullDesc = rawDeal.url && scrapedDescs.has(rawDeal.url) ? scrapedDescs.get(rawDeal.url) : "";
+        var lookupKey = normalizeUrl(rawDeal.url) || rawDeal.url;
+        var fullDesc = lookupKey && scrapedDescs.has(lookupKey) ? scrapedDescs.get(lookupKey) : "";
+        if (!fullDesc && lookupKey) {
+          try {
+            var lUrl = new URL(lookupKey);
+            var lPathKey = lUrl.hostname + lUrl.pathname;
+            fullDesc = pathDescs.get(lPathKey) || "";
+          } catch (e) {
+          }
+        }
         if (fullDesc) description = fullDesc;
         const normalized = {
           title: rawDeal.title || "Unknown",
@@ -2054,10 +2168,10 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     if (!S.shouldStop) {
       const nextUrl = scraper.goToNextPage(S.currentPage);
       if (nextUrl) {
-        Logger$2.log("Navigating to next page: " + nextUrl);
+        Logger$3.log("Navigating to next page: " + nextUrl);
         await saveCrawlStateAndNavigate(nextUrl, settings);
       } else {
-        Logger$2.log("No more pages available - ending crawl");
+        Logger$3.log("No more pages available - ending crawl");
         await finishDealFinder();
       }
     } else {
@@ -2089,7 +2203,9 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     }
     const deduped = deduplicateDeals(S.allTopDeals);
     S.allTopDeals = deduped;
-    if (S.allTopDeals.length > 1) {
+    var cs = S.cachedSettings || {};
+    var canReRank = cs.provider && cs.provider.apiKey && cs.provider.type;
+    if (S.allTopDeals.length > 1 && canReRank) {
       updateProgress(prefix, "Globales Re-Ranking aller Deals...", 97, "info");
       try {
         const sortedTopDeals = sortDealsByScore(S.allTopDeals);
@@ -2103,18 +2219,17 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
 url: d.url
             };
           }),
-          (S.cachedSettings || {}).searchContext || "",
+          cs.searchContext || "",
           dealsToReRank.length,
           S.scraper.siteName,
           3e3
 );
-        const cs = S.cachedSettings || {};
         const reRankResult = await callAI(reRankPrompt, {
-          providerType: cs.provider ? cs.provider.type : "gemini",
-          apiKey: cs.provider ? cs.provider.apiKey : "",
-          modelId: cs.provider ? cs.provider.modelId : "gemini-2.5-flash",
-          baseUrl: cs.provider ? cs.provider.baseUrl : void 0,
-          providerOptions: cs.provider ? cs.provider.options : {}
+          providerType: cs.provider.type,
+          apiKey: cs.provider.apiKey,
+          modelId: cs.provider.modelId,
+          baseUrl: cs.provider.baseUrl || void 0,
+          providerOptions: cs.provider.options || {}
         }, { temperature: 0.1, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: S.abortController && S.abortController.signal });
         if (reRankResult && reRankResult.topDeals) {
           const urlToDeal = new Map();
@@ -2140,13 +2255,28 @@ url: d.url
             return !reRankedUrls.has(d.url);
           });
           S.allTopDeals = sortDealsByScore(reRankedDeals.concat(remainingDeals));
-          Logger$2.log("Global re-ranking complete");
+          Logger$3.log("Global re-ranking complete");
         }
       } catch (e) {
-        Logger$2.warn("Global re-ranking failed:", e);
+        Logger$3.warn("Global re-ranking failed:", e);
         showWarning(prefix, "Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung", 95);
       }
     }
+    var refetchCount = 0;
+    for (var rfi = 0; rfi < S.allTopDeals.length; rfi++) {
+      var deal = S.allTopDeals[rfi];
+      if (!deal.description || deal.description.length < 20) {
+        try {
+          var refetched = await fetchFullDescription(deal.url, S.scraper.descSelectors());
+          if (refetched && refetched.success && refetched.description) {
+            deal.description = refetched.description;
+            refetchCount++;
+          }
+        } catch (e) {
+        }
+      }
+    }
+    if (refetchCount > 0) Logger$3.log("Refetch filled " + refetchCount + " missing descriptions");
     await saveResults({ deals: S.allTopDeals, pages: S.currentPage, timestamp: ( new Date()).toISOString() }, prefix);
     updateProgress(prefix, S.allTopDeals.length + " Deals gespeichert!", 100, "success");
     if ("Notification" in window && Notification.permission === "granted") {
@@ -2220,7 +2350,7 @@ url: d.url
           S.cachedSettings = deepCopySettings(settingsObj);
           S.cachedSettings.provider = S.cachedSettings.providers[S.cachedSettings.currentProvider] || {};
           await setupSettingsView(scraper)["catch"](function(err) {
-            Logger$2.error("Re-render after provider change failed:", err);
+            Logger$3.error("Re-render after provider change failed:", err);
           });
         }
       },
@@ -2236,7 +2366,7 @@ url: d.url
           settingsObj.provider.options = matchingPreset && matchingPreset.options ? matchingPreset.options : {};
           await saveSettings(prefix, settingsObj);
           S.cachedSettings = deepCopySettings(settingsObj);
-          document.querySelectorAll("#" + prefix + "-model-presets [data-model-id]").forEach(function(btn) {
+          S.uiRoot.querySelectorAll("#" + prefix + "-model-presets [data-model-id]").forEach(function(btn) {
             const isActive = btn.getAttribute("data-model-id") === newId;
             btn.style.background = isActive ? "#6366f1" : "#f8f9fa";
             btn.style.color = isActive ? "#fff" : "#333";
@@ -2253,7 +2383,7 @@ url: d.url
           if (options) s.settings.provider.options = options;
           await saveSettings(prefix, s.settings);
           S.cachedSettings = deepCopySettings(s.settings);
-          document.querySelectorAll("#" + prefix + "-model-presets [data-model-id]").forEach(function(btn) {
+          S.uiRoot.querySelectorAll("#" + prefix + "-model-presets [data-model-id]").forEach(function(btn) {
             const isActive = btn.getAttribute("data-model-id") === modelId;
             btn.style.background = isActive ? "#6366f1" : "#f8f9fa";
             btn.style.color = isActive ? "#fff" : "#333";
@@ -2316,12 +2446,12 @@ url: d.url
     const prefix = scraper.storagePrefix;
     const rawState = await loadCrawlState(prefix);
     if (!rawState) {
-      Logger$2.log("Normal session");
+      Logger$3.log("Normal session");
       return;
     }
     const currentAds = scraper.findAds();
     if (!currentAds) {
-      Logger$2.log("Stale crawl state found but current page has no search results — clearing");
+      Logger$3.log("Stale crawl state found but current page has no search results — clearing");
       await clearCrawlState(prefix);
       return;
     }
@@ -2339,12 +2469,12 @@ url: d.url
       }
     }
     if (!isScriptNavigation && !samePage) {
-      Logger$2.log("Stale crawl state from different search — clearing");
+      Logger$3.log("Stale crawl state from different search — clearing");
       await clearCrawlState(prefix);
       return;
     }
     const pageIncrement = samePage ? SAME_PAGE_INCREMENT : NEW_PAGE_INCREMENT;
-    Logger$2.log("Crawl state found - resuming from page " + (rawState.currentPage + pageIncrement));
+    Logger$3.log("Crawl state found - resuming from page " + (rawState.currentPage + pageIncrement));
     S.currentPage = rawState.currentPage + pageIncrement;
     S.allTopDeals = rawState.allTopDeals || [];
     S.isRunning = true;
@@ -2362,7 +2492,7 @@ url: d.url
     try {
       await processCurrentPage(settings);
     } catch (error) {
-      Logger$2.error("Error resuming:", error);
+      Logger$3.error("Error resuming:", error);
       updateProgress(prefix, "Fehler: " + error.message, 0, "error");
       await clearCrawlState(prefix);
       if (S.allTopDeals.length > 0) {
@@ -2373,7 +2503,7 @@ url: d.url
       }
     }
   }
-  const Logger$1 = createLogger("MDF Main");
+  const Logger$2 = createLogger("MDF Main");
   async function waitForPage(scraper) {
     const isWH = scraper.siteName === "WILLHABEN";
     if (isWH) {
@@ -2407,19 +2537,19 @@ url: d.url
       setScraper(scraper);
       const result = await loadSettings(scraper.storagePrefix);
       setCachedSettings(result.cachedSettings);
-      Logger$1.log("Initializing...");
+      Logger$2.log("Initializing...");
       for (let attempt = 0; attempt < MAX_INIT_RETRIES; attempt++) {
         try {
           await waitForPage(scraper);
           break;
         } catch (e) {
           if (attempt < MAX_INIT_RETRIES - 1) {
-            Logger$1.log("Page not ready, retrying in 3s...");
+            Logger$2.log("Page not ready, retrying in 3s...");
             await new Promise(function(r) {
               setTimeout(r, 3e3);
             });
           } else {
-            Logger$1.warn("Max retries reached - showing button anyway");
+            Logger$2.warn("Max retries reached - showing button anyway");
           }
         }
       }
@@ -2433,17 +2563,17 @@ url: d.url
         floatBtn.addEventListener("click", function() {
           openModal(scraper.storagePrefix);
           setupSettingsView(scraper)["catch"](function(err) {
-            Logger$1.error("Failed to load settings view:", err);
+            Logger$2.error("Failed to load settings view:", err);
           });
         });
       }
       await setupSettingsView(scraper);
       await resumeCrawlIfActive(scraper);
     } catch (error) {
-      Logger$1.error("Initialization error:", error);
+      Logger$2.error("Initialization error:", error);
       if (retryCount >= MAX_INIT_RETRIES) {
-        Logger$1.error("Fatal init failure after " + MAX_INIT_RETRIES + " retries:", error);
-        console.error("[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.");
+        Logger$2.error("Fatal init failure after " + MAX_INIT_RETRIES + " retries:", error);
+        Logger$2.error("Could not initialize. Please reload the page or check the console for details.");
         return;
       }
       await new Promise(function(r) {
@@ -2452,7 +2582,7 @@ url: d.url
       return init(retryCount + 1);
     }
   }
-  const Logger = createLogger("MDF Gemini");
+  const Logger$1 = createLogger("MDF Gemini");
   class GeminiProvider extends AIProvider {
 constructor(config) {
       super(config);
@@ -2516,7 +2646,7 @@ parseResponse(response) {
         throw new Error(`Gemini: blocked — finishReason: ${candidate.finishReason}`);
       }
       if (candidate.finishReason === "MAX_TOKENS") {
-        Logger.warn("Gemini response may be truncated — max tokens reached");
+        Logger$1.warn("Gemini response may be truncated — max tokens reached");
       }
       const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
       if (!parts || parts.length === 0) {
@@ -2607,6 +2737,7 @@ parseResponse(response) {
       return content;
     }
   }
+  const Logger = createLogger("MDF Claude");
   class ClaudeProvider extends AIProvider {
 constructor(config) {
       super(config);
@@ -2635,7 +2766,7 @@ buildRequest(prompt, options = {}) {
       };
       if (isLegacyThinking) {
         if (!opts.thinking.budget_tokens || typeof opts.thinking.budget_tokens !== "number") {
-          console.warn("[MDF] Claude legacy thinking enabled but budget_tokens missing — disabling");
+          Logger.warn("Claude legacy thinking enabled but budget_tokens missing — disabling");
         } else {
           const minMax = opts.thinking.budget_tokens + 4096;
           if (body.max_tokens <= opts.thinking.budget_tokens) {
@@ -2664,7 +2795,7 @@ parseResponse(response) {
         throw new Error(`Claude: unexpected stop_reason: ${response.stop_reason}`);
       }
       if (response.stop_reason === "max_tokens") {
-        console.warn("[MDF] Claude response may be truncated — max tokens reached");
+        Logger.warn("Claude response may be truncated — max tokens reached");
       }
       return block.text || "";
     }

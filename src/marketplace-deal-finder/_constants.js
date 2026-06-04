@@ -14,7 +14,7 @@ export const PROVIDER_TYPES = {
 };
 
 /** @constant {number} */
-export const INITIAL_BATCH_SIZE = 8;
+export const INITIAL_BATCH_SIZE = 4;
 export const MAX_RETRIES = 2;
 export const DESCRIPTION_PREVIEW_LENGTH = 150;
 export const SETTINGS_VERSION = 3;
@@ -34,7 +34,7 @@ export const MAX_RATE_LIMIT_DELAY = 300000;
 export const JITTER_FACTOR = 0.2;
 export const MAX_OUTPUT_TOKENS = 32000;
 export const DESCRIPTION_FETCH_DELAY = 1000;
-export const DESCRIPTION_MAX_RETRIES = 1;
+export const DESCRIPTION_MAX_RETRIES = 2;
 export const DESCRIPTION_BACKOFF_FACTOR = 2;
 export const PAGE_TRANSITION_DELAY = 1500;
 export const SCROLL_DELAY = 1500;

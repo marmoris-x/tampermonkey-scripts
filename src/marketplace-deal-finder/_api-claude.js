@@ -1,6 +1,8 @@
 'use strict';
 
 import { AIProvider } from './_api-provider.js';
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF Claude');
 
 /**
  * Anthropic Claude API provider adapter.
@@ -54,7 +56,7 @@ export class ClaudeProvider extends AIProvider {
     // Requires budget_tokens < max_tokens (strict less-than per Anthropic API).
     if (isLegacyThinking) {
       if (!opts.thinking.budget_tokens || typeof opts.thinking.budget_tokens !== 'number') {
-        console.warn('[MDF] Claude legacy thinking enabled but budget_tokens missing — disabling');
+        Logger.warn('Claude legacy thinking enabled but budget_tokens missing — disabling');
       } else {
         // Ensure max_tokens > budget_tokens with safety margin for actual response
         const minMax = opts.thinking.budget_tokens + 4096;
@@ -96,7 +98,7 @@ export class ClaudeProvider extends AIProvider {
       throw new Error(`Claude: unexpected stop_reason: ${response.stop_reason}`);
     }
     if (response.stop_reason === 'max_tokens') {
-      console.warn('[MDF] Claude response may be truncated — max tokens reached');
+      Logger.warn('Claude response may be truncated — max tokens reached');
     }
     return block.text || '';
   }

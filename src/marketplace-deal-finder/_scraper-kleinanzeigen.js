@@ -137,5 +137,6 @@ export function goToNextPage(currentPage) {
     }
     Logger.log('Next button has no href');
   }
+  Logger.log('No next page found — either last page or pagination markup changed');
   return false;
 }

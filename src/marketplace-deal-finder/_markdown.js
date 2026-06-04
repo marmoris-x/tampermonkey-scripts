@@ -83,7 +83,9 @@ export function generateMarkdown(deals, pages, timestamp, siteName) {
     md += '- **Begruendung:** ' + (d.reasoning || 'Keine Begruendung') + '\n';
     md += '- **Seite:** ' + (d.page || '?') + '\n\n';
     if (d.description) {
-      md += '**Beschreibung:**\n\n```\n' + d.description + '\n```\n\n';
+      // Escape backtick runs of 3+ to prevent code-fence breakage
+      var safeDesc = d.description.replace(/`{3,}/g, function (m) { return '\\`'.repeat(m.length); });
+      md += '**Beschreibung:**\n\n> ' + safeDesc.replace(/\n/g, '\n> ') + '\n\n';
     } else {
       md += '*Keine Beschreibung geladen.*\n\n';
     }

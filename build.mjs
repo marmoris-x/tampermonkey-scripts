@@ -18,14 +18,15 @@ const entryFiles = readdirSync(ENTRIES_DIR).filter(f => f.endsWith('.user.js'));
  */
 function parseUserscriptBlock(filePath) {
   const content = readFileSync(filePath, 'utf-8');
-  const match = content.match(/\/\/ ==UserScript==\n([\s\S]*?)\n\/\/ ==\/UserScript==/);
+  const match = content.match(/\/\/ ==UserScript==\r?\n([\s\S]*?)\r?\n\/\/ ==\/UserScript==/);
   if (!match) return {};
 
   const block = match[1];
   const userscript = {};
   const arrayKeys = new Set(['match', 'grant', 'connect', 'require', 'resource', 'include', 'antifeature']);
 
-  for (const line of block.split('\n')) {
+  for (let line of block.split('\n')) {
+    line = line.trimEnd();  // Strip trailing \r from Windows line endings
     // Match both valued keys (@name ...) and value-less flags (@noframes, @unwrap)
     const kvMatch = line.match(/\/\/ @(\S+)(?:\s+(.+))?$/);
     if (!kvMatch) continue;

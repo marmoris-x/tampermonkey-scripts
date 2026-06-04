@@ -89,7 +89,187 @@ async function waitIfPaused() {
  * @param {string} url - Listing URL
  * @param {Array<Function>} descSelectors - Array of CSS selector strings
  * @param {number} [retryCount=0] - Current retry attempt
- * @returns {Promise<{ success: boolean, description: string }>}
+ * @returns {Promise<{ success: boolean, description: string, via?: string }>}
+ */
+
+/* ─── Description Extraction Pipeline ─── */
+
+/**
+ * Recursively searches an object for description-like fields.
+ * Prioritizes nodes with recognized @type values (Product, Offer, etc.).
+ * @param {*} obj - Parsed JSON to search
+ * @param {number} [depth=0] - Current recursion depth
+ * @returns {string|null}
+ */
+function deepFindDescription(obj, depth) {
+  depth = depth || 0;
+  if (!obj || typeof obj !== 'object' || depth > 10) return null;
+  // Look for description/text/body on recognized schema types
+  if (obj['@type']) {
+    var typeStr = String(obj['@type']).toLowerCase();
+    if (/product|offer|article|vehicle|residence|apartment|car/i.test(typeStr)) {
+      if (typeof obj.description === 'string' && obj.description.trim().length > 20) return obj.description;
+      if (typeof obj.body === 'string' && obj.body.trim().length > 20) return obj.body;
+      if (typeof obj.teaser === 'string' && obj.teaser.trim().length > 20) return obj.teaser;
+    }
+  }
+  // Generic check on current level
+  if (typeof obj.description === 'string' && obj.description.trim().length > 20) return obj.description;
+  if (typeof obj.body === 'string' && obj.body.trim().length > 20) return obj.body;
+  if (typeof obj.text === 'string' && obj.text.trim().length > 100) return obj.text;
+  // Recurse into arrays and objects
+  if (Array.isArray(obj)) {
+    for (var ai = 0; ai < obj.length; ai++) {
+      var result = deepFindDescription(obj[ai], depth + 1);
+      if (result) return result;
+    }
+  } else {
+    var keys = Object.keys(obj);
+    for (var ki = 0; ki < keys.length; ki++) {
+      var val = obj[keys[ki]];
+      if (val && typeof val === 'object') {
+        var result = deepFindDescription(val, depth + 1);
+        if (result) return result;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Decodes common HTML entities in a string.
+ * @param {string} str - String with potential HTML entities
+ * @returns {string} Decoded string
+ */
+function decodeEntities(str) {
+  return (str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
+}
+
+/**
+ * Multi-source description extraction from raw HTML.
+ * Tries sources in priority order, picks the longest valid candidate.
+ * @param {string} html - Raw HTML response text
+ * @param {Array<string>} descSelectors - CSS selectors for site-specific DOM extraction
+ * @returns {{ ok: boolean, via: string, text: string }}
+ */
+function extractDescriptionFromHtml(html, descSelectors) {
+  var candidates = [];
+  var push = function (via, text) {
+    if (text) {
+      var clean = decodeEntities(text).replace(/\s+/g, ' ').trim();
+      if (clean.length >= 20) candidates.push({ via: via, text: clean });
+    }
+  };
+
+  var doc = null;
+  try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { /* ignore */ }
+
+  // 1) __NEXT_DATA__ (Willhaben / Next.js) — data is embedded in raw HTML
+  try {
+    var nextMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (nextMatch && nextMatch[1]) {
+      var data = JSON.parse(nextMatch[1]);
+      var nextDesc = deepFindDescription(data);
+      push('next_data', nextDesc);
+    }
+  } catch (e) { /* JSON parse or regex failed — not a Next.js page */ }
+
+  // 2) ALL JSON-LD blocks including @graph/arrays
+  if (doc) {
+    var ldScripts = doc.querySelectorAll('script[type="application/ld+json"]');
+    for (var ldi = 0; ldi < ldScripts.length; ldi++) {
+      try {
+        var json = JSON.parse(ldScripts[ldi].textContent);
+        var nodes = Array.isArray(json) ? json : (json['@graph'] ? json['@graph'] : [json]);
+        for (var ni = 0; ni < nodes.length; ni++) {
+          var n = nodes[ni];
+          if (n && typeof n.description === 'string') push('jsonld', n.description);
+        }
+      } catch (e) { /* JSON parse failed — skip this LD block */ }
+    }
+  }
+
+  // 3) og:description / meta description (per DOM, not strict regex)
+  if (doc) {
+    var og = doc.querySelector('meta[property="og:description"]');
+    if (og) push('og', og.getAttribute('content'));
+    var metaDesc = doc.querySelector('meta[name="description"]');
+    if (metaDesc) push('meta', metaDesc.getAttribute('content'));
+  }
+
+  // 4) Site-specific DOM selectors (works for server-rendered pages like Kleinanzeigen)
+  if (doc) {
+    for (var si = 0; si < descSelectors.length; si++) {
+      var el = doc.querySelector(descSelectors[si]);
+      if (el && el.textContent.trim().length > 20) { push('dom', el.textContent); break; }
+    }
+    var ip = doc.querySelector('[itemprop="description"]');
+    if (ip) push('itemprop', ip.textContent || ip.getAttribute('content'));
+  }
+
+  if (candidates.length === 0) return { ok: false, via: 'none', text: '' };
+  // Pick the longest valid candidate — more content = better for AI evaluation
+  candidates.sort(function (a, b) { return b.text.length - a.text.length; });
+  return { ok: true, via: candidates[0].via, text: candidates[0].text };
+}
+
+/* ─── Persistent Description Cache (A-9 Ebene 2) ─── */
+
+/**
+ * Loads the persistent URL→description cache from GM storage.
+ * Re-populates state.descriptionCache so descriptions survive page reloads.
+ * @param {string} prefix - Storage prefix ("wh" or "ka")
+ */
+async function loadDescCache(prefix) {
+  try {
+    var raw = await GM.getValue(prefix + '_desc_cache', null);
+    if (raw && typeof raw === 'object') {
+      var keys = Object.keys(raw);
+      for (var ki = 0; ki < keys.length; ki++) {
+        if (raw[keys[ki]] && state.descriptionCache.size < C.MAX_CACHE_SIZE) {
+          state.descriptionCache.set(keys[ki], raw[keys[ki]]);
+        }
+      }
+      Logger.log('Loaded ' + state.descriptionCache.size + ' cached descriptions');
+    }
+  } catch (e) { Logger.debug('No desc cache to load'); }
+}
+
+/**
+ * Persists the in-memory description cache to GM storage.
+ * Capped at MAX_CACHE_SIZE entries; each description capped at 2000 chars.
+ * @param {string} prefix - Storage prefix ("wh" or "ka")
+ */
+async function saveDescCache(prefix) {
+  try {
+    var obj = {};
+    var count = 0;
+    var entries = Array.from(state.descriptionCache.entries());
+    for (var ei = 0; ei < entries.length && count < C.MAX_CACHE_SIZE; ei++) {
+      var key = entries[ei][0];
+      var val = entries[ei][1];
+      if (val && key) {
+        obj[key] = (val || '').slice(0, 2000);
+        count++;
+      }
+    }
+    await GM.setValue(prefix + '_desc_cache', obj);
+  } catch (e) { Logger.debug('Failed to persist desc cache:', (e && e.message) || String(e)); }
+}
+
+/**
+ * Fetches the full description from a listing's detail page.
+ * Uses extractDescriptionFromHtml for multi-source extraction.
+ * @param {string} url - Listing URL
+ * @param {Array<string>} descSelectors - CSS selector strings
+ * @param {number} [retryCount=0] - Current retry attempt
+ * @returns {Promise<{ success: boolean, description: string, via?: string }>}
  */
 function fetchFullDescription(url, descSelectors, retryCount) {
   retryCount = retryCount || 0;
@@ -119,69 +299,36 @@ function fetchFullDescription(url, descSelectors, retryCount) {
       method: 'GET',
       url: url,
       timeout: 10000,
+      headers: {
+        'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': window.location.href
+      },
       onload: function (response) {
         if (abortIfStopped()) return;
         try {
           if (response.status >= 200 && response.status < 300) {
             var responseText = response.responseText;
-            var fullDesc = null;
 
-            // 1. Fast path: regex on raw responseText (avoids DOMParser for ~80% of ads).
-            // <meta name="description" content="...">
-            var metaMatch = responseText.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
-            if (metaMatch && metaMatch[1] && metaMatch[1].trim().length > 20) {
-              fullDesc = metaMatch[1].replace(/\s+/g, ' ').trim();
-            }
-            // JSON-LD description in <script type="application/ld+json">
-            if (!fullDesc) {
-              var ldMatch = responseText.match(/<script\s+type="application\/ld\+json"\s*>([\s\S]*?)<\/script>/i);
-              if (ldMatch && ldMatch[1]) {
-                try {
-                  var ld = JSON.parse(ldMatch[1]);
-                  var ldDesc = (ld && ld.description) || '';
-                  if (ldDesc.trim().length > 20) {
-                    fullDesc = ldDesc.replace(/\s+/g, ' ').trim();
-                  }
-                } catch (e) { /* JSON parse failed — fall through */ }
-              }
-            }
-
-            // 2. Full DOMParser + CSS selectors as fallback (slow path).
-            if (!fullDesc) {
-              var parser = new DOMParser();
-              var doc = parser.parseFromString(responseText, 'text/html');
-              for (var si = 0; si < descSelectors.length; si++) {
-                var element = doc.querySelector(descSelectors[si]);
-                if (element && element.textContent.trim().length > 20) {
-                  fullDesc = element.textContent.replace(/\s+/g, ' ').trim();
-                  break;
-                }
-              }
-              if (!fullDesc) {
-                var itempropEl = doc.querySelector('[itemprop="description"]');
-                if (itempropEl && itempropEl.textContent.trim().length > 20) {
-                  fullDesc = itempropEl.textContent.replace(/\s+/g, ' ').trim();
-                }
-              }
-              if (!fullDesc) {
-                var metaDesc = doc.querySelector('meta[name="description"]');
-                if (metaDesc && metaDesc.getAttribute('content') && metaDesc.getAttribute('content').trim().length > 20) {
-                  fullDesc = metaDesc.getAttribute('content').replace(/\s+/g, ' ').trim();
-                }
-              }
-            }
-            if (fullDesc) {
+            // Multi-source extraction pipeline: __NEXT_DATA__ → JSON-LD → OG/Meta → DOM selectors
+            var extracted = extractDescriptionFromHtml(responseText, descSelectors);
+            if (extracted.ok) {
               done = true;
               if (state.descriptionCache.size >= C.MAX_CACHE_SIZE) {
                 const firstKey = state.descriptionCache.keys().next().value;
                 state.descriptionCache.delete(firstKey);
               }
-              state.descriptionCache.set(url, fullDesc);
-              resolve({ success: true, description: fullDesc });
+              state.descriptionCache.set(url, extracted.text);
+              Logger.debug('Desc OK', { url: url, via: extracted.via, status: response.status, len: extracted.text.length });
+              resolve({ success: true, description: extracted.text, via: extracted.via });
               return;
             }
+            // No description found in any source — log for diagnosis
+            Logger.debug('Desc MISS', { url: url, status: response.status, len: (responseText || '').length });
+          } else {
+            Logger.debug('Desc HTTP ' + response.status, { url: url, status: response.status });
           }
-        } catch (e) { /* fall through to retry */ }
+        } catch (e) { Logger.debug('Desc parse error', { url: url, error: (e && e.message) || String(e) }); }
         if (abortIfStopped()) return;
         var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
@@ -221,10 +368,10 @@ function fetchFullDescription(url, descSelectors, retryCount) {
  * @param {Object} settings - Current settings
  */
 async function saveCrawlStateAndNavigate(href, settings) {
-  // Strip descriptions from allTopDeals before serializing — they can be
-  // several KB per deal and cause "Message length exceeded" on large crawls.
-  // Descriptions are re-fetched in processCurrentPage after resume, so we
-  // only need url, score, page, title, and price to continue.
+  // Save allTopDeals with descriptions capped at 2000 chars to avoid
+  // "Message length exceeded" on large crawls while preserving descriptions
+  // across page reloads. Without description, only the last page's deals
+  // retain their text — all previous pages' descriptions are lost.
   var strippedDeals = [];
   for (var di = 0; di < state.allTopDeals.length; di++) {
     var d = state.allTopDeals[di];
@@ -234,7 +381,8 @@ async function saveCrawlStateAndNavigate(href, settings) {
       price: d.price,
       score: d.score,
       page: d.page,
-      reasoning: d.reasoning
+      reasoning: d.reasoning,
+      description: (d.description || '').slice(0, 2000)
     });
   }
   const crawlState = {
@@ -314,6 +462,9 @@ async function startDealFinder() {
 
   // Create AbortController so Stop can cancel in-flight API calls
   state.abortController = new AbortController();
+
+  // Load persistent URL→description cache so descriptions survive page reloads
+  await loadDescCache(prefix);
 
   state.currentPage = 1;
   state.allTopDeals = [];
@@ -520,49 +671,30 @@ async function processCurrentPage(settings) {
   updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (0/' + adsData.length + ')...', 30, 'info');
   let completedCount = 0;
 
-  // Only warn once per page about slow description fetches
-  let deadlineWarningLogged = false;
-
   for (let bi = 0; bi < adsData.length; bi += C.INITIAL_BATCH_SIZE) {
     await waitIfPaused();
     if (state.shouldStop) break;
 
     const batch = adsData.slice(bi, Math.min(bi + C.INITIAL_BATCH_SIZE, adsData.length));
-    // Flag to prevent description fetches from mutating adsData after the
-    // deadline fires. Without this, promises that resolve after the race
-    // deadline continue writing to adsData during subsequent batch processing.
-    let batchDeadlineReached = false;
     const batchFns = batch.map(function (ad, idx) {
       const absoluteIndex = bi + idx;
       const fetchPromise = ad.url && ad.url.indexOf('http') === 0
         ? fetchFullDescription(ad.url, scraper.descSelectors())
         : Promise.resolve({ success: false, description: '' });
       return fetchPromise.then(function (result) {
-        if (!batchDeadlineReached) {
-          completedCount++;
-          if (completedCount % 5 === 0 || completedCount === adsData.length) {
-            updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (' + completedCount + '/' + adsData.length + ')...',
-              30 + (completedCount / adsData.length) * 40, 'info');
-          }
-          adsData[absoluteIndex].description = result.description;
+        completedCount++;
+        if (completedCount % 5 === 0 || completedCount === adsData.length) {
+          updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade Details (' + completedCount + '/' + adsData.length + ')...',
+            30 + (completedCount / adsData.length) * 40, 'info');
         }
+        adsData[absoluteIndex].description = result.description;
       });
     });
-    // Race description fetches against a deadline so slow marketplace pages
-    // cannot block the AI call indefinitely (especially critical under Chrome MV3
-    // where GM_xmlhttpRequest is serialized).
-    const deadline = 8000;
-    await Promise.race([
-      Promise.all(batchFns),
-      new Promise(function (r) { setTimeout(function () {
-        batchDeadlineReached = true;
-        if (!deadlineWarningLogged) {
-          Logger.warn('Description fetch deadline (' + deadline + 'ms) reached — proceeding with partial data');
-          deadlineWarningLogged = true;
-        }
-        r();
-      }, deadline); })
-    ]);
+    // Each description fetch has its own timeout (10s + retries), so
+    // they are guaranteed to resolve eventually. Promise.allSettled
+    // ensures we wait for ALL fetches before proceeding to the AI call.
+    // No artificial deadline — late-arriving descriptions are preserved.
+    await Promise.allSettled(batchFns);
 
     if (bi + C.INITIAL_BATCH_SIZE < adsData.length) {
       await new Promise(function (r) { setTimeout(r, 500 + Math.random() * 1000); });
@@ -570,6 +702,15 @@ async function processCurrentPage(settings) {
   }
 
   if (state.shouldStop) { await finishDealFinder(); return; }
+
+  // Diagnostic: count how many descriptions were successfully fetched this page
+  var descOk = 0;
+  for (var dci = 0; dci < adsData.length; dci++) {
+    if (adsData[dci].description) descOk++;
+  }
+  Logger.log('Descriptions: ' + descOk + '/' + adsData.length + ' on page ' + state.currentPage);
+  // Persist the description cache so it survives page reloads
+  saveDescCache(prefix)['catch'](function (e) { Logger.debug('saveDescCache:', (e && e.message) || String(e)); });
 
   updateProgress(prefix, 'Seite ' + state.currentPage + ': AI analysiert Angebote...', 75, 'info');
   Logger.log('Sending ' + adsData.length + ' listings to ' + settings.provider.type + '...');
@@ -610,11 +751,19 @@ async function processCurrentPage(settings) {
 
   if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
     Logger.log('AI found ' + aiResult.topDeals.length + ' top deals');
-    // Build URL→description map from scraped data to merge into AI results
+    // Build URL→description map from scraped data to merge into AI results.
+    // Also build a path-only index as fallback — AI may return URLs with
+    // different query params or fragments than what was scraped.
     const scrapedDescs = new Map();
+    const pathDescs = new Map();
     for (let adi = 0; adi < adsData.length; adi++) {
       if (adsData[adi].description && adsData[adi].url) {
         scrapedDescs.set(adsData[adi].url, adsData[adi].description);
+        try {
+          var pUrl = new URL(adsData[adi].url);
+          var pathKey = pUrl.hostname + pUrl.pathname;
+          if (!pathDescs.has(pathKey)) pathDescs.set(pathKey, adsData[adi].description);
+        } catch (e) { /* ignore malformed URL */ }
       }
     }
     for (let tdi = 0; tdi < aiResult.topDeals.length; tdi++) {
@@ -622,7 +771,17 @@ async function processCurrentPage(settings) {
       // Prefer the scraped full description over the AI's summary — it's the
       // ground-truth listing text needed for the final re-ranking prompt.
       let description = rawDeal.description || '';
-      const fullDesc = rawDeal.url && scrapedDescs.has(rawDeal.url) ? scrapedDescs.get(rawDeal.url) : '';
+      // Normalize AI-returned URL for lookup (may have fragment/different format)
+      var lookupKey = normalizeUrl(rawDeal.url) || rawDeal.url;
+      var fullDesc = lookupKey && scrapedDescs.has(lookupKey) ? scrapedDescs.get(lookupKey) : '';
+      // Path-only fallback: match by hostname+pathname ignoring query string
+      if (!fullDesc && lookupKey) {
+        try {
+          var lUrl = new URL(lookupKey);
+          var lPathKey = lUrl.hostname + lUrl.pathname;
+          fullDesc = pathDescs.get(lPathKey) || '';
+        } catch (e) { /* ignore */ }
+      }
       if (fullDesc) description = fullDesc;
       const normalized = {
         title: rawDeal.title || 'Unknown',
@@ -691,8 +850,13 @@ async function finishDealFinder() {
   const deduped = deduplicateDeals(state.allTopDeals);
   state.allTopDeals = deduped;
 
-  // Global re-ranking via AI (if enough deals)
-  if (state.allTopDeals.length > 1) {
+  // Global re-ranking via AI (if enough deals AND valid provider configured).
+  // Skip re-ranking when provider.apiKey is missing — the hardcoded fallback
+  // would use the wrong credentials and fail silently. Deals are already
+  // sorted by per-page score, so results remain usable without re-ranking.
+  var cs = state.cachedSettings || {};
+  var canReRank = cs.provider && cs.provider.apiKey && cs.provider.type;
+  if (state.allTopDeals.length > 1 && canReRank) {
     updateProgress(prefix, 'Globales Re-Ranking aller Deals...', 97, 'info');
     try {
       const sortedTopDeals = sortDealsByScore(state.allTopDeals);
@@ -707,19 +871,18 @@ async function finishDealFinder() {
             url: d.url
           };
         }),
-        (state.cachedSettings || {}).searchContext || '',
+        cs.searchContext || '',
         dealsToReRank.length,
         state.scraper.siteName,
         3000  // higher limit so the re-ranking AI sees the full listing text
       );
 
-      const cs = state.cachedSettings || {};
       const reRankResult = await callAI(reRankPrompt, {
-        providerType: cs.provider ? cs.provider.type : 'gemini',
-        apiKey: cs.provider ? cs.provider.apiKey : '',
-        modelId: cs.provider ? cs.provider.modelId : 'gemini-2.5-flash',
-        baseUrl: cs.provider ? cs.provider.baseUrl : undefined,
-        providerOptions: cs.provider ? cs.provider.options : {}
+        providerType: cs.provider.type,
+        apiKey: cs.provider.apiKey,
+        modelId: cs.provider.modelId,
+        baseUrl: cs.provider.baseUrl || undefined,
+        providerOptions: cs.provider.options || {}
       }, { temperature: 0.1, maxOutputTokens: C.MAX_OUTPUT_TOKENS, signal: state.abortController && state.abortController.signal });
 
       if (reRankResult && reRankResult.topDeals) {
@@ -753,6 +916,25 @@ async function finishDealFinder() {
       showWarning(prefix, 'Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung', 95);
     }
   }
+
+  // Ebene 3 — Refetch-Garantie: For each top deal with missing/short description,
+  // fetch the detail page one more time. This is a targeted refetch of at most
+  // a few URLs, ensuring every exported deal has a description if the source
+  // provides one.
+  var refetchCount = 0;
+  for (var rfi = 0; rfi < state.allTopDeals.length; rfi++) {
+    var deal = state.allTopDeals[rfi];
+    if (!deal.description || deal.description.length < 20) {
+      try {
+        var refetched = await fetchFullDescription(deal.url, state.scraper.descSelectors());
+        if (refetched && refetched.success && refetched.description) {
+          deal.description = refetched.description;
+          refetchCount++;
+        }
+      } catch (e) { /* refetch failed — leave description as-is */ }
+    }
+  }
+  if (refetchCount > 0) Logger.log('Refetch filled ' + refetchCount + ' missing descriptions');
 
   await saveResults({ deals: state.allTopDeals, pages: state.currentPage, timestamp: new Date().toISOString() }, prefix);
   updateProgress(prefix, state.allTopDeals.length + ' Deals gespeichert!', 100, 'success');
@@ -856,7 +1038,7 @@ export async function setupSettingsView(scraper) {
         await saveSettings(prefix, settingsObj);
         state.cachedSettings = deepCopySettings(settingsObj);
         // Sync preset button highlights — custom IDs de-highlight all buttons
-        document.querySelectorAll('#' + prefix + '-model-presets [data-model-id]').forEach(function (btn) {
+        state.uiRoot.querySelectorAll('#' + prefix + '-model-presets [data-model-id]').forEach(function (btn) {
           const isActive = btn.getAttribute('data-model-id') === newId;
           btn.style.background = isActive ? '#6366f1' : '#f8f9fa';
           btn.style.color = isActive ? '#fff' : '#333';
@@ -874,7 +1056,7 @@ export async function setupSettingsView(scraper) {
         await saveSettings(prefix, s.settings);
         state.cachedSettings = deepCopySettings(s.settings);
         // Update preset button highlights visually
-        document.querySelectorAll('#' + prefix + '-model-presets [data-model-id]').forEach(function (btn) {
+        state.uiRoot.querySelectorAll('#' + prefix + '-model-presets [data-model-id]').forEach(function (btn) {
           const isActive = btn.getAttribute('data-model-id') === modelId;
           btn.style.background = isActive ? '#6366f1' : '#f8f9fa';
           btn.style.color = isActive ? '#fff' : '#333';
