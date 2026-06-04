@@ -29,6 +29,33 @@ function escapeForPrompt(str) {
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
 }
 
+/**
+ * Scrolls the page gradually to a target Y position over a given duration.
+ * Uses ease-out cubic easing for a natural decelerating feel.
+ * @param {number} targetY - Target scroll position
+ * @param {number} durationMs - Duration in milliseconds
+ * @returns {Promise<void>}
+ */
+function gradualScroll(targetY, durationMs) {
+  return new Promise(function (resolve) {
+    var startY = window.scrollY;
+    var startTime = performance.now();
+    function step() {
+      var elapsed = performance.now() - startTime;
+      var progress = Math.min(elapsed / durationMs, 1);
+      // Cubic ease-out: fast start, smooth deceleration
+      var eased = 1 - Math.pow(1 - progress, 3);
+      window.scrollTo(0, startY + (targetY - startY) * eased);
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        resolve();
+      }
+    }
+    requestAnimationFrame(step);
+  });
+}
+
 /* ─── Prompt Builder ─── */
 
 /**
@@ -580,20 +607,21 @@ async function processCurrentPage(settings) {
 
   updateProgress(prefix, 'Seite ' + state.currentPage + ': Lade alle Anzeigen...', 10, 'info');
 
-  // Trigger lazy-load by scrolling, then wait for DOM to settle instead of
-  // using fixed delays. A MutationObserver watches the result container;
-  // we consider loading "done" when no new elements have been added for
-  // a settle period (or a hard timeout is reached).
+  // Trigger lazy-load by scrolling gradually, then wait for DOM to settle.
+  // A MutationObserver watches the result container; we consider loading
+  // "done" when no new elements have been added for a settle period
+  // (or a hard timeout is reached).
   var settleMs = 800;
   var hardTimeoutMs = 8000;
   var scrollDone = false;
 
-  // Kick off scroll — bottom first, then top
-  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-  setTimeout(function () {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    scrollDone = true;
-  }, 600);
+  // Gradual scroll: bottom first (2s), short pause, then back to top (1.5s).
+  // Slow, controlled scrolling gives lazy-load images time to trigger and
+  // avoids overwhelming the MutationObserver.
+  await gradualScroll(document.body.scrollHeight, 2000);
+  scrollDone = true;
+  await new Promise(function (r) { setTimeout(r, 500); });
+  await gradualScroll(0, 1500);
 
   // Observe document.body for DOM mutations (lazy-loaded ad cards)
   var settleTimer = null;

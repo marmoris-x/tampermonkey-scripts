@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.29
+// @version         31.0.30
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -1620,6 +1620,24 @@ isAuthError(status) {
   function escapeForPrompt(str) {
     return (str || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
   }
+  function gradualScroll(targetY, durationMs) {
+    return new Promise(function(resolve) {
+      var startY = window.scrollY;
+      var startTime = performance.now();
+      function step() {
+        var elapsed = performance.now() - startTime;
+        var progress = Math.min(elapsed / durationMs, 1);
+        var eased = 1 - Math.pow(1 - progress, 3);
+        window.scrollTo(0, startY + (targetY - startY) * eased);
+        if (progress < 1) {
+          requestAnimationFrame(step);
+        } else {
+          resolve();
+        }
+      }
+      requestAnimationFrame(step);
+    });
+  }
   function buildAnalysisPrompt(adsData, searchContext, topX, siteName, maxDescLength) {
     maxDescLength = maxDescLength || 400;
     const stats = computePriceStats(adsData);
@@ -2052,11 +2070,12 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     var settleMs = 800;
     var hardTimeoutMs = 8e3;
     var scrollDone = false;
-    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-    setTimeout(function() {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      scrollDone = true;
-    }, 600);
+    await gradualScroll(document.body.scrollHeight, 2e3);
+    scrollDone = true;
+    await new Promise(function(r) {
+      setTimeout(r, 500);
+    });
+    await gradualScroll(0, 1500);
     var settleTimer = null;
     var observerDone = false;
     await new Promise(function(resolveObserve) {
