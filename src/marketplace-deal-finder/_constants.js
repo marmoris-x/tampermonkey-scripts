@@ -33,6 +33,25 @@ export const RETRY_BASE_DELAY = 2000;
 export const MAX_RATE_LIMIT_DELAY = 300000;
 export const JITTER_FACTOR = 0.2;
 export const MAX_OUTPUT_TOKENS = 32000;
+
+/** Per-provider max output token limits to prevent MAX_TOKENS truncation (C-2). */
+export const PROVIDER_MAX_TOKENS = {
+  gemini: 8192,
+  deepseek: 8192,
+  openai: 16384,
+  claude: 32000,
+  openrouter: 16384,
+  portkey: 16384
+};
+
+/**
+ * Returns the appropriate max output token count for a provider type.
+ * @param {string} providerType
+ * @returns {number}
+ */
+export function getMaxTokensForProvider(providerType) {
+  return PROVIDER_MAX_TOKENS[providerType] || MAX_OUTPUT_TOKENS;
+}
 export const DESCRIPTION_FETCH_DELAY = 1000;
 export const DESCRIPTION_MAX_RETRIES = 2;
 export const DESCRIPTION_BACKOFF_FACTOR = 2;

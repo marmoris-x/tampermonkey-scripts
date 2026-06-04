@@ -169,6 +169,12 @@ export function goToNextPage(currentPage) {
     }
     Logger.log('Next button not usable');
   }
-  Logger.log('No next page found — either last page or pagination markup changed');
+  // B-2: Distinguish "last page" from "markup changed"
+  var hasPaginationContainer = document.querySelector('[data-testid*="pagination"], nav, [class*="pagination"]');
+  if (!hasPaginationContainer) {
+    Logger.warn('No pagination container found — markup may have changed');
+  } else {
+    Logger.log('Pagination container found but no next link — likely last page');
+  }
   return false;
 }

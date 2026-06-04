@@ -339,6 +339,9 @@ function fetchFullDescription(url, descSelectors, retryCount) {
         var baseDelay = antiBot ? C.DESCRIPTION_FETCH_DELAY * 3 : C.DESCRIPTION_FETCH_DELAY;
         var delay = (baseDelay * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount)) * (1 + Math.random() * C.JITTER_FACTOR);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
+          // B-3: Skip retry if already stopping — avoid wasted request
+          if (state.shouldStop) { done = true; resolve({ success: false, description: '' }); return; }
+          done = true;
           setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, Math.round(delay));
         } else {
           done = true;
@@ -349,6 +352,8 @@ function fetchFullDescription(url, descSelectors, retryCount) {
         if (abortIfStopped()) return;
         var delay = (C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount)) * (1 + Math.random() * C.JITTER_FACTOR);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
+          if (state.shouldStop) { done = true; resolve({ success: false, description: '' }); return; }
+          done = true;
           setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, Math.round(delay));
         } else {
           done = true;
@@ -359,6 +364,8 @@ function fetchFullDescription(url, descSelectors, retryCount) {
         if (abortIfStopped()) return;
         var delay = (C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount)) * (1 + Math.random() * C.JITTER_FACTOR);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
+          if (state.shouldStop) { done = true; resolve({ success: false, description: '' }); return; }
+          done = true;
           setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, Math.round(delay));
         } else {
           done = true;
@@ -703,6 +710,7 @@ async function processCurrentPage(settings) {
     // No artificial deadline — late-arriving descriptions are preserved.
     await Promise.allSettled(batchFns);
 
+    // E-1: Adaptive inter-batch delay. Base 500ms + jitter.
     if (bi + C.INITIAL_BATCH_SIZE < adsData.length) {
       await new Promise(function (r) { setTimeout(r, 500 + Math.random() * 1000); });
     }
@@ -716,6 +724,10 @@ async function processCurrentPage(settings) {
     if (adsData[dci].description) descOk++;
   }
   Logger.log('Descriptions: ' + descOk + '/' + adsData.length + ' on page ' + state.currentPage);
+  // E-1: Warn if anti-bot measures are likely blocking description fetches
+  if (adsData.length > 4 && descOk < adsData.length * 0.3) {
+    Logger.warn('Low description yield (' + descOk + '/' + adsData.length + ') — possible anti-bot throttling. Consider reducing page count or waiting between crawls.');
+  }
   // Persist the description cache so it survives page reloads
   saveDescCache(prefix)['catch'](function (e) { Logger.debug('saveDescCache:', (e && e.message) || String(e)); });
 
@@ -739,7 +751,7 @@ async function processCurrentPage(settings) {
       providerOptions: settings.provider.options || {}
     }, {
       temperature: 0.1,
-      maxOutputTokens: C.MAX_OUTPUT_TOKENS,
+      maxOutputTokens: C.getMaxTokensForProvider(settings.provider.type),
       onRetry: onRetry,
       signal: state.abortController && state.abortController.signal
     });
@@ -934,7 +946,7 @@ async function finishDealFinder() {
         modelId: cs.provider.modelId,
         baseUrl: cs.provider.baseUrl || undefined,
         providerOptions: cs.provider.options || {}
-      }, { temperature: 0.1, maxOutputTokens: C.MAX_OUTPUT_TOKENS, signal: state.abortController && state.abortController.signal });
+      }, { temperature: 0.1, maxOutputTokens: C.getMaxTokensForProvider(cs.provider.type), signal: state.abortController && state.abortController.signal });
 
       if (reRankResult && reRankResult.topDeals) {
         const urlToDeal = new Map();
@@ -1203,6 +1215,31 @@ export async function resumeCrawlIfActive(scraper) {
   const normalizedWindowUrl = normalizeUrl(window.location.href);
   const samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
 
+  // B-1: Loose URL match — same path + core query params (ignores tracking params
+  // like utm_*, fbclid, etc. that sites may add dynamically). This prevents
+  // crawl state from being cleared when the URL has only cosmetic differences.
+  var looseMatch = false;
+  if (!samePage && normalizedCurrentUrl && normalizedWindowUrl) {
+    try {
+      var savedUrl = new URL(normalizedCurrentUrl);
+      var currentUrl = new URL(normalizedWindowUrl);
+      if (savedUrl.hostname === currentUrl.hostname &&
+          savedUrl.pathname.replace(/\/$/, '') === currentUrl.pathname.replace(/\/$/, '')) {
+        // Compare search/query params ignoring known tracking keys
+        var trackingKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+          'fbclid', 'gclid', 'gclsrc', 'dclid', 'msclkid', 'ref', 'source', 'campaign'];
+        var savedParams = new URLSearchParams(savedUrl.search);
+        var currentParams = new URLSearchParams(currentUrl.search);
+        trackingKeys.forEach(function (k) { savedParams.delete(k); currentParams.delete(k); });
+        savedParams.sort(); currentParams.sort();
+        if (savedParams.toString() === currentParams.toString()) {
+          looseMatch = true;
+          Logger.log('Loose URL match — same search, different tracking params');
+        }
+      }
+    } catch (e) { /* ignore — fall through to strict match only */ }
+  }
+
   // Consume the script-navigation flag to distinguish script-initiated
   // navigation (multi-page crawl) from a user navigating to a new search.
   // The flag stores the expected target URL so a failed redirect or
@@ -1217,7 +1254,7 @@ export async function resumeCrawlIfActive(scraper) {
     } catch (e) { /* ignore malformed flag */ }
   }
 
-  if (!isScriptNavigation && !samePage) {
+  if (!isScriptNavigation && !samePage && !looseMatch) {
     Logger.log('Stale crawl state from different search — clearing');
     await clearCrawlState(prefix);
     return;

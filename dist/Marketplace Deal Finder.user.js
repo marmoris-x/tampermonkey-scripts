@@ -94,6 +94,17 @@
   const MAX_RATE_LIMIT_DELAY = 3e5;
   const JITTER_FACTOR = 0.2;
   const MAX_OUTPUT_TOKENS = 32e3;
+  const PROVIDER_MAX_TOKENS = {
+    gemini: 8192,
+    deepseek: 8192,
+    openai: 16384,
+    claude: 32e3,
+    openrouter: 16384,
+    portkey: 16384
+  };
+  function getMaxTokensForProvider(providerType) {
+    return PROVIDER_MAX_TOKENS[providerType] || MAX_OUTPUT_TOKENS;
+  }
   const DESCRIPTION_FETCH_DELAY = 1e3;
   const DESCRIPTION_MAX_RETRIES = 2;
   const DESCRIPTION_BACKOFF_FACTOR = 2;
@@ -263,7 +274,12 @@
       }
       Logger$9.log("Next button not usable");
     }
-    Logger$9.log("No next page found — either last page or pagination markup changed");
+    var hasPaginationContainer = document.querySelector('[data-testid*="pagination"], nav, [class*="pagination"]');
+    if (!hasPaginationContainer) {
+      Logger$9.warn("No pagination container found — markup may have changed");
+    } else {
+      Logger$9.log("Pagination container found but no next link — likely last page");
+    }
     return false;
   }
   const whScraper = Object.freeze( Object.defineProperty({
@@ -397,7 +413,12 @@
       }
       Logger$8.log("Next button has no href");
     }
-    Logger$8.log("No next page found — either last page or pagination markup changed");
+    var hasPaginationContainer = document.querySelector('[class*="pagination"], nav, .pagination');
+    if (!hasPaginationContainer) {
+      Logger$8.warn("No pagination container found — markup may have changed");
+    } else {
+      Logger$8.log("Pagination container found but no next link — likely last page");
+    }
     return false;
   }
   const kaScraper = Object.freeze( Object.defineProperty({
@@ -1806,6 +1827,12 @@ isAuthError(status) {
           var baseDelay = antiBot ? DESCRIPTION_FETCH_DELAY * 3 : DESCRIPTION_FETCH_DELAY;
           var delay = baseDelay * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount) * (1 + Math.random() * JITTER_FACTOR);
           if (retryCount < DESCRIPTION_MAX_RETRIES) {
+            if (S.shouldStop) {
+              done = true;
+              resolve({ success: false, description: "" });
+              return;
+            }
+            done = true;
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
             }, Math.round(delay));
@@ -1818,6 +1845,12 @@ isAuthError(status) {
           if (abortIfStopped()) return;
           var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount) * (1 + Math.random() * JITTER_FACTOR);
           if (retryCount < DESCRIPTION_MAX_RETRIES) {
+            if (S.shouldStop) {
+              done = true;
+              resolve({ success: false, description: "" });
+              return;
+            }
+            done = true;
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
             }, Math.round(delay));
@@ -1830,6 +1863,12 @@ isAuthError(status) {
           if (abortIfStopped()) return;
           var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount) * (1 + Math.random() * JITTER_FACTOR);
           if (retryCount < DESCRIPTION_MAX_RETRIES) {
+            if (S.shouldStop) {
+              done = true;
+              resolve({ success: false, description: "" });
+              return;
+            }
+            done = true;
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
             }, Math.round(delay));
@@ -2130,6 +2169,9 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       if (adsData[dci].description) descOk++;
     }
     Logger$3.log("Descriptions: " + descOk + "/" + adsData.length + " on page " + S.currentPage);
+    if (adsData.length > 4 && descOk < adsData.length * 0.3) {
+      Logger$3.warn("Low description yield (" + descOk + "/" + adsData.length + ") — possible anti-bot throttling. Consider reducing page count or waiting between crawls.");
+    }
     saveDescCache(prefix)["catch"](function(e) {
       Logger$3.debug("saveDescCache:", e && e.message || String(e));
     });
@@ -2150,7 +2192,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
         providerOptions: settings.provider.options || {}
       }, {
         temperature: 0.1,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        maxOutputTokens: getMaxTokensForProvider(settings.provider.type),
         onRetry,
         signal: S.abortController && S.abortController.signal
       });
@@ -2318,7 +2360,7 @@ url: d.url
           modelId: cs.provider.modelId,
           baseUrl: cs.provider.baseUrl || void 0,
           providerOptions: cs.provider.options || {}
-        }, { temperature: 0.1, maxOutputTokens: MAX_OUTPUT_TOKENS, signal: S.abortController && S.abortController.signal });
+        }, { temperature: 0.1, maxOutputTokens: getMaxTokensForProvider(cs.provider.type), signal: S.abortController && S.abortController.signal });
         if (reRankResult && reRankResult.topDeals) {
           const urlToDeal = new Map();
           for (let ri = 0; ri < dealsToReRank.length; ri++) {
@@ -2546,6 +2588,43 @@ url: d.url
     const normalizedCurrentUrl = normalizeUrl(rawState.currentUrl);
     const normalizedWindowUrl = normalizeUrl(window.location.href);
     const samePage = normalizedCurrentUrl && normalizedCurrentUrl === normalizedWindowUrl;
+    var looseMatch = false;
+    if (!samePage && normalizedCurrentUrl && normalizedWindowUrl) {
+      try {
+        var savedUrl = new URL(normalizedCurrentUrl);
+        var currentUrl = new URL(normalizedWindowUrl);
+        if (savedUrl.hostname === currentUrl.hostname && savedUrl.pathname.replace(/\/$/, "") === currentUrl.pathname.replace(/\/$/, "")) {
+          var trackingKeys = [
+            "utm_source",
+            "utm_medium",
+            "utm_campaign",
+            "utm_term",
+            "utm_content",
+            "fbclid",
+            "gclid",
+            "gclsrc",
+            "dclid",
+            "msclkid",
+            "ref",
+            "source",
+            "campaign"
+          ];
+          var savedParams = new URLSearchParams(savedUrl.search);
+          var currentParams = new URLSearchParams(currentUrl.search);
+          trackingKeys.forEach(function(k) {
+            savedParams.delete(k);
+            currentParams.delete(k);
+          });
+          savedParams.sort();
+          currentParams.sort();
+          if (savedParams.toString() === currentParams.toString()) {
+            looseMatch = true;
+            Logger$3.log("Loose URL match — same search, different tracking params");
+          }
+        }
+      } catch (e) {
+      }
+    }
     const resumeRaw = await loadSetting(prefix + "_dealfinder_resume", null);
     await saveSetting(prefix + "_dealfinder_resume", null);
     let isScriptNavigation = false;
@@ -2556,7 +2635,7 @@ url: d.url
       } catch (e) {
       }
     }
-    if (!isScriptNavigation && !samePage) {
+    if (!isScriptNavigation && !samePage && !looseMatch) {
       Logger$3.log("Stale crawl state from different search — clearing");
       await clearCrawlState(prefix);
       return;
