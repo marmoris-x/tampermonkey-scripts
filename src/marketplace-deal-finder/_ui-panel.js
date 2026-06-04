@@ -36,6 +36,7 @@ export function createModal(prefix) {
     styles: SHADOW_STYLES
   });
   state.uiRoot = container.root;
+  state.uiContent = container.content;
 }
 
 /**
@@ -136,6 +137,6 @@ export function showFloatingButton(prefix) {
  * @param {Array} deals - Deals to display
  */
 export function switchToResultsView(prefix, deals) {
-  if (!state.uiRoot) return;
-  state.uiRoot.innerHTML = renderResultsView(prefix, deals || []);
+  if (!state.uiContent) return;
+  state.uiContent.innerHTML = renderResultsView(prefix, deals || []);
 }

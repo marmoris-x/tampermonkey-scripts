@@ -1029,8 +1029,8 @@ export async function setupSettingsView(scraper) {
   const settings = result.settings;
   const savedResults = await loadResults(prefix);
 
-  if (!state.uiRoot) return;
-  state.uiRoot.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
+  if (!state.uiContent) return;
+  state.uiContent.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
 
   attachSettingsListeners(prefix, {
     start: startDealFinder,

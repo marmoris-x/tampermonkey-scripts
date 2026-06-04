@@ -32,7 +32,8 @@ export const S = {
   cachedSettings: null,
   scraper: null,
   abortController: null,
-  uiRoot: null
+  uiRoot: null,
+  uiContent: null
 };
 
 /**
@@ -52,6 +53,7 @@ export function resetState() {
   S.scraper = null;
   S.abortController = null;
   S.uiRoot = null;
+  S.uiContent = null;
 }
 
 /** @param {boolean} val */

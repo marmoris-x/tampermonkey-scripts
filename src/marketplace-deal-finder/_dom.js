@@ -57,8 +57,13 @@ export function createShadowContainer(opts) {
     style.textContent = opts.styles;
     root.appendChild(style);
   }
+  // Content container that can be safely replaced via innerHTML
+  // without destroying the <style> element holding :host CSS rules.
+  const content = document.createElement('div');
+  content.id = 'content';
+  root.appendChild(content);
   document.body.appendChild(host);
-  return { host, root };
+  return { host, root, content };
 }
 
 /**

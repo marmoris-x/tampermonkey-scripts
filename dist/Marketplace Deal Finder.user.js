@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.28
+// @version         31.0.29
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -634,7 +634,8 @@ currentProvider: PROVIDER_TYPES.GEMINI,
     cachedSettings: null,
     scraper: null,
     abortController: null,
-    uiRoot: null
+    uiRoot: null,
+    uiContent: null
   };
   function setRunning(val) {
     S.isRunning = val;
@@ -683,8 +684,11 @@ currentProvider: PROVIDER_TYPES.GEMINI,
       style.textContent = opts.styles;
       root.appendChild(style);
     }
+    const content = document.createElement("div");
+    content.id = "content";
+    root.appendChild(content);
     document.body.appendChild(host);
-    return { host, root };
+    return { host, root, content };
   }
   function createToast(message, opts) {
     opts = opts || {};
@@ -885,6 +889,7 @@ providerType === PROVIDER_TYPES.PORTKEY ? '<div id="' + prefix + '-portkey-confi
       styles: SHADOW_STYLES
     });
     S.uiRoot = container.root;
+    S.uiContent = container.content;
   }
   function openModal(prefix) {
     var modal = document.getElementById(prefix + "-dealfinder-modal");
@@ -938,8 +943,8 @@ providerType === PROVIDER_TYPES.PORTKEY ? '<div id="' + prefix + '-portkey-confi
     return button;
   }
   function switchToResultsView(prefix, deals) {
-    if (!S.uiRoot) return;
-    S.uiRoot.innerHTML = renderResultsView(prefix, deals || []);
+    if (!S.uiContent) return;
+    S.uiContent.innerHTML = renderResultsView(prefix, deals || []);
   }
   class AIProvider {
 constructor(config) {
@@ -2428,8 +2433,8 @@ url: d.url
     S.cachedSettings = result.cachedSettings;
     const settings = result.settings;
     const savedResults = await loadResults(prefix);
-    if (!S.uiRoot) return;
-    S.uiRoot.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
+    if (!S.uiContent) return;
+    S.uiContent.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
     attachSettingsListeners(prefix, {
       start: startDealFinder,
       pause: pauseDealFinder,
