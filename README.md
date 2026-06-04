@@ -117,9 +117,9 @@ Run `node build.mjs` to regenerate all 19 `dist/` files after editing source fil
    - [Greasemonkey](https://www.greasespot.net/) (Firefox)
    - [Violentmonkey](https://violentmonkey.github.io/) (cross-platform)
 
-### Method 1: Install from jsDelivr CDN (recommended)
+### Method 1: Install from raw.githubusercontent.com (recommended)
 1. Navigate to the script you want in the [dist/ directory](https://github.com/marmoris-x/tampermonkey-scripts/tree/main/dist).
-2. Click the file, then click the **Raw** button — or use the direct jsDelivr CDN link from the table below.
+2. Click the file, then click the **Raw** button — or use the direct GitHub raw link from the table below.
 3. Your userscript manager will detect the script and offer to install it.
 4. Confirm the installation.
 
@@ -140,55 +140,55 @@ Scripts with an `@updateURL` will be automatically updated by your userscript ma
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Global Video Speed Controller.user.js` | **Global Video Speed Controller** | Global playback speed for all HTML5 videos and audios. Three-tier fallback injection. | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_addStyle`, `GM_addValueChangeListener`, `unsafeWindow` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Global%20Video%20Speed%20Controller.user.js) |
-| `YouTube Enhanced.user.js` | **YouTube Enhanced** | Auto max video quality, per-channel playback speed control & auto-stop on page load. | `GM_getValue`, `GM_setValue` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/YouTube%20Enhanced.user.js) |
-| `Picture-in-Picture any site.user.js` | **Picture-in-Picture any site** | Forces the current tab into Picture-in-Picture mode via menu command. | `GM_registerMenuCommand` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Picture-in-Picture%20any%20site.user.js) |
-| `Crunchyroll Enhanced.user.js` | **Crunchyroll Enhanced** | Sidebar with multi-filter & sort for Crunchyroll Browse — auto-scan, retry, export/clipboard, data-only filter. | `GM_addStyle`, `GM_setValue`, `GM_getValue` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Crunchyroll%20Enhanced.user.js) |
-| `TikTok Enhanced.user.js` | **TikTok Enhanced** | Restores middle-click and right-click on TikTok video links. SPA-aware with MutationObserver-free design. | `GM_addStyle`, `window.onurlchange` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/TikTok%20Enhanced.user.js) |
+| `Global Video Speed Controller.user.js` | **Global Video Speed Controller** | Global playback speed for all HTML5 videos and audios. Three-tier fallback injection. | `GM_setValue`, `GM_getValue`, `GM_registerMenuCommand`, `GM_unregisterMenuCommand`, `GM_addStyle`, `GM_addValueChangeListener`, `unsafeWindow` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Global%20Video%20Speed%20Controller.user.js) |
+| `YouTube Enhanced.user.js` | **YouTube Enhanced** | Auto max video quality, per-channel playback speed control & auto-stop on page load. | `GM_getValue`, `GM_setValue` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/YouTube%20Enhanced.user.js) |
+| `Picture-in-Picture any site.user.js` | **Picture-in-Picture any site** | Forces the current tab into Picture-in-Picture mode via menu command. | `GM_registerMenuCommand` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Picture-in-Picture%20any%20site.user.js) |
+| `Crunchyroll Enhanced.user.js` | **Crunchyroll Enhanced** | Sidebar with multi-filter & sort for Crunchyroll Browse — auto-scan, retry, export/clipboard, data-only filter. | `GM_addStyle`, `GM_setValue`, `GM_getValue` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Crunchyroll%20Enhanced.user.js) |
+| `TikTok Enhanced.user.js` | **TikTok Enhanced** | Restores middle-click and right-click on TikTok video links. SPA-aware with MutationObserver-free design. | `GM_addStyle`, `window.onurlchange` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/TikTok%20Enhanced.user.js) |
 
 ### Marketplace & Shopping
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Marketplace Deal Finder.user.js` | **Marketplace Deal Finder** | Cross-platform AI-powered deal finder for Willhaben & Kleinanzeigen with live ranking and pause/resume. Multi-page crawling with Gemini AI analysis. | `GM_xmlhttpRequest`, `GM_setValue`, `GM_getValue` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Marketplace%20Deal%20Finder.user.js) |
+| `Marketplace Deal Finder.user.js` | **Marketplace Deal Finder** | Cross-platform AI-powered deal finder for Willhaben & Kleinanzeigen with live ranking and pause/resume. Multi-page crawling with Gemini AI analysis. | `GM_xmlhttpRequest`, `GM_setValue`, `GM_getValue` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Marketplace%20Deal%20Finder.user.js) |
 
 ### Search & Content Enhancement
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Google Search Enhanced.user.js` | **Google Search Enhanced** | Adds Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner. | `none` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20Search%20Enhanced.user.js) |
-| `AniSearch Endless Scroll.user.js` | **AniSearch Endless Scroll** | Loads ALL pages automatically and appends items seamlessly. Precise rating filter via title attribute. | `GM_setValue`, `GM_getValue`, `GM_xmlhttpRequest` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/AniSearch%20Endless%20Scroll.user.js) |
-| `FlameComics Advanced Sort.user.js` | **FlameComics Advanced Sort** | Custom sorting options (alphabetical, hearts count) for FlameComics. | `none` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/FlameComics%20Advanced%20Sort.user.js) |
-| `Gutefrage Smart Filters.user.js` | **Gutefrage Smart Filters** | Enhanced filtering options and automatic tag management for gutefrage.net. | `GM_addStyle`, `GM_setValue`, `GM_getValue`, `GM_openInTab`, `window.close` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Gutefrage%20Smart%20Filters.user.js) |
-| `PromptInjector.user.js` | **PromptInjector** | Injects structured, multi-lingual prompt prefixes into any AI chat input. Menu-driven, auto-inject on empty fields. | `GM.getValue`, `GM.setValue`, `GM.registerMenuCommand`, `GM.unregisterMenuCommand`, `unsafeWindow`, `window.onurlchange` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/PromptInjector.user.js) |
+| `Google Search Enhanced.user.js` | **Google Search Enhanced** | Adds Reddit, YouTube & Maps tabs to Google Search, plus quick Maps button & link cleaner. | `none` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Google%20Search%20Enhanced.user.js) |
+| `AniSearch Endless Scroll.user.js` | **AniSearch Endless Scroll** | Loads ALL pages automatically and appends items seamlessly. Precise rating filter via title attribute. | `GM_setValue`, `GM_getValue`, `GM_xmlhttpRequest` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/AniSearch%20Endless%20Scroll.user.js) |
+| `FlameComics Advanced Sort.user.js` | **FlameComics Advanced Sort** | Custom sorting options (alphabetical, hearts count) for FlameComics. | `none` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/FlameComics%20Advanced%20Sort.user.js) |
+| `Gutefrage Smart Filters.user.js` | **Gutefrage Smart Filters** | Enhanced filtering options and automatic tag management for gutefrage.net. | `GM_addStyle`, `GM_setValue`, `GM_getValue`, `GM_openInTab`, `window.close` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Gutefrage%20Smart%20Filters.user.js) |
+| `PromptInjector.user.js` | **PromptInjector** | Injects structured, multi-lingual prompt prefixes into any AI chat input. Menu-driven, auto-inject on empty fields. | `GM.getValue`, `GM.setValue`, `GM.registerMenuCommand`, `GM.unregisterMenuCommand`, `unsafeWindow`, `window.onurlchange` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/PromptInjector.user.js) |
 
 ### Export & Data Tools
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Epic Games Library Export.user.js` | **Epic Games Library Export** | High-performance game library exporter. Start via Tampermonkey menu command. | `GM_setClipboard`, `GM_registerMenuCommand` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Epic%20Games%20Library%20Export.user.js) |
-| `NotebookLM Source Export.user.js` | **NotebookLM Source Export** | Automated extraction of source files from NotebookLM with ZIP export and markdown conversion. | `GM_registerMenuCommand`, `GM_unregisterMenuCommand` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/NotebookLM%20Source%20Export.user.js) |
-| `Google AI Studio Chat Exporter.user.js` | **Google AI Studio Chat Exporter** | Chat exporter in settings sidebar with recursive HTML-to-Markdown conversion. | `GM_registerMenuCommand`, `GM_notification`, `GM_setClipboard`, `GM_download` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js) |
-| `BotGhost Bulk Choice Extractor.user.js` | **BotGhost Bulk Choice Extractor** | Adds a "Copy Bulk" button to copy label/value pairs. | `GM_setClipboard` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js) |
-| `Copy as Markdown for AI.user.js` | **Copy as Markdown for AI** | Converts web pages, selections, images, and links to Markdown for AI usage. 6-stage content pipeline, BM25/density/pruning filters, interactive element picking. | `GM_registerMenuCommand`, `GM_addStyle`, `GM_setClipboard`, `GM_download` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Copy%20as%20Markdown%20for%20AI.user.js) |
+| `Epic Games Library Export.user.js` | **Epic Games Library Export** | High-performance game library exporter. Start via Tampermonkey menu command. | `GM_setClipboard`, `GM_registerMenuCommand` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Epic%20Games%20Library%20Export.user.js) |
+| `NotebookLM Source Export.user.js` | **NotebookLM Source Export** | Automated extraction of source files from NotebookLM with ZIP export and markdown conversion. | `GM_registerMenuCommand`, `GM_unregisterMenuCommand` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/NotebookLM%20Source%20Export.user.js) |
+| `Google AI Studio Chat Exporter.user.js` | **Google AI Studio Chat Exporter** | Chat exporter in settings sidebar with recursive HTML-to-Markdown conversion. | `GM_registerMenuCommand`, `GM_notification`, `GM_setClipboard`, `GM_download` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Google%20AI%20Studio%20Chat%20Exporter.user.js) |
+| `BotGhost Bulk Choice Extractor.user.js` | **BotGhost Bulk Choice Extractor** | Adds a "Copy Bulk" button to copy label/value pairs. | `GM_setClipboard` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/BotGhost%20Bulk%20Choice%20Extractor.user.js) |
+| `Copy as Markdown for AI.user.js` | **Copy as Markdown for AI** | Converts web pages, selections, images, and links to Markdown for AI usage. 6-stage content pipeline, BM25/density/pruning filters, interactive element picking. | `GM_registerMenuCommand`, `GM_addStyle`, `GM_setClipboard`, `GM_download` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Copy%20as%20Markdown%20for%20AI.user.js) |
 
 ### Forum & Community Tools
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | `GM_addElement`, `GM_getValue`, `GM_setValue` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Reddit%20Content%20Unlocker.user.js) |
+| `Reddit Content Unlocker.user.js` | **Reddit Content Unlocker** | Removes NSFW popup, un-blurs content, and makes Reddit accessible. Runs at document-start. | `GM_addElement`, `GM_getValue`, `GM_setValue` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Reddit%20Content%20Unlocker.user.js) |
 
 ### Manga & Comics Tools
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Manga Panel Downloader.user.js` | **Manga Panel Downloader** | Downloads manga/manhwa panels as ZIP — pipeline download, retry, abort, fast scrolling, image splitting. | `GM_addStyle`, `GM_xmlhttpRequest`, `GM_registerMenuCommand`, `GM_deleteValue` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Manga%20Panel%20Downloader.user.js) |
+| `Manga Panel Downloader.user.js` | **Manga Panel Downloader** | Downloads manga/manhwa panels as ZIP — pipeline download, retry, abort, fast scrolling, image splitting. | `GM_addStyle`, `GM_xmlhttpRequest`, `GM_registerMenuCommand`, `GM_deleteValue` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Manga%20Panel%20Downloader.user.js) |
 
 ### Security & CAPTCHA Tools
 
 | File | Name | Description | Grants | Update URL |
 |------|------|-------------|--------|------------|
-| `Recaptcha Solver.user.js` | **Recaptcha Solver** | Automatically solves Recaptcha in browser with start button in challenge footer. Dual-server failover. | `GM_xmlhttpRequest`, `GM_addElement` | [jsDelivr](https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Recaptcha%20Solver.user.js) |
+| `Recaptcha Solver.user.js` | **Recaptcha Solver** | Automatically solves Recaptcha in browser with start button in challenge footer. Dual-server failover. | `GM_xmlhttpRequest`, `GM_addElement` | [Raw](https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Recaptcha%20Solver.user.js) |
 
 ## Features Comparison
 

@@ -123,7 +123,7 @@ Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script
 | `@installURL` | `https://domain.com/script.user.js` | Original installation source. Used as fallback for update resolution when other URLs fail. |
 | `@supportURL` | `https://github.com/user/repo/issues` | Link to bug tracker / support forum. Displayed as clickable link in TM UI. |
 
-**Best practice:** For jsDelivr CDN distribution, point `@updateURL` and `@downloadURL` directly to the `.user.js` file on CDN. The CDN serves the latest commit on `@main`, and TM's daily poll detects version changes in the metadata block. The `.meta.js` pattern (separate lightweight metadata file) is a bandwidth optimization for scripts with very large user bases but is not required.
+**Best practice:** Point `@updateURL` and `@downloadURL` directly to the raw `.user.js` file on GitHub. GitHub serves the latest commit on `main`, and TM's daily poll detects version changes in the metadata block. The `.meta.js` pattern (separate lightweight metadata file) is a bandwidth optimization for scripts with very large user bases but is not required.
 
 ---
 
@@ -176,8 +176,8 @@ Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script
 // @run-at       document-idle
 // @sandbox      raw
 // @noframes
-// @updateURL    https://cdn.jsdelivr.net/gh/user/repo@main/dist/Script.user.js
-// @downloadURL  https://cdn.jsdelivr.net/gh/user/repo@main/dist/Script.user.js
+// @updateURL    https://raw.githubusercontent.com/user/repo/main/dist/Script.user.js
+// @downloadURL  https://raw.githubusercontent.com/user/repo/main/dist/Script.user.js
 // @supportURL   https://github.com/user/project/issues
 // @homepage     https://github.com/user/project
 // @icon         https://domain.com/icon32.png
@@ -193,7 +193,7 @@ Tampermonkey v4.18+ introduced `@sandbox` to provide precise control over script
 - **Added `@homepage`**, `@icon`, `@icon64`, `@tag` — for full TM dashboard UI integration.
 - **Added i18n keys** (`@name:de`, `@description:de`) — for multilingual user bases.
 - **`@grant` uses Promise-based APIs** (`GM.getValue`, not legacy `GM_getValue`).
-- **`@updateURL`/`@downloadURL` point directly to CDN `.user.js`** — jsDelivr auto-serves the latest commit. No separate `.meta.js` needed unless bandwidth optimization is required.
+- **`@updateURL`/`@downloadURL` point directly to GitHub raw `.user.js`** — GitHub serves the latest commit. No separate `.meta.js` needed unless bandwidth optimization is required.
 
 ---
 
@@ -438,11 +438,11 @@ Before EVERY commit that changes script behavior:
 
 ### CDN Distribution
 
-This repo distributes via jsDelivr CDN:
+This repo distributes via raw.githubusercontent.com:
 ```
-https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/<URL-ENCODED-FILENAME>
+https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/<URL-ENCODED-FILENAME>
 ```
-`@updateURL` and `@downloadURL` in each entry point to these CDN URLs. When a version bump is pushed to main, jsDelivr picks up the change and TM auto-updates users within 24 hours.
+`@updateURL` and `@downloadURL` in each entry point to these GitHub raw URLs. When a version bump is pushed to main, GitHub serves the new file immediately and TM auto-updates users within 24 hours.
 
 ### Additional Distribution Notes
 

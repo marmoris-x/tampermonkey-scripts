@@ -13,8 +13,8 @@
 // @tag          marketplace
 // @icon         https://i.imgur.com/oQmtRjQ.png
 // @supportURL   https://github.com/marmoris-x/tampermonkey-scripts/issues
-// @downloadURL  https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Marketplace%20Deal%20Finder.user.js
-// @updateURL    https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/Marketplace%20Deal%20Finder.user.js
+// @downloadURL  https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Marketplace%20Deal%20Finder.user.js
+// @updateURL    https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/Marketplace%20Deal%20Finder.user.js
 // @match        https://www.willhaben.at/iad/kaufen-und-verkaufen/*
 // @match        https://www.kleinanzeigen.de/s-*
 // @match        https://www.kleinanzeigen.de/z-*

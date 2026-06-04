@@ -40,7 +40,7 @@ This is not optional. Even for a one-line fix — spawn an Explore agent. Contex
 
 ## Project Identity
 
-Monorepo of 19 standalone Tampermonkey userscripts maintained by `marmoris-x`, distributed via jsDelivr CDN to GreasyFork. Every script is self-contained, built from modular ESM source through a Vite 6 + vite-plugin-monkey 7 pipeline, and published as non-minified `.user.js` files.
+Monorepo of 19 standalone Tampermonkey userscripts maintained by `marmoris-x`, distributed via raw.githubusercontent.com to GreasyFork. Every script is self-contained, built from modular ESM source through a Vite 6 + vite-plugin-monkey 7 pipeline, and published as non-minified `.user.js` files.
 
 - **Owner:** marmoris-x (GitHub) — **License:** MIT
 - **Package:** `"private": true`, `"type": "module"`
@@ -359,10 +359,10 @@ Temporal API and `using` declarations are ES2027 — **not yet available**.
 ### CDN
 
 ```
-https://cdn.jsdelivr.net/gh/marmoris-x/tampermonkey-scripts@main/dist/<URL-ENCODED-FILENAME>
+https://raw.githubusercontent.com/marmoris-x/tampermonkey-scripts/main/dist/<URL-ENCODED-FILENAME>
 ```
 
-`@updateURL`/`@downloadURL` point to jsDelivr. Updates propagate within 24h. **Always pin exact versions** in `@require` URLs — never `@latest` (different caching: 1 year for exact, 7 days for ranges).
+`@updateURL`/`@downloadURL` point to raw.githubusercontent.com. Updates propagate within minutes. **Always pin exact versions** in `@require` URLs — never `@latest` (different caching: 1 year for exact, 7 days for ranges).
 
 ### GreasyFork
 
