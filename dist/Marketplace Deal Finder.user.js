@@ -172,12 +172,32 @@
       }
     });
     let price = "Price not available";
-    const spans = ad.querySelectorAll("span, div, p");
-    for (let pi = 0; pi < spans.length; pi++) {
-      const text = spans[pi].textContent.trim();
-      if ((text.indexOf("€") !== -1 || text.indexOf("EUR") !== -1) && text.length < 20 && text.indexOf("...") === -1) {
-        price = text;
-        break;
+    var priceSelectors = [
+      '[data-testid*="price"]',
+      '[class*="Price"]',
+      '[class*="price"]',
+      '[data-testid*="Price"]',
+      ".AdSummaryI__PriceText"
+    ];
+    var priceEl = null;
+    for (var psi = 0; psi < priceSelectors.length; psi++) {
+      priceEl = ad.querySelector(priceSelectors[psi]);
+      if (priceEl) {
+        var pt = priceEl.textContent.trim();
+        if (pt && pt.length < 20 && (pt.indexOf("€") !== -1 || pt.indexOf("EUR") !== -1)) {
+          price = pt;
+          break;
+        }
+      }
+    }
+    if (!priceEl) {
+      const spans = ad.querySelectorAll("span, div, p");
+      for (let pi = 0; pi < spans.length; pi++) {
+        const text = spans[pi].textContent.trim();
+        if ((text.indexOf("€") !== -1 || text.indexOf("EUR") !== -1) && text.length < 20 && text.indexOf("...") === -1) {
+          price = text;
+          break;
+        }
       }
     }
     const url = ad.href || (ad.querySelector('a[href*="/iad/"]') ? ad.querySelector('a[href*="/iad/"]').href : "URL not available");
@@ -290,12 +310,32 @@
       }
     });
     let price = "Price not available";
-    const spans = ad.querySelectorAll("span, div, p, strong");
-    for (let pi = 0; pi < spans.length; pi++) {
-      const text = spans[pi].textContent.trim();
-      if ((text.indexOf("€") !== -1 || text.indexOf("EUR") !== -1 || /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(text.trim())) && text.length < 30 && text.indexOf("...") === -1) {
-        price = text;
-        break;
+    var priceSelectors = [
+      ".aditem-main--middle--price-shipping--price",
+      '[class*="aditem-main--price"]',
+      ".aditem-main--price",
+      "[data-price]",
+      '[class*="aditem-price"]'
+    ];
+    var priceEl = null;
+    for (var psi = 0; psi < priceSelectors.length; psi++) {
+      priceEl = ad.querySelector(priceSelectors[psi]);
+      if (priceEl) {
+        var pt = priceEl.textContent.trim();
+        if (pt && pt.length < 30 && (pt.indexOf("€") !== -1 || /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(pt))) {
+          price = pt;
+          break;
+        }
+      }
+    }
+    if (!priceEl) {
+      const spans = ad.querySelectorAll("span, div, p, strong");
+      for (let pi = 0; pi < spans.length; pi++) {
+        const text = spans[pi].textContent.trim();
+        if ((text.indexOf("€") !== -1 || text.indexOf("EUR") !== -1 || /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(text.trim())) && text.length < 30 && text.indexOf("...") === -1) {
+          price = text;
+          break;
+        }
       }
     }
     let url = ad.getAttribute("data-href") || ad.href || (ad.querySelector('a[href*="/s-anzeige/"]') ? ad.querySelector('a[href*="/s-anzeige/"]').href : "URL not available");
@@ -1754,16 +1794,21 @@ isAuthError(status) {
               Logger$3.debug("Desc MISS", { url, status: response.status, len: (responseText || "").length });
             } else {
               Logger$3.debug("Desc HTTP " + response.status, { url, status: response.status });
+              if (response.status === 403 || response.status === 429) {
+                Logger$3.debug("Anti-bot response " + response.status, { url, status: response.status });
+              }
             }
           } catch (e) {
             Logger$3.debug("Desc parse error", { url, error: e && e.message || String(e) });
           }
           if (abortIfStopped()) return;
-          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
+          var antiBot = response.status === 403 || response.status === 429;
+          var baseDelay = antiBot ? DESCRIPTION_FETCH_DELAY * 3 : DESCRIPTION_FETCH_DELAY;
+          var delay = baseDelay * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount) * (1 + Math.random() * JITTER_FACTOR);
           if (retryCount < DESCRIPTION_MAX_RETRIES) {
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
-            }, delay);
+            }, Math.round(delay));
           } else {
             done = true;
             resolve({ success: false, description: "" });
@@ -1771,11 +1816,11 @@ isAuthError(status) {
         },
         onerror: function() {
           if (abortIfStopped()) return;
-          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
+          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount) * (1 + Math.random() * JITTER_FACTOR);
           if (retryCount < DESCRIPTION_MAX_RETRIES) {
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
-            }, delay);
+            }, Math.round(delay));
           } else {
             done = true;
             resolve({ success: false, description: "" });
@@ -1783,11 +1828,11 @@ isAuthError(status) {
         },
         ontimeout: function() {
           if (abortIfStopped()) return;
-          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount);
+          var delay = DESCRIPTION_FETCH_DELAY * Math.pow(DESCRIPTION_BACKOFF_FACTOR, retryCount) * (1 + Math.random() * JITTER_FACTOR);
           if (retryCount < DESCRIPTION_MAX_RETRIES) {
             setTimeout(function() {
               fetchFullDescription(url, descSelectors2, retryCount + 1).then(resolve);
-            }, delay);
+            }, Math.round(delay));
           } else {
             done = true;
             resolve({ success: false, description: "" });
@@ -2115,9 +2160,52 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
         await finishDealFinder();
         return;
       }
-      Logger$3.error("AI analysis failed for page " + S.currentPage + ", continuing to next page:", error);
-      updateProgress(prefix, "Seite " + S.currentPage + ": Analyse fehlgeschlagen, ueberspringe...", 75, "warning");
-      aiResult = null;
+      Logger$3.warn("AI analysis failed — attempting salvage retry...");
+      updateProgress(prefix, "Seite " + S.currentPage + ": Erneuter Analyse-Versuch...", 75, "warning");
+      try {
+        var salvagePrompt = 'Return ONLY a JSON object with a "topDeals" array containing exactly ' + Math.min(3, adsData.length) + ' deals. Format: {"topDeals":[{"title":"...","price":"...","score":0-100,"reasoning":"...","url":"..."}]}. If you cannot analyze these listings, return {"topDeals":[]}. DO NOT add commentary.';
+        var salvageListingData = adsData.slice(0, Math.min(20, adsData.length)).map(function(ad) {
+          return (ad.title || "") + " | " + (ad.price || "") + " | " + (ad.url || "");
+        }).join("\n");
+        aiResult = await callAI(salvagePrompt + "\n\nListings:\n" + salvageListingData, {
+          providerType: settings.provider.type,
+          apiKey: settings.provider.apiKey,
+          modelId: settings.provider.modelId,
+          baseUrl: settings.provider.baseUrl || void 0,
+          providerOptions: settings.provider.options || {}
+        }, {
+          temperature: 0,
+          maxOutputTokens: 4096,
+          signal: S.abortController && S.abortController.signal
+        });
+        Logger$3.log("Salvage retry succeeded");
+      } catch (salvageError) {
+        if (salvageError.name === "AbortError" || S.shouldStop) {
+          await finishDealFinder();
+          return;
+        }
+        Logger$3.warn("Salvage retry also failed — using price heuristics for this page");
+        var priceAds = adsData.filter(function(ad) {
+          return ad.price && ad.url;
+        });
+        priceAds.sort(function(a, b) {
+          var pa = parseFloat(String(a.price).replace(/[^0-9,.-]/g, "").replace(",", "."));
+          var pb = parseFloat(String(b.price).replace(/[^0-9,.-]/g, "").replace(",", "."));
+          return (isNaN(pa) ? Infinity : pa) - (isNaN(pb) ? Infinity : pb);
+        });
+        var fallbackTopX = Math.min(settings.topX, priceAds.length);
+        aiResult = {
+          topDeals: priceAds.slice(0, fallbackTopX).map(function(ad, idx) {
+            return {
+              title: ad.title || "Unknown",
+              price: ad.price || "Unknown",
+              score: Math.round(80 - idx * 5),
+reasoning: "Preis-Heuristik (KI-Analyse nicht verfuegbar)",
+              url: ad.url
+            };
+          })
+        };
+      }
     }
     if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
       Logger$3.log("AI found " + aiResult.topDeals.length + " top deals");

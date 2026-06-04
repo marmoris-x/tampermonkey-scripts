@@ -53,12 +53,29 @@ export function extractBasicInfo(ad) {
   });
 
   let price = 'Price not available';
-  const spans = ad.querySelectorAll('span, div, p, strong');
-  for (let pi = 0; pi < spans.length; pi++) {
-    const text = spans[pi].textContent.trim();
-    if ((text.indexOf('€') !== -1 || text.indexOf('EUR') !== -1 ||
-         /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(text.trim())) && text.length < 30 && text.indexOf('...') === -1) {
-      price = text; break;
+  // Site-specific selectors first (fast path), generic scan as fallback (E-3)
+  var priceSelectors = [
+    '.aditem-main--middle--price-shipping--price', '[class*="aditem-main--price"]',
+    '.aditem-main--price', '[data-price]', '[class*="aditem-price"]'
+  ];
+  var priceEl = null;
+  for (var psi = 0; psi < priceSelectors.length; psi++) {
+    priceEl = ad.querySelector(priceSelectors[psi]);
+    if (priceEl) {
+      var pt = priceEl.textContent.trim();
+      if (pt && pt.length < 30 && (pt.indexOf('€') !== -1 || /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(pt))) {
+        price = pt; break;
+      }
+    }
+  }
+  if (!priceEl) {
+    const spans = ad.querySelectorAll('span, div, p, strong');
+    for (let pi = 0; pi < spans.length; pi++) {
+      const text = spans[pi].textContent.trim();
+      if ((text.indexOf('€') !== -1 || text.indexOf('EUR') !== -1 ||
+           /^(\d[\d.,]*\s*€?\s*)?VB$/i.test(text.trim())) && text.length < 30 && text.indexOf('...') === -1) {
+        price = text; break;
+      }
     }
   }
 

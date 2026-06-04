@@ -57,11 +57,28 @@ export function extractBasicInfo(ad) {
   });
 
   let price = 'Price not available';
-  const spans = ad.querySelectorAll('span, div, p');
-  for (let pi = 0; pi < spans.length; pi++) {
-    const text = spans[pi].textContent.trim();
-    if ((text.indexOf('€') !== -1 || text.indexOf('EUR') !== -1) && text.length < 20 && text.indexOf('...') === -1) {
-      price = text; break;
+  // Site-specific selectors first (fast path), generic scan as fallback
+  var priceSelectors = [
+    '[data-testid*="price"]', '[class*="Price"]', '[class*="price"]',
+    '[data-testid*="Price"]', '.AdSummaryI__PriceText'
+  ];
+  var priceEl = null;
+  for (var psi = 0; psi < priceSelectors.length; psi++) {
+    priceEl = ad.querySelector(priceSelectors[psi]);
+    if (priceEl) {
+      var pt = priceEl.textContent.trim();
+      if (pt && pt.length < 20 && (pt.indexOf('€') !== -1 || pt.indexOf('EUR') !== -1)) {
+        price = pt; break;
+      }
+    }
+  }
+  if (!priceEl) {
+    const spans = ad.querySelectorAll('span, div, p');
+    for (let pi = 0; pi < spans.length; pi++) {
+      const text = spans[pi].textContent.trim();
+      if ((text.indexOf('€') !== -1 || text.indexOf('EUR') !== -1) && text.length < 20 && text.indexOf('...') === -1) {
+        price = text; break;
+      }
     }
   }
 

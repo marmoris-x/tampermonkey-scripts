@@ -327,12 +327,19 @@ function fetchFullDescription(url, descSelectors, retryCount) {
             Logger.debug('Desc MISS', { url: url, status: response.status, len: (responseText || '').length });
           } else {
             Logger.debug('Desc HTTP ' + response.status, { url: url, status: response.status });
+            // 403/429 anti-bot — use longer base delay for retries (A-7)
+            if (response.status === 403 || response.status === 429) {
+              Logger.debug('Anti-bot response ' + response.status, { url: url, status: response.status });
+            }
           }
         } catch (e) { Logger.debug('Desc parse error', { url: url, error: (e && e.message) || String(e) }); }
         if (abortIfStopped()) return;
-        var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
+        // Jittered backoff: 403/429 use 3× base delay (A-7)
+        var antiBot = response.status === 403 || response.status === 429;
+        var baseDelay = antiBot ? C.DESCRIPTION_FETCH_DELAY * 3 : C.DESCRIPTION_FETCH_DELAY;
+        var delay = (baseDelay * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount)) * (1 + Math.random() * C.JITTER_FACTOR);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
-          setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, delay);
+          setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, Math.round(delay));
         } else {
           done = true;
           resolve({ success: false, description: '' });
@@ -340,9 +347,9 @@ function fetchFullDescription(url, descSelectors, retryCount) {
       },
       onerror: function () {
         if (abortIfStopped()) return;
-        var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
+        var delay = (C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount)) * (1 + Math.random() * C.JITTER_FACTOR);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
-          setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, delay);
+          setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, Math.round(delay));
         } else {
           done = true;
           resolve({ success: false, description: '' });
@@ -350,9 +357,9 @@ function fetchFullDescription(url, descSelectors, retryCount) {
       },
       ontimeout: function () {
         if (abortIfStopped()) return;
-        var delay = C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount);
+        var delay = (C.DESCRIPTION_FETCH_DELAY * Math.pow(C.DESCRIPTION_BACKOFF_FACTOR, retryCount)) * (1 + Math.random() * C.JITTER_FACTOR);
         if (retryCount < C.DESCRIPTION_MAX_RETRIES) {
-          setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, delay);
+          setTimeout(function () { fetchFullDescription(url, descSelectors, retryCount + 1).then(resolve); }, Math.round(delay));
         } else {
           done = true;
           resolve({ success: false, description: '' });
@@ -742,11 +749,55 @@ async function processCurrentPage(settings) {
       await finishDealFinder();
       return;
     }
-    // Page-level recovery: log error, skip this page, continue to next
-    // Without this, a single failed page kills the entire multi-page crawl.
-    Logger.error('AI analysis failed for page ' + state.currentPage + ', continuing to next page:', error);
-    updateProgress(prefix, 'Seite ' + state.currentPage + ': Analyse fehlgeschlagen, ueberspringe...', 75, 'warning');
-    aiResult = null;
+    // Salvage path (C-3): Try a simplified second request with strict JSON
+    // instruction before giving up on this page entirely.
+    Logger.warn('AI analysis failed — attempting salvage retry...');
+    updateProgress(prefix, 'Seite ' + state.currentPage + ': Erneuter Analyse-Versuch...', 75, 'warning');
+    try {
+      var salvagePrompt = 'Return ONLY a JSON object with a "topDeals" array containing exactly ' + (
+        Math.min(3, adsData.length)) + ' deals. Format: {"topDeals":[{"title":"...","price":"...","score":0-100,"reasoning":"...","url":"..."}]}. ' +
+        'If you cannot analyze these listings, return {"topDeals":[]}. DO NOT add commentary.';
+      var salvageListingData = adsData.slice(0, Math.min(20, adsData.length)).map(function (ad) {
+        return (ad.title || '') + ' | ' + (ad.price || '') + ' | ' + (ad.url || '');
+      }).join('\n');
+      aiResult = await callAI(salvagePrompt + '\n\nListings:\n' + salvageListingData, {
+        providerType: settings.provider.type,
+        apiKey: settings.provider.apiKey,
+        modelId: settings.provider.modelId,
+        baseUrl: settings.provider.baseUrl || undefined,
+        providerOptions: settings.provider.options || {}
+      }, {
+        temperature: 0,
+        maxOutputTokens: 4096,
+        signal: state.abortController && state.abortController.signal
+      });
+      Logger.log('Salvage retry succeeded');
+    } catch (salvageError) {
+      if (salvageError.name === 'AbortError' || state.shouldStop) {
+        await finishDealFinder();
+        return;
+      }
+      Logger.warn('Salvage retry also failed — using price heuristics for this page');
+      // Last resort: pick top deals by price heuristic (cheapest = best deal)
+      var priceAds = adsData.filter(function (ad) { return ad.price && ad.url; });
+      priceAds.sort(function (a, b) {
+        var pa = parseFloat(String(a.price).replace(/[^0-9,.-]/g, '').replace(',', '.'));
+        var pb = parseFloat(String(b.price).replace(/[^0-9,.-]/g, '').replace(',', '.'));
+        return (isNaN(pa) ? Infinity : pa) - (isNaN(pb) ? Infinity : pb);
+      });
+      var fallbackTopX = Math.min(settings.topX, priceAds.length);
+      aiResult = {
+        topDeals: priceAds.slice(0, fallbackTopX).map(function (ad, idx) {
+          return {
+            title: ad.title || 'Unknown',
+            price: ad.price || 'Unknown',
+            score: Math.round(80 - idx * 5),  // descending heuristic scores
+            reasoning: 'Preis-Heuristik (KI-Analyse nicht verfuegbar)',
+            url: ad.url
+          };
+        })
+      };
+    }
   }
 
   if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
