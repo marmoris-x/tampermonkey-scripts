@@ -1,5 +1,7 @@
 'use strict';
 
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF API');
 import { createProvider } from './_api-provider.js';
 import {
   PROVIDER_TYPES,
@@ -238,7 +240,7 @@ export async function callAI(prompt, settings, options = {}) {
           result = JSON.parse(repaired);
         } catch (repairErr) {
           // Log raw output for debugging (both original parse error + repair error)
-          console.warn('[MDF] Raw AI output (first 500 chars):', (text || '').substring(0, 500));
+          Logger.warn('Raw AI output (first 500 chars):', (text || '').substring(0, 500));
           throw new Error(`Failed to parse provider output as JSON: ` +
             `${parseErr.message} | Repair error: ${repairErr.message}`);
         }

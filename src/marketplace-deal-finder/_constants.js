@@ -64,8 +64,8 @@ export const MODEL_PRESETS = {
     { id: 'gpt-5.5', label: 'GPT-5.5', icon: '🧠', desc: 'Flagship intelligence' }
   ],
   deepseek: [
-    { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', icon: '⚡', desc: 'Fast 284B, max thinking', options: { reasoning_effort: 'max' } },
-    { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', icon: '🧠', desc: '1.6T params, max thinking', options: { reasoning_effort: 'max' } }
+    { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', icon: '⚡', desc: 'Fast 284B, max thinking', options: { reasoning_effort: 'max', skip_response_format: true } },
+    { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro', icon: '🧠', desc: '1.6T params, max thinking', options: { reasoning_effort: 'max', skip_response_format: true } }
   ],
   claude: [
     { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', icon: '🧠', desc: 'Latest flagship, adaptive thinking', options: { thinking: { type: 'adaptive' } } },

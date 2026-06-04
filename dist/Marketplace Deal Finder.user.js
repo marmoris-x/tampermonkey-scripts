@@ -2,7 +2,7 @@
 // @name            Marketplace Deal Finder
 // @name:de         Marketplace Deal Finder
 // @namespace       https://github.com/marmoris-x/tampermonkey-scripts
-// @version         31.0.25
+// @version         31.0.26
 // @author          marmoris
 // @description     Multi-provider AI deal aggregator for Willhaben & Kleinanzeigen. Supports Gemini, OpenAI, DeepSeek, Claude, OpenRouter & Portkey.
 // @description:de  Multi-Provider KI-Deal-Aggregator für Willhaben und Kleinanzeigen. Unterstützt Gemini, OpenAI, DeepSeek, Claude, OpenRouter und Portkey.
@@ -111,8 +111,8 @@
       { id: "gpt-5.5", label: "GPT-5.5", icon: "🧠", desc: "Flagship intelligence" }
     ],
     deepseek: [
-      { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", icon: "⚡", desc: "Fast 284B, max thinking", options: { reasoning_effort: "max" } },
-      { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", icon: "🧠", desc: "1.6T params, max thinking", options: { reasoning_effort: "max" } }
+      { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", icon: "⚡", desc: "Fast 284B, max thinking", options: { reasoning_effort: "max", skip_response_format: true } },
+      { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", icon: "🧠", desc: "1.6T params, max thinking", options: { reasoning_effort: "max", skip_response_format: true } }
     ],
     claude: [
       { id: "claude-opus-4-8", label: "Claude Opus 4.8", icon: "🧠", desc: "Latest flagship, adaptive thinking", options: { thinking: { type: "adaptive" } } },
@@ -131,6 +131,7 @@
       { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", icon: "⚡", desc: "Via Portkey config", options: { skip_response_format: true } }
     ]
   };
+  const Logger$5 = createLogger("MDF-WH");
   function findAds$1() {
     const adSelectors = [
       'a[data-testid^="search-result-entry-header-"]',
@@ -140,7 +141,7 @@
     for (let si = 0; si < adSelectors.length; si++) {
       const entries = document.querySelectorAll(adSelectors[si]);
       if (entries.length > 0) {
-        console.log("[MDF-WH] Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
+        Logger$5.log("Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
         return { adEntries: entries };
       }
     }
@@ -156,7 +157,7 @@
       }
     });
     if (uniqueAds.length > 0) {
-      console.log("[MDF-WH] Found " + uniqueAds.length + " ads (fallback method)");
+      Logger$5.log("Found " + uniqueAds.length + " ads (fallback method)");
       return { adEntries: uniqueAds };
     }
     return null;
@@ -214,33 +215,33 @@
       const isDisabled = nextButton.hasAttribute("disabled");
       const ariaDisabled = nextButton.getAttribute("aria-disabled") === "true";
       const href = nextButton.getAttribute("href");
-      console.log("[MDF-WH] Next button disabled:", isDisabled, "| aria-disabled:", ariaDisabled, "| href:", href);
+      Logger$5.log("Next button disabled:", isDisabled, "| aria-disabled:", ariaDisabled, "| href:", href);
       if (!isDisabled && !ariaDisabled && !href) {
         try {
           var url = new URL(location.href);
           var nextPage = currentPage + 1;
           url.searchParams.set("page", String(nextPage));
           var nextUrl = url.pathname + url.search;
-          console.log("[MDF-WH] Constructed next page URL from params:", nextUrl);
+          Logger$5.log("Constructed next page URL from params:", nextUrl);
           return nextUrl;
         } catch (e) {
-          console.warn("[MDF-WH] Failed to construct next page URL:", e);
+          Logger$5.warn("Failed to construct next page URL:", e);
           return false;
         }
       }
       if (!isDisabled && !ariaDisabled && href) {
         try {
           if (new URL(href, location.href).href === location.href) {
-            console.log("[MDF-WH] Next button points to same page - skipped");
+            Logger$5.log("Next button points to same page - skipped");
             return false;
           }
         } catch (e) {
-          console.warn("[MDF-WH] Invalid URL in next button:", href, e);
+          Logger$5.warn("Invalid URL in next button:", href, e);
           return false;
         }
         return href;
       }
-      console.log("[MDF-WH] Next button not usable");
+      Logger$5.log("Next button not usable");
     }
     return false;
   }
@@ -251,12 +252,13 @@
     findAds: findAds$1,
     goToNextPage: goToNextPage$1
   }, Symbol.toStringTag, { value: "Module" }));
+  const Logger$4 = createLogger("MDF-KA");
   function findAds() {
     const adSelectors = ["article[data-adid]", "li.ad-listitem", ".aditem"];
     for (let si = 0; si < adSelectors.length; si++) {
       const entries = document.querySelectorAll(adSelectors[si]);
       if (entries.length > 0) {
-        console.log("[MDF-KA] Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
+        Logger$4.log("Found " + entries.length + " ads (selector: " + adSelectors[si] + ")");
         return { adEntries: entries };
       }
     }
@@ -272,7 +274,7 @@
       }
     });
     if (uniqueAds.length > 0) {
-      console.log("[MDF-KA] Found " + uniqueAds.length + " ads (fallback method)");
+      Logger$4.log("Found " + uniqueAds.length + " ads (fallback method)");
       return { adEntries: uniqueAds };
     }
     return null;
@@ -339,20 +341,20 @@
     }
     if (nextButton) {
       const href = nextButton.getAttribute("href");
-      console.log("[MDF-KA] Next button href:", href);
+      Logger$4.log("Next button href:", href);
       if (href) {
         try {
           if (new URL(href, location.href).href === location.href) {
-            console.log("[MDF-KA] Next button points to same page - skipped");
+            Logger$4.log("Next button points to same page - skipped");
             return false;
           }
         } catch (e) {
-          console.warn("[MDF-KA] Invalid URL in next button:", href, e);
+          Logger$4.warn(" Invalid URL in next button:", href, e);
           return false;
         }
         return href;
       }
-      console.log("[MDF-KA] Next button has no href");
+      Logger$4.log("Next button has no href");
     }
     return false;
   }
@@ -892,6 +894,7 @@ isAuthError(status) {
     }
     return new ProviderClass(config);
   }
+  const Logger$3 = createLogger("MDF API");
   function getTimeoutForProvider(providerType) {
     return providerType === PROVIDER_TYPES.GEMINI ? GEMINI_API_TIMEOUT : REQUEST_TIMEOUT;
   }
@@ -1051,7 +1054,7 @@ isAuthError(status) {
             const repaired = cleanAIJson(text);
             result = JSON.parse(repaired);
           } catch (repairErr) {
-            console.warn("[MDF] Raw AI output (first 500 chars):", (text || "").substring(0, 500));
+            Logger$3.warn("Raw AI output (first 500 chars):", (text || "").substring(0, 500));
             throw new Error(`Failed to parse provider output as JSON: ${parseErr.message} | Repair error: ${repairErr.message}`);
           }
         }
@@ -1517,7 +1520,7 @@ isAuthError(status) {
       a.remove();
     }, 1e3);
   }
-  const Logger$1 = createLogger("Marketplace Deal Finder");
+  const Logger$2 = createLogger("MDF Crawler");
   function escapeForPrompt(str) {
     return (str || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, "");
   }
@@ -1573,26 +1576,46 @@ isAuthError(status) {
           if (abortIfStopped()) return;
           try {
             if (response.status >= 200 && response.status < 300) {
-              const parser = new DOMParser();
-              const doc = parser.parseFromString(response.responseText, "text/html");
-              let fullDesc = null;
-              for (let si = 0; si < descSelectors2.length; si++) {
-                const element = doc.querySelector(descSelectors2[si]);
-                if (element && element.textContent.trim().length > 20) {
-                  fullDesc = element.textContent.replace(/\s+/g, " ").trim();
-                  break;
+              var responseText = response.responseText;
+              var fullDesc = null;
+              var metaMatch = responseText.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
+              if (metaMatch && metaMatch[1] && metaMatch[1].trim().length > 20) {
+                fullDesc = metaMatch[1].replace(/\s+/g, " ").trim();
+              }
+              if (!fullDesc) {
+                var ldMatch = responseText.match(/<script\s+type="application\/ld\+json"\s*>([\s\S]*?)<\/script>/i);
+                if (ldMatch && ldMatch[1]) {
+                  try {
+                    var ld = JSON.parse(ldMatch[1]);
+                    var ldDesc = ld && ld.description || "";
+                    if (ldDesc.trim().length > 20) {
+                      fullDesc = ldDesc.replace(/\s+/g, " ").trim();
+                    }
+                  } catch (e) {
+                  }
                 }
               }
               if (!fullDesc) {
-                const itempropEl = doc.querySelector('[itemprop="description"]');
-                if (itempropEl && itempropEl.textContent.trim().length > 20) {
-                  fullDesc = itempropEl.textContent.replace(/\s+/g, " ").trim();
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(responseText, "text/html");
+                for (var si = 0; si < descSelectors2.length; si++) {
+                  var element = doc.querySelector(descSelectors2[si]);
+                  if (element && element.textContent.trim().length > 20) {
+                    fullDesc = element.textContent.replace(/\s+/g, " ").trim();
+                    break;
+                  }
                 }
-              }
-              if (!fullDesc) {
-                const metaDesc = doc.querySelector('meta[name="description"]');
-                if (metaDesc && metaDesc.getAttribute("content") && metaDesc.getAttribute("content").trim().length > 20) {
-                  fullDesc = metaDesc.getAttribute("content").replace(/\s+/g, " ").trim();
+                if (!fullDesc) {
+                  var itempropEl = doc.querySelector('[itemprop="description"]');
+                  if (itempropEl && itempropEl.textContent.trim().length > 20) {
+                    fullDesc = itempropEl.textContent.replace(/\s+/g, " ").trim();
+                  }
+                }
+                if (!fullDesc) {
+                  var metaDesc = doc.querySelector('meta[name="description"]');
+                  if (metaDesc && metaDesc.getAttribute("content") && metaDesc.getAttribute("content").trim().length > 20) {
+                    fullDesc = metaDesc.getAttribute("content").replace(/\s+/g, " ").trim();
+                  }
                 }
               }
               if (fullDesc) {
@@ -1676,7 +1699,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
   async function startDealFinder() {
     const prefix = S.scraper.storagePrefix;
     if (S.isRunning) {
-      Logger$1.warn("Crawl already running, ignoring duplicate start");
+      Logger$2.warn("Crawl already running, ignoring duplicate start");
       return;
     }
     const apiKey = document.getElementById(prefix + "-api-key").value.trim();
@@ -1735,7 +1758,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     try {
       await processCurrentPage(settings);
     } catch (error) {
-      Logger$1.error("Error:", error);
+      Logger$2.error("Error:", error);
       updateProgress(prefix, "Fehler: " + error.message, 0, "error");
       if (S.allTopDeals.length > 0) {
         await finishDealFinder();
@@ -1769,11 +1792,11 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       S.captchaPaused = false;
       const cs = S.cachedSettings || {};
       processCurrentPage(cs)["catch"](function(error) {
-        Logger$1.error("Resume error:", error);
+        Logger$2.error("Resume error:", error);
         updateProgress(prefix, "Fehler: " + error.message, 0, "error");
         if (S.allTopDeals.length > 0) {
           finishDealFinder()["catch"](function(e) {
-            Logger$1.error("finishDealFinder after resume error:", e);
+            Logger$2.error("finishDealFinder after resume error:", e);
           });
         } else {
           resetUI(prefix);
@@ -1791,7 +1814,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     }
     const prefix = S.scraper.storagePrefix;
     await clearCrawlState(prefix);
-    Logger$1.log("Crawl stopped by user");
+    Logger$2.log("Crawl stopped by user");
     updateProgress(prefix, "Stoppe nach aktueller Seite...", 95, "warning");
   }
   async function processCurrentPage(settings) {
@@ -1894,7 +1917,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
         adsData.push(info);
       }
     }
-    Logger$1.log(adsData.length + " ads found (deduplicated)");
+    Logger$2.log(adsData.length + " ads found (deduplicated)");
     updateProgress(prefix, "Seite " + S.currentPage + ": Lade Details (0/" + adsData.length + ")...", 30, "info");
     let completedCount = 0;
     let deadlineWarningLogged = false;
@@ -1928,7 +1951,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
           setTimeout(function() {
             batchDeadlineReached = true;
             if (!deadlineWarningLogged) {
-              Logger$1.warn("Description fetch deadline (" + deadline + "ms) reached — proceeding with partial data");
+              Logger$2.warn("Description fetch deadline (" + deadline + "ms) reached — proceeding with partial data");
               deadlineWarningLogged = true;
             }
             r();
@@ -1946,7 +1969,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       return;
     }
     updateProgress(prefix, "Seite " + S.currentPage + ": AI analysiert Angebote...", 75, "info");
-    Logger$1.log("Sending " + adsData.length + " listings to " + settings.provider.type + "...");
+    Logger$2.log("Sending " + adsData.length + " listings to " + settings.provider.type + "...");
     const prompt = buildAnalysisPrompt(adsData, settings.searchContext, settings.topX, scraper.siteName);
     const aiCallStart = Date.now();
     const onRetry = function(retryNum, error) {
@@ -1966,18 +1989,18 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
         onRetry,
         signal: S.abortController && S.abortController.signal
       });
-      Logger$1.log("AI response received in " + (Date.now() - aiCallStart) + "ms");
+      Logger$2.log("AI response received in " + (Date.now() - aiCallStart) + "ms");
     } catch (error) {
       if (error.name === "AbortError" || S.shouldStop) {
         await finishDealFinder();
         return;
       }
-      Logger$1.error("AI analysis failed for page " + S.currentPage + ", continuing to next page:", error);
+      Logger$2.error("AI analysis failed for page " + S.currentPage + ", continuing to next page:", error);
       updateProgress(prefix, "Seite " + S.currentPage + ": Analyse fehlgeschlagen, ueberspringe...", 75, "warning");
       aiResult = null;
     }
     if (aiResult && aiResult.topDeals && aiResult.topDeals.length > 0) {
-      Logger$1.log("AI found " + aiResult.topDeals.length + " top deals");
+      Logger$2.log("AI found " + aiResult.topDeals.length + " top deals");
       const scrapedDescs = new Map();
       for (let adi = 0; adi < adsData.length; adi++) {
         if (adsData[adi].description && adsData[adi].url) {
@@ -2009,10 +2032,10 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
     if (!S.shouldStop) {
       const nextUrl = scraper.goToNextPage(S.currentPage);
       if (nextUrl) {
-        Logger$1.log("Navigating to next page: " + nextUrl);
+        Logger$2.log("Navigating to next page: " + nextUrl);
         await saveCrawlStateAndNavigate(nextUrl, settings);
       } else {
-        Logger$1.log("No more pages available - ending crawl");
+        Logger$2.log("No more pages available - ending crawl");
         await finishDealFinder();
       }
     } else {
@@ -2095,10 +2118,10 @@ url: d.url
             return !reRankedUrls.has(d.url);
           });
           S.allTopDeals = sortDealsByScore(reRankedDeals.concat(remainingDeals));
-          Logger$1.log("Global re-ranking complete");
+          Logger$2.log("Global re-ranking complete");
         }
       } catch (e) {
-        Logger$1.warn("Global re-ranking failed:", e);
+        Logger$2.warn("Global re-ranking failed:", e);
         showWarning(prefix, "Re-Ranking fehlgeschlagen — Ergebnisse ohne Neusortierung", 95);
       }
     }
@@ -2176,7 +2199,7 @@ url: d.url
           S.cachedSettings = deepCopySettings(settingsObj);
           S.cachedSettings.provider = S.cachedSettings.providers[S.cachedSettings.currentProvider] || {};
           await setupSettingsView(scraper)["catch"](function(err) {
-            Logger$1.error("Re-render after provider change failed:", err);
+            Logger$2.error("Re-render after provider change failed:", err);
           });
         }
       },
@@ -2272,12 +2295,12 @@ url: d.url
     const prefix = scraper.storagePrefix;
     const rawState = await loadCrawlState(prefix);
     if (!rawState) {
-      Logger$1.log("Normal session");
+      Logger$2.log("Normal session");
       return;
     }
     const currentAds = scraper.findAds();
     if (!currentAds) {
-      Logger$1.log("Stale crawl state found but current page has no search results — clearing");
+      Logger$2.log("Stale crawl state found but current page has no search results — clearing");
       await clearCrawlState(prefix);
       return;
     }
@@ -2295,12 +2318,12 @@ url: d.url
       }
     }
     if (!isScriptNavigation && !samePage) {
-      Logger$1.log("Stale crawl state from different search — clearing");
+      Logger$2.log("Stale crawl state from different search — clearing");
       await clearCrawlState(prefix);
       return;
     }
     const pageIncrement = samePage ? SAME_PAGE_INCREMENT : NEW_PAGE_INCREMENT;
-    Logger$1.log("Crawl state found - resuming from page " + (rawState.currentPage + pageIncrement));
+    Logger$2.log("Crawl state found - resuming from page " + (rawState.currentPage + pageIncrement));
     S.currentPage = rawState.currentPage + pageIncrement;
     S.allTopDeals = rawState.allTopDeals || [];
     S.isRunning = true;
@@ -2318,7 +2341,7 @@ url: d.url
     try {
       await processCurrentPage(settings);
     } catch (error) {
-      Logger$1.error("Error resuming:", error);
+      Logger$2.error("Error resuming:", error);
       updateProgress(prefix, "Fehler: " + error.message, 0, "error");
       await clearCrawlState(prefix);
       if (S.allTopDeals.length > 0) {
@@ -2329,7 +2352,7 @@ url: d.url
       }
     }
   }
-  const Logger = createLogger("Marketplace Deal Finder");
+  const Logger$1 = createLogger("MDF Main");
   async function waitForPage(scraper) {
     const isWH = scraper.siteName === "WILLHABEN";
     if (isWH) {
@@ -2363,19 +2386,19 @@ url: d.url
       setScraper(scraper);
       const result = await loadSettings(scraper.storagePrefix);
       setCachedSettings(result.cachedSettings);
-      Logger.log("Initializing...");
+      Logger$1.log("Initializing...");
       for (let attempt = 0; attempt < MAX_INIT_RETRIES; attempt++) {
         try {
           await waitForPage(scraper);
           break;
         } catch (e) {
           if (attempt < MAX_INIT_RETRIES - 1) {
-            Logger.log("Page not ready, retrying in 3s...");
+            Logger$1.log("Page not ready, retrying in 3s...");
             await new Promise(function(r) {
               setTimeout(r, 3e3);
             });
           } else {
-            Logger.warn("Max retries reached - showing button anyway");
+            Logger$1.warn("Max retries reached - showing button anyway");
           }
         }
       }
@@ -2389,16 +2412,16 @@ url: d.url
         floatBtn.addEventListener("click", function() {
           openModal(scraper.storagePrefix);
           setupSettingsView(scraper)["catch"](function(err) {
-            Logger.error("Failed to load settings view:", err);
+            Logger$1.error("Failed to load settings view:", err);
           });
         });
       }
       await setupSettingsView(scraper);
       await resumeCrawlIfActive(scraper);
     } catch (error) {
-      Logger.error("Initialization error:", error);
+      Logger$1.error("Initialization error:", error);
       if (retryCount >= MAX_INIT_RETRIES) {
-        Logger.error("Fatal init failure after " + MAX_INIT_RETRIES + " retries:", error);
+        Logger$1.error("Fatal init failure after " + MAX_INIT_RETRIES + " retries:", error);
         console.error("[Marketplace Deal Finder] Could not initialize. Please reload the page or check the console for details.");
         return;
       }
@@ -2408,6 +2431,7 @@ url: d.url
       return init(retryCount + 1);
     }
   }
+  const Logger = createLogger("MDF Gemini");
   class GeminiProvider extends AIProvider {
 constructor(config) {
       super(config);
@@ -2471,7 +2495,7 @@ parseResponse(response) {
         throw new Error(`Gemini: blocked — finishReason: ${candidate.finishReason}`);
       }
       if (candidate.finishReason === "MAX_TOKENS") {
-        console.warn("[MDF] Gemini response may be truncated — max tokens reached");
+        Logger.warn("Gemini response may be truncated — max tokens reached");
       }
       const parts = (_a = candidate.content) == null ? void 0 : _a.parts;
       if (!parts || parts.length === 0) {

@@ -1,6 +1,8 @@
 'use strict';
 
 import { AIProvider } from './_api-provider.js';
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF Gemini');
 
 /**
  * Gemini API provider adapter.
@@ -91,7 +93,7 @@ export class GeminiProvider extends AIProvider {
       throw new Error(`Gemini: blocked — finishReason: ${candidate.finishReason}`);
     }
     if (candidate.finishReason === 'MAX_TOKENS') {
-      console.warn('[MDF] Gemini response may be truncated — max tokens reached');
+      Logger.warn('Gemini response may be truncated — max tokens reached');
     }
     const parts = candidate.content?.parts;
     if (!parts || parts.length === 0) {

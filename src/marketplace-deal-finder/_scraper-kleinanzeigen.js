@@ -1,6 +1,8 @@
 'use strict';
 
 import { MIN_TITLE_LENGTH } from './_constants.js';
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF-KA');
 
 /**
  * Finds ad elements on the current Kleinanzeigen search results page.
@@ -12,7 +14,7 @@ export function findAds() {
   for (let si = 0; si < adSelectors.length; si++) {
     const entries = document.querySelectorAll(adSelectors[si]);
     if (entries.length > 0) {
-      console.log('[MDF-KA] Found ' + entries.length + ' ads (selector: ' + adSelectors[si] + ')');
+      Logger.log('Found ' + entries.length + ' ads (selector: ' + adSelectors[si] + ')');
       return { adEntries: entries };
     }
   }
@@ -29,7 +31,7 @@ export function findAds() {
     }
   });
   if (uniqueAds.length > 0) {
-    console.log('[MDF-KA] Found ' + uniqueAds.length + ' ads (fallback method)');
+    Logger.log('Found ' + uniqueAds.length + ' ads (fallback method)');
     return { adEntries: uniqueAds };
   }
   return null;
@@ -120,20 +122,20 @@ export function goToNextPage(currentPage) {
   }
   if (nextButton) {
     const href = nextButton.getAttribute('href');
-    console.log('[MDF-KA] Next button href:', href);
+    Logger.log('Next button href:', href);
     if (href) {
       try {
         if (new URL(href, location.href).href === location.href) {
-          console.log('[MDF-KA] Next button points to same page - skipped');
+          Logger.log('Next button points to same page - skipped');
           return false;
         }
       } catch (e) {
-        console.warn('[MDF-KA] Invalid URL in next button:', href, e);
+        Logger.warn(' Invalid URL in next button:', href, e);
         return false;
       }
       return href;
     }
-    console.log('[MDF-KA] Next button has no href');
+    Logger.log('Next button has no href');
   }
   return false;
 }

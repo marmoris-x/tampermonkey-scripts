@@ -10,7 +10,7 @@ import { waitForElement } from './_dom.js';
 import { resumeCrawlIfActive, setupSettingsView } from './_crawler.js';
 import { MAX_INIT_RETRIES } from './_constants.js';
 
-const Logger = createLogger('Marketplace Deal Finder');
+const Logger = createLogger('MDF Main');
 
 /**
  * Waits for the search results page to be ready.

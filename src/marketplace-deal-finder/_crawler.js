@@ -14,7 +14,7 @@ import { attachSettingsListeners, attachResultsListeners } from './_ui-listeners
 import { exportMarkdown, exportJSON, exportCSV } from './_export.js';
 import * as C from './_constants.js';
 
-const Logger = createLogger('Marketplace Deal Finder');
+const Logger = createLogger('MDF Crawler');
 
 /* ─── Helpers ─── */
 
@@ -123,26 +123,51 @@ function fetchFullDescription(url, descSelectors, retryCount) {
         if (abortIfStopped()) return;
         try {
           if (response.status >= 200 && response.status < 300) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(response.responseText, 'text/html');
-            let fullDesc = null;
-            for (let si = 0; si < descSelectors.length; si++) {
-              const element = doc.querySelector(descSelectors[si]);
-              if (element && element.textContent.trim().length > 20) {
-                fullDesc = element.textContent.replace(/\s+/g, ' ').trim();
-                break;
+            var responseText = response.responseText;
+            var fullDesc = null;
+
+            // 1. Fast path: regex on raw responseText (avoids DOMParser for ~80% of ads).
+            // <meta name="description" content="...">
+            var metaMatch = responseText.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
+            if (metaMatch && metaMatch[1] && metaMatch[1].trim().length > 20) {
+              fullDesc = metaMatch[1].replace(/\s+/g, ' ').trim();
+            }
+            // JSON-LD description in <script type="application/ld+json">
+            if (!fullDesc) {
+              var ldMatch = responseText.match(/<script\s+type="application\/ld\+json"\s*>([\s\S]*?)<\/script>/i);
+              if (ldMatch && ldMatch[1]) {
+                try {
+                  var ld = JSON.parse(ldMatch[1]);
+                  var ldDesc = (ld && ld.description) || '';
+                  if (ldDesc.trim().length > 20) {
+                    fullDesc = ldDesc.replace(/\s+/g, ' ').trim();
+                  }
+                } catch (e) { /* JSON parse failed — fall through */ }
               }
             }
+
+            // 2. Full DOMParser + CSS selectors as fallback (slow path).
             if (!fullDesc) {
-              const itempropEl = doc.querySelector('[itemprop="description"]');
-              if (itempropEl && itempropEl.textContent.trim().length > 20) {
-                fullDesc = itempropEl.textContent.replace(/\s+/g, ' ').trim();
+              var parser = new DOMParser();
+              var doc = parser.parseFromString(responseText, 'text/html');
+              for (var si = 0; si < descSelectors.length; si++) {
+                var element = doc.querySelector(descSelectors[si]);
+                if (element && element.textContent.trim().length > 20) {
+                  fullDesc = element.textContent.replace(/\s+/g, ' ').trim();
+                  break;
+                }
               }
-            }
-            if (!fullDesc) {
-              const metaDesc = doc.querySelector('meta[name="description"]');
-              if (metaDesc && metaDesc.getAttribute('content') && metaDesc.getAttribute('content').trim().length > 20) {
-                fullDesc = metaDesc.getAttribute('content').replace(/\s+/g, ' ').trim();
+              if (!fullDesc) {
+                var itempropEl = doc.querySelector('[itemprop="description"]');
+                if (itempropEl && itempropEl.textContent.trim().length > 20) {
+                  fullDesc = itempropEl.textContent.replace(/\s+/g, ' ').trim();
+                }
+              }
+              if (!fullDesc) {
+                var metaDesc = doc.querySelector('meta[name="description"]');
+                if (metaDesc && metaDesc.getAttribute('content') && metaDesc.getAttribute('content').trim().length > 20) {
+                  fullDesc = metaDesc.getAttribute('content').replace(/\s+/g, ' ').trim();
+                }
               }
             }
             if (fullDesc) {

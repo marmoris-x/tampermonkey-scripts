@@ -1,6 +1,8 @@
 'use strict';
 
 import { MIN_TITLE_LENGTH } from './_constants.js';
+import { createLogger } from './_logger.js';
+const Logger = createLogger('MDF-WH');
 
 /**
  * Finds ad elements on the current Willhaben search results page.
@@ -16,7 +18,7 @@ export function findAds() {
   for (let si = 0; si < adSelectors.length; si++) {
     const entries = document.querySelectorAll(adSelectors[si]);
     if (entries.length > 0) {
-      console.log('[MDF-WH] Found ' + entries.length + ' ads (selector: ' + adSelectors[si] + ')');
+      Logger.log('Found ' + entries.length + ' ads (selector: ' + adSelectors[si] + ')');
       return { adEntries: entries };
     }
   }
@@ -33,7 +35,7 @@ export function findAds() {
     }
   });
   if (uniqueAds.length > 0) {
-    console.log('[MDF-WH] Found ' + uniqueAds.length + ' ads (fallback method)');
+    Logger.log('Found ' + uniqueAds.length + ' ads (fallback method)');
     return { adEntries: uniqueAds };
   }
   return null;
@@ -119,7 +121,7 @@ export function goToNextPage(currentPage) {
     const isDisabled = nextButton.hasAttribute('disabled');
     const ariaDisabled = nextButton.getAttribute('aria-disabled') === 'true';
     const href = nextButton.getAttribute('href');
-    console.log('[MDF-WH] Next button disabled:', isDisabled, '| aria-disabled:', ariaDisabled, '| href:', href);
+    Logger.log('Next button disabled:', isDisabled, '| aria-disabled:', ariaDisabled, '| href:', href);
     // Button is not disabled but has no href — Willhaben sometimes uses
     // <button> elements for pagination (JS-driven navigation).
     // Fall back to constructing the next-page URL from the current URL.
@@ -129,26 +131,26 @@ export function goToNextPage(currentPage) {
         var nextPage = currentPage + 1;
         url.searchParams.set('page', String(nextPage));
         var nextUrl = url.pathname + url.search;
-        console.log('[MDF-WH] Constructed next page URL from params:', nextUrl);
+        Logger.log('Constructed next page URL from params:', nextUrl);
         return nextUrl;
       } catch (e) {
-        console.warn('[MDF-WH] Failed to construct next page URL:', e);
+        Logger.warn('Failed to construct next page URL:', e);
         return false;
       }
     }
     if (!isDisabled && !ariaDisabled && href) {
       try {
         if (new URL(href, location.href).href === location.href) {
-          console.log('[MDF-WH] Next button points to same page - skipped');
+          Logger.log('Next button points to same page - skipped');
           return false;
         }
       } catch (e) {
-        console.warn('[MDF-WH] Invalid URL in next button:', href, e);
+        Logger.warn('Invalid URL in next button:', href, e);
         return false;
       }
       return href;
     }
-    console.log('[MDF-WH] Next button not usable');
+    Logger.log('Next button not usable');
   }
   return false;
 }
