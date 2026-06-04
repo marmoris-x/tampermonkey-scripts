@@ -15,9 +15,9 @@ import { setRunning, S as state } from './_state.js';
  */
 export function updateProgress(prefix, text, percentage, type) {
   type = type || 'info';
-  const container = document.getElementById(prefix + '-progress-container');
-  const progressText = document.getElementById(prefix + '-progress-text');
-  const progressBar = document.getElementById(prefix + '-progress-bar');
+  const container = state.uiRoot.getElementById(prefix + '-progress-container');
+  const progressText = state.uiRoot.getElementById(prefix + '-progress-text');
+  const progressBar = state.uiRoot.getElementById(prefix + '-progress-bar');
 
   const borderColor = type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : type === 'success' ? '#28a745' : '#667eea';
   const textColor = type === 'error' ? '#dc3545' : type === 'warning' ? '#ffc107' : type === 'success' ? '#28a745' : '#333';
@@ -78,15 +78,15 @@ export function showSuccess(prefix, message, percentage) {
  * @param {string} prefix - Site prefix
  */
 export function resetUI(prefix) {
-  const startBtn = document.getElementById(prefix + '-start-btn');
-  const pauseBtn = document.getElementById(prefix + '-pause-btn');
-  const stopBtn = document.getElementById(prefix + '-stop-btn');
-  const apiKeyInput = document.getElementById(prefix + '-api-key');
-  const searchInput = document.getElementById(prefix + '-search-context');
-  const topXInput = document.getElementById(prefix + '-top-x');
-  const providerSelect = document.getElementById(prefix + '-provider-select');
-  const modelIdInput = document.getElementById(prefix + '-model-id');
-  const baseUrlInput = document.getElementById(prefix + '-base-url');
+  const startBtn = state.uiRoot.getElementById(prefix + '-start-btn');
+  const pauseBtn = state.uiRoot.getElementById(prefix + '-pause-btn');
+  const stopBtn = state.uiRoot.getElementById(prefix + '-stop-btn');
+  const apiKeyInput = state.uiRoot.getElementById(prefix + '-api-key');
+  const searchInput = state.uiRoot.getElementById(prefix + '-search-context');
+  const topXInput = state.uiRoot.getElementById(prefix + '-top-x');
+  const providerSelect = state.uiRoot.getElementById(prefix + '-provider-select');
+  const modelIdInput = state.uiRoot.getElementById(prefix + '-model-id');
+  const baseUrlInput = state.uiRoot.getElementById(prefix + '-base-url');
 
   if (startBtn) startBtn.style.display = 'block';
   if (pauseBtn) pauseBtn.style.display = 'none';
@@ -100,9 +100,9 @@ export function resetUI(prefix) {
 
   // Hide progress and live ranking containers when resetting to idle.
   // Without this, stale containers from a previous crawl can remain visible.
-  const liveRanking = document.getElementById(prefix + '-live-ranking');
+  const liveRanking = state.uiRoot.getElementById(prefix + '-live-ranking');
   if (liveRanking) liveRanking.style.display = 'none';
-  const progressContainer = document.getElementById(prefix + '-progress-container');
+  const progressContainer = state.uiRoot.getElementById(prefix + '-progress-container');
   if (progressContainer) progressContainer.style.display = 'none';
 
   setRunning(false);
@@ -113,15 +113,15 @@ export function resetUI(prefix) {
  * @param {string} prefix - Site prefix
  */
 export function setUIRunningState(prefix) {
-  const startBtn = document.getElementById(prefix + '-start-btn');
-  const pauseBtn = document.getElementById(prefix + '-pause-btn');
-  const stopBtn = document.getElementById(prefix + '-stop-btn');
-  const apiKeyInput = document.getElementById(prefix + '-api-key');
-  const searchInput = document.getElementById(prefix + '-search-context');
-  const topXInput = document.getElementById(prefix + '-top-x');
-  const providerSelect = document.getElementById(prefix + '-provider-select');
-  const modelIdInput = document.getElementById(prefix + '-model-id');
-  const baseUrlInput = document.getElementById(prefix + '-base-url');
+  const startBtn = state.uiRoot.getElementById(prefix + '-start-btn');
+  const pauseBtn = state.uiRoot.getElementById(prefix + '-pause-btn');
+  const stopBtn = state.uiRoot.getElementById(prefix + '-stop-btn');
+  const apiKeyInput = state.uiRoot.getElementById(prefix + '-api-key');
+  const searchInput = state.uiRoot.getElementById(prefix + '-search-context');
+  const topXInput = state.uiRoot.getElementById(prefix + '-top-x');
+  const providerSelect = state.uiRoot.getElementById(prefix + '-provider-select');
+  const modelIdInput = state.uiRoot.getElementById(prefix + '-model-id');
+  const baseUrlInput = state.uiRoot.getElementById(prefix + '-base-url');
 
   if (startBtn) startBtn.style.display = 'none';
   if (pauseBtn) pauseBtn.style.display = 'block';
@@ -144,8 +144,8 @@ export function setUIRunningState(prefix) {
  * @param {Object} cachedSettings - Current settings (for topX)
  */
 export function updateLiveRanking(prefix, allTopDeals, cachedSettings) {
-  const container = document.getElementById(prefix + '-live-ranking');
-  const content = document.getElementById(prefix + '-live-ranking-content');
+  const container = state.uiRoot.getElementById(prefix + '-live-ranking');
+  const content = state.uiRoot.getElementById(prefix + '-live-ranking-content');
   if (!container || !content) return;
   // Guard: only show live ranking while a crawl is actually running.
   if (!state.isRunning) {

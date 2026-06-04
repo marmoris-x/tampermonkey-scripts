@@ -561,13 +561,15 @@ currentProvider: PROVIDER_TYPES.GEMINI,
     isPaused: false,
     shouldStop: false,
     captchaPaused: false,
+    finished: false,
     allTopDeals: [],
     currentPage: 1,
     initRetries: 0,
     descriptionCache: new Map(),
     cachedSettings: null,
     scraper: null,
-    abortController: null
+    abortController: null,
+    uiRoot: null
   };
   function setRunning(val) {
     S.isRunning = val;
@@ -604,6 +606,20 @@ currentProvider: PROVIDER_TYPES.GEMINI,
         }, timeout);
       }
     });
+  }
+  function createShadowContainer(opts) {
+    opts = opts || {};
+    const host = document.createElement(opts.tag || "div");
+    if (opts.id) host.id = opts.id;
+    if (opts.className) host.className = opts.className;
+    const root = host.attachShadow({ mode: "closed" });
+    if (opts.styles) {
+      const style = document.createElement("style");
+      style.textContent = opts.styles;
+      root.appendChild(style);
+    }
+    document.body.appendChild(host);
+    return { host, root };
   }
   function createToast(message, opts) {
     opts = opts || {};
@@ -786,49 +802,56 @@ providerType === PROVIDER_TYPES.PORTKEY ? '<div id="' + prefix + '-portkey-confi
     ].join("\n");
   }
   const SIDEBAR_WIDTH = "400px";
+  const SHADOW_STYLES = [
+    ":host { all: initial; contain: strict; isolation: isolate; }",
+    ":host { display: none; position: fixed; top: 0; right: 0; width: 400px; height: 100vh;",
+    "  background: white; z-index: 999999; box-shadow: -5px 0 20px rgba(0,0,0,0.2);",
+    "  overflow-y: auto; transition: transform 0.3s ease;",
+    "  font-family: system-ui, -apple-system, sans-serif;",
+    "  pointer-events: auto; }",
+    ":host([open]) { display: block; }"
+  ].join("\n");
   function createModal(prefix) {
-    const modalId = prefix + "-dealfinder-modal";
+    var modalId = prefix + "-dealfinder-modal";
     if (document.getElementById(modalId)) return;
-    const modal = document.createElement("div");
-    modal.id = modalId;
-    modal.style.cssText = [
-      "display: none; position: fixed; top: 0; right: 0; width: 400px; height: 100vh;",
-      "background: white; z-index: 999999; box-shadow: -5px 0 20px rgba(0,0,0,0.2);",
-      "overflow-y: auto; transition: transform 0.3s ease;"
-    ].join(" ");
-    document.body.appendChild(modal);
+    var container = createShadowContainer({
+      tag: "div",
+      id: modalId,
+      styles: SHADOW_STYLES
+    });
+    S.uiRoot = container.root;
   }
   function openModal(prefix) {
-    const modal = document.getElementById(prefix + "-dealfinder-modal");
-    const floatBtn = document.getElementById(prefix + "-dealfinder-btn");
-    if (modal) modal.style.display = "block";
+    var modal = document.getElementById(prefix + "-dealfinder-modal");
+    var floatBtn = document.getElementById(prefix + "-dealfinder-btn");
+    if (modal) modal.setAttribute("open", "");
     if (floatBtn) floatBtn.style.display = "none";
     document.documentElement.style.transition = "margin-right 0.3s ease";
     document.documentElement.style.marginRight = SIDEBAR_WIDTH;
   }
   function closeModal(prefix, isRunning) {
     if (isRunning) {
-      const btn = document.getElementById(prefix + "-close-btn-x");
-      if (btn) {
-        btn.style.color = "#dc3545";
-        btn.title = "Crawl laeuft - erst stoppen";
+      var closeBtn = S.uiRoot ? S.uiRoot.getElementById(prefix + "-close-btn-x") : null;
+      if (closeBtn) {
+        closeBtn.style.color = "#dc3545";
+        closeBtn.title = "Crawl laeuft - erst stoppen";
         setTimeout(function() {
-          btn.style.color = "#999";
-          btn.title = "";
+          closeBtn.style.color = "#999";
+          closeBtn.title = "";
         }, 1e3);
       }
       return;
     }
-    const modal = document.getElementById(prefix + "-dealfinder-modal");
-    const floatBtn = document.getElementById(prefix + "-dealfinder-btn");
-    if (modal) modal.style.display = "none";
+    var modal = document.getElementById(prefix + "-dealfinder-modal");
+    var floatBtn = document.getElementById(prefix + "-dealfinder-btn");
+    if (modal) modal.removeAttribute("open");
     if (floatBtn) floatBtn.style.display = "block";
     document.documentElement.style.marginRight = "";
   }
   function createDealFinderButton(prefix, gradient) {
-    const buttonId = prefix + "-dealfinder-btn";
+    var buttonId = prefix + "-dealfinder-btn";
     if (document.getElementById(buttonId)) return;
-    const button = document.createElement("button");
+    var button = document.createElement("button");
     button.id = buttonId;
     button.textContent = "Deal Finder";
     button.style.cssText = [
@@ -850,9 +873,8 @@ providerType === PROVIDER_TYPES.PORTKEY ? '<div id="' + prefix + '-portkey-confi
     return button;
   }
   function switchToResultsView(prefix, deals) {
-    const modal = document.getElementById(prefix + "-dealfinder-modal");
-    if (!modal) return;
-    modal.innerHTML = renderResultsView(prefix, deals || []);
+    if (!S.uiRoot) return;
+    S.uiRoot.innerHTML = renderResultsView(prefix, deals || []);
   }
   class AIProvider {
 constructor(config) {
@@ -1136,9 +1158,9 @@ isAuthError(status) {
   }
   function updateProgress(prefix, text, percentage, type) {
     type = type || "info";
-    const container = document.getElementById(prefix + "-progress-container");
-    const progressText = document.getElementById(prefix + "-progress-text");
-    const progressBar = document.getElementById(prefix + "-progress-bar");
+    const container = S.uiRoot.getElementById(prefix + "-progress-container");
+    const progressText = S.uiRoot.getElementById(prefix + "-progress-text");
+    const progressBar = S.uiRoot.getElementById(prefix + "-progress-bar");
     const borderColor = type === "error" ? "#dc3545" : type === "warning" ? "#ffc107" : type === "success" ? "#28a745" : "#667eea";
     const textColor = type === "error" ? "#dc3545" : type === "warning" ? "#ffc107" : type === "success" ? "#28a745" : "#333";
     const barColor = type === "error" ? "#dc3545" : type === "warning" ? "#ffc107" : type === "success" ? "#28a745" : "#007bff";
@@ -1160,15 +1182,15 @@ isAuthError(status) {
     updateProgress(prefix, "Warnung: " + message, percentage || 0, "warning");
   }
   function resetUI(prefix) {
-    const startBtn = document.getElementById(prefix + "-start-btn");
-    const pauseBtn = document.getElementById(prefix + "-pause-btn");
-    const stopBtn = document.getElementById(prefix + "-stop-btn");
-    const apiKeyInput = document.getElementById(prefix + "-api-key");
-    const searchInput = document.getElementById(prefix + "-search-context");
-    const topXInput = document.getElementById(prefix + "-top-x");
-    const providerSelect = document.getElementById(prefix + "-provider-select");
-    const modelIdInput = document.getElementById(prefix + "-model-id");
-    const baseUrlInput = document.getElementById(prefix + "-base-url");
+    const startBtn = S.uiRoot.getElementById(prefix + "-start-btn");
+    const pauseBtn = S.uiRoot.getElementById(prefix + "-pause-btn");
+    const stopBtn = S.uiRoot.getElementById(prefix + "-stop-btn");
+    const apiKeyInput = S.uiRoot.getElementById(prefix + "-api-key");
+    const searchInput = S.uiRoot.getElementById(prefix + "-search-context");
+    const topXInput = S.uiRoot.getElementById(prefix + "-top-x");
+    const providerSelect = S.uiRoot.getElementById(prefix + "-provider-select");
+    const modelIdInput = S.uiRoot.getElementById(prefix + "-model-id");
+    const baseUrlInput = S.uiRoot.getElementById(prefix + "-base-url");
     if (startBtn) startBtn.style.display = "block";
     if (pauseBtn) pauseBtn.style.display = "none";
     if (stopBtn) stopBtn.style.display = "none";
@@ -1178,22 +1200,22 @@ isAuthError(status) {
     if (providerSelect) providerSelect.disabled = false;
     if (modelIdInput) modelIdInput.disabled = false;
     if (baseUrlInput) baseUrlInput.disabled = false;
-    const liveRanking = document.getElementById(prefix + "-live-ranking");
+    const liveRanking = S.uiRoot.getElementById(prefix + "-live-ranking");
     if (liveRanking) liveRanking.style.display = "none";
-    const progressContainer = document.getElementById(prefix + "-progress-container");
+    const progressContainer = S.uiRoot.getElementById(prefix + "-progress-container");
     if (progressContainer) progressContainer.style.display = "none";
     setRunning(false);
   }
   function setUIRunningState(prefix) {
-    const startBtn = document.getElementById(prefix + "-start-btn");
-    const pauseBtn = document.getElementById(prefix + "-pause-btn");
-    const stopBtn = document.getElementById(prefix + "-stop-btn");
-    const apiKeyInput = document.getElementById(prefix + "-api-key");
-    const searchInput = document.getElementById(prefix + "-search-context");
-    const topXInput = document.getElementById(prefix + "-top-x");
-    const providerSelect = document.getElementById(prefix + "-provider-select");
-    const modelIdInput = document.getElementById(prefix + "-model-id");
-    const baseUrlInput = document.getElementById(prefix + "-base-url");
+    const startBtn = S.uiRoot.getElementById(prefix + "-start-btn");
+    const pauseBtn = S.uiRoot.getElementById(prefix + "-pause-btn");
+    const stopBtn = S.uiRoot.getElementById(prefix + "-stop-btn");
+    const apiKeyInput = S.uiRoot.getElementById(prefix + "-api-key");
+    const searchInput = S.uiRoot.getElementById(prefix + "-search-context");
+    const topXInput = S.uiRoot.getElementById(prefix + "-top-x");
+    const providerSelect = S.uiRoot.getElementById(prefix + "-provider-select");
+    const modelIdInput = S.uiRoot.getElementById(prefix + "-model-id");
+    const baseUrlInput = S.uiRoot.getElementById(prefix + "-base-url");
     if (startBtn) startBtn.style.display = "none";
     if (pauseBtn) pauseBtn.style.display = "block";
     if (stopBtn) stopBtn.style.display = "block";
@@ -1205,8 +1227,8 @@ isAuthError(status) {
     if (baseUrlInput) baseUrlInput.disabled = true;
   }
   function updateLiveRanking(prefix, allTopDeals, cachedSettings) {
-    const container = document.getElementById(prefix + "-live-ranking");
-    const content = document.getElementById(prefix + "-live-ranking-content");
+    const container = S.uiRoot.getElementById(prefix + "-live-ranking");
+    const content = S.uiRoot.getElementById(prefix + "-live-ranking-content");
     if (!container || !content) return;
     if (!S.isRunning) {
       container.style.display = "none";
@@ -1246,17 +1268,17 @@ isAuthError(status) {
     }).join("\n");
   }
   function attachSettingsListeners(prefix, callbacks) {
-    const startBtn = document.getElementById(prefix + "-start-btn");
-    const pauseBtn = document.getElementById(prefix + "-pause-btn");
-    const stopBtn = document.getElementById(prefix + "-stop-btn");
-    const closeBtn = document.getElementById(prefix + "-close-btn-x");
-    const showResultsBtn = document.getElementById(prefix + "-show-results-btn");
-    const apiKeyInput = document.getElementById(prefix + "-api-key");
-    const searchContextInput = document.getElementById(prefix + "-search-context");
-    const providerSelect = document.getElementById(prefix + "-provider-select");
-    const modelIdInput = document.getElementById(prefix + "-model-id");
-    const baseUrlInput = document.getElementById(prefix + "-base-url");
-    const presetContainer = document.getElementById(prefix + "-model-presets");
+    const startBtn = S.uiRoot.getElementById(prefix + "-start-btn");
+    const pauseBtn = S.uiRoot.getElementById(prefix + "-pause-btn");
+    const stopBtn = S.uiRoot.getElementById(prefix + "-stop-btn");
+    const closeBtn = S.uiRoot.getElementById(prefix + "-close-btn-x");
+    const showResultsBtn = S.uiRoot.getElementById(prefix + "-show-results-btn");
+    const apiKeyInput = S.uiRoot.getElementById(prefix + "-api-key");
+    const searchContextInput = S.uiRoot.getElementById(prefix + "-search-context");
+    const providerSelect = S.uiRoot.getElementById(prefix + "-provider-select");
+    const modelIdInput = S.uiRoot.getElementById(prefix + "-model-id");
+    const baseUrlInput = S.uiRoot.getElementById(prefix + "-base-url");
+    const presetContainer = S.uiRoot.getElementById(prefix + "-model-presets");
     if (startBtn && callbacks.start) {
       startBtn.addEventListener("click", function() {
         callbacks.start()["catch"](function(error) {
@@ -1305,7 +1327,7 @@ isAuthError(status) {
         callbacks.baseUrlChange(baseUrlInput.value.trim());
       });
     }
-    const portkeyConfigInput = document.getElementById(prefix + "-portkey-config");
+    const portkeyConfigInput = S.uiRoot.getElementById(prefix + "-portkey-config");
     if (portkeyConfigInput && callbacks.portkeyConfigChange) {
       portkeyConfigInput.addEventListener("blur", function() {
         callbacks.portkeyConfigChange(portkeyConfigInput.value.trim());
@@ -1340,12 +1362,12 @@ isAuthError(status) {
     });
   }
   function attachResultsListeners(prefix, callbacks) {
-    const closeBtn = document.getElementById(prefix + "-close-btn-x");
-    const backBtn = document.getElementById(prefix + "-back-to-settings");
-    const exportMdBtn = document.getElementById(prefix + "-export-markdown-btn");
-    const exportJsonBtn = document.getElementById(prefix + "-export-json-btn");
-    const exportCsvBtn = document.getElementById(prefix + "-export-csv-btn");
-    const clearBtn = document.getElementById(prefix + "-clear-results-btn");
+    const closeBtn = S.uiRoot.getElementById(prefix + "-close-btn-x");
+    const backBtn = S.uiRoot.getElementById(prefix + "-back-to-settings");
+    const exportMdBtn = S.uiRoot.getElementById(prefix + "-export-markdown-btn");
+    const exportJsonBtn = S.uiRoot.getElementById(prefix + "-export-json-btn");
+    const exportCsvBtn = S.uiRoot.getElementById(prefix + "-export-csv-btn");
+    const clearBtn = S.uiRoot.getElementById(prefix + "-clear-results-btn");
     if (closeBtn && callbacks.close) closeBtn.addEventListener("click", callbacks.close);
     if (backBtn && callbacks.backToSettings) backBtn.addEventListener("click", callbacks.backToSettings);
     if (exportMdBtn && callbacks.exportMarkdown) exportMdBtn.addEventListener("click", callbacks.exportMarkdown);
@@ -1448,7 +1470,7 @@ isAuthError(status) {
     let md = generateMarkdown(results.deals, results.pages, results.timestamp, siteName);
     try {
       await navigator.clipboard.writeText(md);
-      let btn = document.getElementById(prefix + "-export-markdown-btn");
+      var btn = S.uiRoot.getElementById(prefix + "-export-markdown-btn");
       if (btn) {
         let orig = btn.textContent;
         btn.textContent = "Kopiert!";
@@ -1702,13 +1724,13 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
       Logger$2.warn("Crawl already running, ignoring duplicate start");
       return;
     }
-    const apiKey = document.getElementById(prefix + "-api-key").value.trim();
-    const modelId = document.getElementById(prefix + "-model-id").value.trim();
-    const searchContext = document.getElementById(prefix + "-search-context").value.trim();
-    const topX = parseInt(document.getElementById(prefix + "-top-x").value);
-    const maxPages = parseInt(document.getElementById(prefix + "-max-pages").value) || 10;
-    const providerType = document.getElementById(prefix + "-provider-select") ? document.getElementById(prefix + "-provider-select").value : "gemini";
-    const baseUrl = document.getElementById(prefix + "-base-url") ? document.getElementById(prefix + "-base-url").value.trim() : "";
+    const apiKey = S.uiRoot.getElementById(prefix + "-api-key").value.trim();
+    const modelId = S.uiRoot.getElementById(prefix + "-model-id").value.trim();
+    const searchContext = S.uiRoot.getElementById(prefix + "-search-context").value.trim();
+    const topX = parseInt(S.uiRoot.getElementById(prefix + "-top-x").value);
+    const maxPages = parseInt(S.uiRoot.getElementById(prefix + "-max-pages").value) || 10;
+    const providerType = S.uiRoot.getElementById(prefix + "-provider-select") ? S.uiRoot.getElementById(prefix + "-provider-select").value : "gemini";
+    const baseUrl = S.uiRoot.getElementById(prefix + "-base-url") ? S.uiRoot.getElementById(prefix + "-base-url").value.trim() : "";
     if (!apiKey) {
       alert("Bitte gib deinen API Key ein!");
       return;
@@ -1771,7 +1793,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
   function pauseDealFinder() {
     S.isPaused = true;
     const prefix = S.scraper.storagePrefix;
-    const pauseBtn = document.getElementById(prefix + "-pause-btn");
+    const pauseBtn = S.uiRoot.getElementById(prefix + "-pause-btn");
     if (!pauseBtn) return;
     pauseBtn.textContent = "Fortsetzen";
     pauseBtn.style.background = "#28a745";
@@ -1782,7 +1804,7 @@ JSON.stringify({ u: normalizeUrl(new URL(href, window.location.href).href) })
   function resumeDealFinder() {
     S.isPaused = false;
     const prefix = S.scraper.storagePrefix;
-    const pauseBtn = document.getElementById(prefix + "-pause-btn");
+    const pauseBtn = S.uiRoot.getElementById(prefix + "-pause-btn");
     if (!pauseBtn) return;
     pauseBtn.textContent = "Pause";
     pauseBtn.style.background = "#ffc107";
@@ -2146,9 +2168,8 @@ url: d.url
     S.cachedSettings = result.cachedSettings;
     const settings = result.settings;
     const savedResults = await loadResults(prefix);
-    const modal = document.getElementById(prefix + "-dealfinder-modal");
-    if (!modal) return;
-    modal.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
+    if (!S.uiRoot) return;
+    S.uiRoot.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
     attachSettingsListeners(prefix, {
       start: startDealFinder,
       pause: pauseDealFinder,
@@ -2224,7 +2245,7 @@ url: d.url
         }
       },
       modelPresetClick: async function(modelId, options) {
-        const modelIdInput = document.getElementById(prefix + "-model-id");
+        const modelIdInput = S.uiRoot.getElementById(prefix + "-model-id");
         if (modelIdInput) {
           modelIdInput.value = modelId;
           const s = await loadSettings(prefix, S.cachedSettings);

@@ -2,29 +2,40 @@
 'use strict';
 
 import { renderResultsView } from './_ui-settings.js';
+import { createShadowContainer } from './_dom.js';
+import { S as state } from './_state.js';
 
 /** @constant {string} */
 const SIDEBAR_WIDTH = '400px';
 
+/** @constant {string} */
+const SHADOW_STYLES = [
+  ':host { all: initial; contain: strict; isolation: isolate; }',
+  ':host { display: none; position: fixed; top: 0; right: 0; width: 400px; height: 100vh;',
+  '  background: white; z-index: 999999; box-shadow: -5px 0 20px rgba(0,0,0,0.2);',
+  '  overflow-y: auto; transition: transform 0.3s ease;',
+  '  font-family: system-ui, -apple-system, sans-serif;',
+  '  pointer-events: auto; }',
+  ':host([open]) { display: block; }'
+].join('\n');
+
 /* ─── Modal Management ─── */
 
 /**
- * Creates the modal sidebar element and appends it to document.body.
+ * Creates the modal sidebar inside a closed Shadow DOM container.
  * Does NOT open it automatically.
  * @param {string} prefix - Site prefix ("wh" or "ka") for DOM IDs
  */
 export function createModal(prefix) {
-  const modalId = prefix + '-dealfinder-modal';
+  var modalId = prefix + '-dealfinder-modal';
   if (document.getElementById(modalId)) return;
 
-  const modal = document.createElement('div');
-  modal.id = modalId;
-  modal.style.cssText = [
-    'display: none; position: fixed; top: 0; right: 0; width: 400px; height: 100vh;',
-    'background: white; z-index: 999999; box-shadow: -5px 0 20px rgba(0,0,0,0.2);',
-    'overflow-y: auto; transition: transform 0.3s ease;'
-  ].join(' ');
-  document.body.appendChild(modal);
+  var container = createShadowContainer({
+    tag: 'div',
+    id: modalId,
+    styles: SHADOW_STYLES
+  });
+  state.uiRoot = container.root;
 }
 
 /**
@@ -32,9 +43,9 @@ export function createModal(prefix) {
  * @param {string} prefix - Site prefix
  */
 export function openModal(prefix) {
-  const modal = document.getElementById(prefix + '-dealfinder-modal');
-  const floatBtn = document.getElementById(prefix + '-dealfinder-btn');
-  if (modal) modal.style.display = 'block';
+  var modal = document.getElementById(prefix + '-dealfinder-modal');
+  var floatBtn = document.getElementById(prefix + '-dealfinder-btn');
+  if (modal) modal.setAttribute('open', '');
   if (floatBtn) floatBtn.style.display = 'none';
   document.documentElement.style.transition = 'margin-right 0.3s ease';
   document.documentElement.style.marginRight = SIDEBAR_WIDTH;
@@ -47,17 +58,17 @@ export function openModal(prefix) {
  */
 export function closeModal(prefix, isRunning) {
   if (isRunning) {
-    const btn = document.getElementById(prefix + '-close-btn-x');
-    if (btn) {
-      btn.style.color = '#dc3545';
-      btn.title = 'Crawl laeuft - erst stoppen';
-      setTimeout(function () { btn.style.color = '#999'; btn.title = ''; }, 1000);
+    var closeBtn = state.uiRoot ? state.uiRoot.getElementById(prefix + '-close-btn-x') : null;
+    if (closeBtn) {
+      closeBtn.style.color = '#dc3545';
+      closeBtn.title = 'Crawl laeuft - erst stoppen';
+      setTimeout(function () { closeBtn.style.color = '#999'; closeBtn.title = ''; }, 1000);
     }
     return;
   }
-  const modal = document.getElementById(prefix + '-dealfinder-modal');
-  const floatBtn = document.getElementById(prefix + '-dealfinder-btn');
-  if (modal) modal.style.display = 'none';
+  var modal = document.getElementById(prefix + '-dealfinder-modal');
+  var floatBtn = document.getElementById(prefix + '-dealfinder-btn');
+  if (modal) modal.removeAttribute('open');
   if (floatBtn) floatBtn.style.display = 'block';
   document.documentElement.style.marginRight = '';
 }
@@ -66,15 +77,16 @@ export function closeModal(prefix, isRunning) {
 
 /**
  * Creates the floating "Deal Finder" button on the right edge of the viewport.
+ * The button stays in the Light DOM (outside Shadow DOM) so it's always visible.
  * @param {string} prefix - Site prefix
  * @param {string} gradient - CSS gradient for button background
  * @returns {HTMLElement|undefined} The button element, or undefined if already exists
  */
 export function createDealFinderButton(prefix, gradient) {
-  const buttonId = prefix + '-dealfinder-btn';
+  var buttonId = prefix + '-dealfinder-btn';
   if (document.getElementById(buttonId)) return;
 
-  const button = document.createElement('button');
+  var button = document.createElement('button');
   button.id = buttonId;
   button.textContent = 'Deal Finder';
   button.style.cssText = [
@@ -103,7 +115,7 @@ export function createDealFinderButton(prefix, gradient) {
  * @param {string} prefix - Site prefix
  */
 export function hideFloatingButton(prefix) {
-  const btn = document.getElementById(prefix + '-dealfinder-btn');
+  var btn = document.getElementById(prefix + '-dealfinder-btn');
   if (btn) btn.style.display = 'none';
 }
 
@@ -112,7 +124,7 @@ export function hideFloatingButton(prefix) {
  * @param {string} prefix - Site prefix
  */
 export function showFloatingButton(prefix) {
-  const btn = document.getElementById(prefix + '-dealfinder-btn');
+  var btn = document.getElementById(prefix + '-dealfinder-btn');
   if (btn) btn.style.display = 'block';
 }
 
@@ -124,7 +136,6 @@ export function showFloatingButton(prefix) {
  * @param {Array} deals - Deals to display
  */
 export function switchToResultsView(prefix, deals) {
-  const modal = document.getElementById(prefix + '-dealfinder-modal');
-  if (!modal) return;
-  modal.innerHTML = renderResultsView(prefix, deals || []);
+  if (!state.uiRoot) return;
+  state.uiRoot.innerHTML = renderResultsView(prefix, deals || []);
 }

@@ -2,6 +2,7 @@
 'use strict';
 
 import { updateProgress, resetUI } from './_ui-progress.js';
+import { S as state } from './_state.js';
 
 /* ─── Settings View Listeners ─── */
 
@@ -22,17 +23,17 @@ import { updateProgress, resetUI } from './_ui-progress.js';
  * @param {Function} callbacks.baseUrlChange - Base URL change handler (url: string) => void
  */
 export function attachSettingsListeners(prefix, callbacks) {
-  const startBtn = document.getElementById(prefix + '-start-btn');
-  const pauseBtn = document.getElementById(prefix + '-pause-btn');
-  const stopBtn = document.getElementById(prefix + '-stop-btn');
-  const closeBtn = document.getElementById(prefix + '-close-btn-x');
-  const showResultsBtn = document.getElementById(prefix + '-show-results-btn');
-  const apiKeyInput = document.getElementById(prefix + '-api-key');
-  const searchContextInput = document.getElementById(prefix + '-search-context');
-  const providerSelect = document.getElementById(prefix + '-provider-select');
-  const modelIdInput = document.getElementById(prefix + '-model-id');
-  const baseUrlInput = document.getElementById(prefix + '-base-url');
-  const presetContainer = document.getElementById(prefix + '-model-presets');
+  const startBtn = state.uiRoot.getElementById(prefix + '-start-btn');
+  const pauseBtn = state.uiRoot.getElementById(prefix + '-pause-btn');
+  const stopBtn = state.uiRoot.getElementById(prefix + '-stop-btn');
+  const closeBtn = state.uiRoot.getElementById(prefix + '-close-btn-x');
+  const showResultsBtn = state.uiRoot.getElementById(prefix + '-show-results-btn');
+  const apiKeyInput = state.uiRoot.getElementById(prefix + '-api-key');
+  const searchContextInput = state.uiRoot.getElementById(prefix + '-search-context');
+  const providerSelect = state.uiRoot.getElementById(prefix + '-provider-select');
+  const modelIdInput = state.uiRoot.getElementById(prefix + '-model-id');
+  const baseUrlInput = state.uiRoot.getElementById(prefix + '-base-url');
+  const presetContainer = state.uiRoot.getElementById(prefix + '-model-presets');
 
   // Start button
   if (startBtn && callbacks.start) {
@@ -103,7 +104,7 @@ export function attachSettingsListeners(prefix, callbacks) {
   }
 
   // Portkey Config change on blur
-  const portkeyConfigInput = document.getElementById(prefix + '-portkey-config');
+  const portkeyConfigInput = state.uiRoot.getElementById(prefix + '-portkey-config');
   if (portkeyConfigInput && callbacks.portkeyConfigChange) {
     portkeyConfigInput.addEventListener('blur', function () {
       callbacks.portkeyConfigChange(portkeyConfigInput.value.trim());
@@ -147,12 +148,12 @@ export function attachSettingsListeners(prefix, callbacks) {
  * @param {Function} callbacks.clearResults - Clear results handler
  */
 export function attachResultsListeners(prefix, callbacks) {
-  const closeBtn = document.getElementById(prefix + '-close-btn-x');
-  const backBtn = document.getElementById(prefix + '-back-to-settings');
-  const exportMdBtn = document.getElementById(prefix + '-export-markdown-btn');
-  const exportJsonBtn = document.getElementById(prefix + '-export-json-btn');
-  const exportCsvBtn = document.getElementById(prefix + '-export-csv-btn');
-  const clearBtn = document.getElementById(prefix + '-clear-results-btn');
+  const closeBtn = state.uiRoot.getElementById(prefix + '-close-btn-x');
+  const backBtn = state.uiRoot.getElementById(prefix + '-back-to-settings');
+  const exportMdBtn = state.uiRoot.getElementById(prefix + '-export-markdown-btn');
+  const exportJsonBtn = state.uiRoot.getElementById(prefix + '-export-json-btn');
+  const exportCsvBtn = state.uiRoot.getElementById(prefix + '-export-csv-btn');
+  const clearBtn = state.uiRoot.getElementById(prefix + '-clear-results-btn');
 
   if (closeBtn && callbacks.close) closeBtn.addEventListener('click', callbacks.close);
   if (backBtn && callbacks.backToSettings) backBtn.addEventListener('click', callbacks.backToSettings);

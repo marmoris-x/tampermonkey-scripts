@@ -4,6 +4,7 @@
 import { loadResults } from './_storage.js';
 import { generateMarkdown } from './_markdown.js';
 import { createToast } from './_dom.js';
+import { S as state } from './_state.js';
 
 /**
  * Escapes a value for CSV: wraps in quotes, doubles inner quotes,
@@ -34,7 +35,7 @@ export async function exportMarkdown(prefix) {
 
   try {
     await navigator.clipboard.writeText(md);
-    let btn = document.getElementById(prefix + '-export-markdown-btn');
+    var btn = state.uiRoot.getElementById(prefix + '-export-markdown-btn');
     if (btn) {
       let orig = btn.textContent;
       btn.textContent = 'Kopiert!';

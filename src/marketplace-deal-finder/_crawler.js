@@ -270,16 +270,16 @@ async function startDealFinder() {
     return;
   }
 
-  const apiKey = document.getElementById(prefix + '-api-key').value.trim();
-  const modelId = document.getElementById(prefix + '-model-id').value.trim();
-  const searchContext = document.getElementById(prefix + '-search-context').value.trim();
-  const topX = parseInt(document.getElementById(prefix + '-top-x').value);
-  const maxPages = parseInt(document.getElementById(prefix + '-max-pages').value) || 10;
-  const providerType = document.getElementById(prefix + '-provider-select')
-    ? document.getElementById(prefix + '-provider-select').value
+  const apiKey = state.uiRoot.getElementById(prefix + '-api-key').value.trim();
+  const modelId = state.uiRoot.getElementById(prefix + '-model-id').value.trim();
+  const searchContext = state.uiRoot.getElementById(prefix + '-search-context').value.trim();
+  const topX = parseInt(state.uiRoot.getElementById(prefix + '-top-x').value);
+  const maxPages = parseInt(state.uiRoot.getElementById(prefix + '-max-pages').value) || 10;
+  const providerType = state.uiRoot.getElementById(prefix + '-provider-select')
+    ? state.uiRoot.getElementById(prefix + '-provider-select').value
     : 'gemini';
-  const baseUrl = document.getElementById(prefix + '-base-url')
-    ? document.getElementById(prefix + '-base-url').value.trim()
+  const baseUrl = state.uiRoot.getElementById(prefix + '-base-url')
+    ? state.uiRoot.getElementById(prefix + '-base-url').value.trim()
     : '';
 
   if (!apiKey) { alert('Bitte gib deinen API Key ein!'); return; }
@@ -345,7 +345,7 @@ async function startDealFinder() {
 function pauseDealFinder() {
   state.isPaused = true;
   const prefix = state.scraper.storagePrefix;
-  const pauseBtn = document.getElementById(prefix + '-pause-btn');
+  const pauseBtn = state.uiRoot.getElementById(prefix + '-pause-btn');
   if (!pauseBtn) return;
   pauseBtn.textContent = 'Fortsetzen';
   pauseBtn.style.background = '#28a745';
@@ -360,7 +360,7 @@ function pauseDealFinder() {
 function resumeDealFinder() {
   state.isPaused = false;
   const prefix = state.scraper.storagePrefix;
-  const pauseBtn = document.getElementById(prefix + '-pause-btn');
+  const pauseBtn = state.uiRoot.getElementById(prefix + '-pause-btn');
   if (!pauseBtn) return;
   pauseBtn.textContent = 'Pause';
   pauseBtn.style.background = '#ffc107';
@@ -784,9 +784,8 @@ export async function setupSettingsView(scraper) {
   const settings = result.settings;
   const savedResults = await loadResults(prefix);
 
-  const modal = document.getElementById(prefix + '-dealfinder-modal');
-  if (!modal) return;
-  modal.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
+  if (!state.uiRoot) return;
+  state.uiRoot.innerHTML = renderSettingsView(prefix, settings, savedResults, scraper.siteName);
 
   attachSettingsListeners(prefix, {
     start: startDealFinder,
@@ -866,7 +865,7 @@ export async function setupSettingsView(scraper) {
       }
     },
     modelPresetClick: async function (modelId, options) {
-      const modelIdInput = document.getElementById(prefix + '-model-id');
+      const modelIdInput = state.uiRoot.getElementById(prefix + '-model-id');
       if (modelIdInput) {
         modelIdInput.value = modelId;
         const s = await loadSettings(prefix, state.cachedSettings);

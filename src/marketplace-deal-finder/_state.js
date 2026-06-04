@@ -24,13 +24,15 @@ export const S = {
   isPaused: false,
   shouldStop: false,
   captchaPaused: false,
+  finished: false,
   allTopDeals: [],
   currentPage: 1,
   initRetries: 0,
   descriptionCache: new Map(),
   cachedSettings: null,
   scraper: null,
-  abortController: null
+  abortController: null,
+  uiRoot: null
 };
 
 /**
@@ -41,6 +43,7 @@ export function resetState() {
   S.isPaused = false;
   S.shouldStop = false;
   S.captchaPaused = false;
+  S.finished = false;
   S.allTopDeals = [];
   S.currentPage = 1;
   S.initRetries = 0;
@@ -48,6 +51,7 @@ export function resetState() {
   S.cachedSettings = null;
   S.scraper = null;
   S.abortController = null;
+  S.uiRoot = null;
 }
 
 /** @param {boolean} val */
